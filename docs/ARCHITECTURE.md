@@ -57,6 +57,22 @@ overhead before we hit a UI problem that actually needs it.
   WGS84 UTM32N (EPSG:32632/25832) differ by ~100-200 m at this latitude —
   enough to matter for the compass/position feature (§7) even though it's
   irrelevant to terrain shape.
+  - The source ships a sidecar `DTM0508_002_UNICO.prj` (confirmed by
+    running `tools/dtm-source/inspect-dtm.sh`): `Datum EUR_M, Spheroid
+    INT1909`. The International 1924 ellipsoid (INT1909) is what ED50 uses
+    — this rules out Roma40/Gauss-Boaga (Bessel 1841 ellipsoid) and is
+    consistent with EPSG:23032, corroborating the Mont Blanc cross-check
+    below. It's *not* precise enough on its own, though: GDAL can't map the
+    ESRI keyword `EUR_M` to a specific registered EPSG code, and parses it
+    as an "unspecified datum" with no defined WGS84 transform — so our
+    tooling forces `EPSG:23032` explicitly rather than trusting that
+    auto-detection (see comments in `tools/dtm-source/*.sh`).
+  - Also confirmed the full source file's own extent while we were at it:
+    44174 × 28557 px at 2 m/px, origin E 329116.00/N 5036775.00 (lower-left)
+    → E 329116–417464, N 5036775–5093889 overall. Our crop's west/south
+    edges exactly match the source file's own edges (not an arbitrary
+    crop) — there's room to extend east/north if a future crop ever wants
+    more of the Valle d'Aosta side.
 - Elevation calibration is **linear across the full pixel range**:
   `real_elevation_m = 292.0 + (pixel_value / 65535) * 4519.7`
   (min 292.0 m, max 4811.7 m, mean 2057.1 m). Verified against the report's

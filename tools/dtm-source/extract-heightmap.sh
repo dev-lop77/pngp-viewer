@@ -52,16 +52,23 @@ if [[ ! -f "$SRC_ASC" ]]; then
 fi
 
 PRJ_FILE="${SRC_ASC%.*}.prj"
-SRC_SRS_ARGS=()
 if [[ -f "$PRJ_FILE" ]]; then
-  echo "Found sidecar .prj — using it instead of ASSUMED_EPSG."
-else
-  echo "No .prj sidecar — assigning $ASSUMED_EPSG."
-  SRC_SRS_ARGS=(-a_srs "$ASSUMED_EPSG")
+  echo "Sidecar .prj found (for reference — NOT used to set the CRS, see below):"
+  cat "$PRJ_FILE"
 fi
-
+# The sidecar .prj (if present) uses old ESRI-style keywords ("Datum EUR_M",
+# "Spheroid INT1909") that GDAL can't map to a specific registered EPSG code
+# — it parses them as an "unspecified datum on the International 1924
+# ellipsoid", which is consistent with ED50 but has no defined WGS84
+# transform, so trusting it silently could give a lat/lon conversion with
+# an unknown, unchecked error. We force ASSUMED_EPSG explicitly instead,
+# which we verified independently (see docs/ARCHITECTURE.md §3): the
+# heightmap's max-elevation pixel back-projects to within ~15m of Mont
+# Blanc's known summit under EPSG:23032, vs ~200m off under
+# EPSG:32632/25832.
+echo "Forcing CRS to $ASSUMED_EPSG (verified, not auto-detected)."
 VRT="$OUT_DIR/source.vrt"
-gdal_translate -of VRT "${SRC_SRS_ARGS[@]}" "$SRC_ASC" "$VRT"
+gdal_translate -of VRT -a_srs "$ASSUMED_EPSG" "$SRC_ASC" "$VRT"
 
 CROP_TIF="$OUT_DIR/pngp_dtm_crop.tif"
 echo

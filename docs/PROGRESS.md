@@ -35,9 +35,8 @@ No application code yet.
   `tools/dtm-source/extract-heightmap.sh` (GDAL crop+resample+normalize,
   writes to an external work dir, outputs a heightmap PNG + JSON calibration
   sidecar with the TRUE non-square aspect ratio preserved — no per-axis
-  correction needed once this is run). Neither script has been run yet.
-  Both default to the same bbox already in `pngp_extraction_report.txt`.
-  See `tools/dtm-source/README.md`.
+  correction needed once this is run). Both default to the same bbox
+  already in `pngp_extraction_report.txt`. See `tools/dtm-source/README.md`.
 - Two more files appeared mid-session: `DEM/scripts/extract_pngp_from_vda.py`
   (the actual script that produced the current heightmap) and
   `DEM/scripts/vda_dtm_to_ue5.py`. Reading the real code: (a) confirmed the
@@ -56,6 +55,15 @@ No application code yet.
   Paradiso incluso" check only tests `alt_max > 4000`, not which peak.
   **Corrected ARCHITECTURE.md §3 and §6 to EPSG:23032 and fixed the same
   default in both `tools/dtm-source/*.sh` scripts.**
+- User ran `tools/dtm-source/inspect-dtm.sh` (output: `inspect-dtm.log`,
+  gitignored, not committed). Confirmed: full source file is 44174×28557 px
+  at 2 m/px, origin E 329116.00/N 5036775.00 — our crop's west/south edges
+  exactly match the source file's own edges. Also confirmed a sidecar
+  `DTM0508_002_UNICO.prj` exists: `Datum EUR_M, Spheroid INT1909`
+  (International 1924 ellipsoid) — consistent with ED50, corroborating the
+  Mont Blanc cross-check, but GDAL can't map the ESRI `EUR_M` keyword to a
+  specific EPSG code on its own, so both scripts were updated to force
+  `-a_srs EPSG:23032` explicitly rather than trust that auto-detection.
 - Reviewed the reference project (github.com/shlokkhemani/ode-to-yosemite):
   vanilla Three.js + Vite, `three`/`vite`/`sharp`/`playwright` only, one
   module per concern (`terrain.js`, `lighting.js`, `atmosphere.js`,
@@ -79,9 +87,10 @@ No application code yet.
   project from scratch.
 
 ### Open questions (non-blocking)
-1. **Run the DTM re-extraction** — user needs to edit `SRC_ASC` (and
-   optionally the crop bbox/`RES_M`) in `tools/dtm-source/extract-heightmap.sh`
-   and run it on their WSL machine, then copy `pngp_heightmap.png` +
+1. **Run the DTM re-extraction** — `inspect-dtm.sh` has been run (header/CRS
+   confirmed, see Done above). Still need: run
+   `tools/dtm-source/extract-heightmap.sh` (same `SRC_ASC` path already
+   known to work) on the WSL machine, then copy `pngp_heightmap.png` +
    `pngp_heightmap_meta.json` into this repo's `DEM/` folder. Once done,
    `docs/ARCHITECTURE.md` §3 should be updated to reflect the new
    calibration values (should be very close to current ones, but now

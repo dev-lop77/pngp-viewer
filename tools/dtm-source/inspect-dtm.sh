@@ -14,11 +14,11 @@ set -euo pipefail
 
 # --- EDIT THIS ---
 SRC_ASC="/path/to/DTM0508_002_UNICO.ASC"
-# Used only if no .prj sidecar is found next to the .asc. ED50 / UTM zone
-# 32N — confirmed (not just assumed) by matching the heightmap's
-# max-elevation pixel against Mont Blanc's known summit coordinates to
-# within ~15m under this CRS, vs. ~200m off under WGS84/ETRS89 UTM32N
-# (EPSG:32632/25832). See docs/ARCHITECTURE.md §3 in the pngp-viewer repo.
+# ED50 / UTM zone 32N — confirmed (not just assumed) by matching the
+# heightmap's max-elevation pixel against Mont Blanc's known summit
+# coordinates to within ~15m under this CRS, vs. ~200m off under WGS84/
+# ETRS89 UTM32N (EPSG:32632/25832). See docs/ARCHITECTURE.md §3. Used
+# unconditionally below, even if a sidecar .prj exists — see note there.
 ASSUMED_EPSG="EPSG:23032"
 # ------------------
 
@@ -38,15 +38,18 @@ head -n 6 "$SRC_ASC"
 echo
 
 PRJ_FILE="${SRC_ASC%.*}.prj"
-SRC_SRS_ARGS=()
 if [[ -f "$PRJ_FILE" ]]; then
-  echo "== Found sidecar .prj: $PRJ_FILE =="
+  echo "== Sidecar .prj found (for reference — NOT used to set the CRS below): $PRJ_FILE =="
   cat "$PRJ_FILE"
+  echo
+  echo "(Old ESRI-style keywords like \"Datum EUR_M\" / \"Spheroid INT1909\" can't"
+  echo "be mapped to a specific registered EPSG code by GDAL — it'll parse as an"
+  echo "unspecified datum with no defined WGS84 transform. We force $ASSUMED_EPSG"
+  echo "explicitly instead, verified independently — see docs/ARCHITECTURE.md §3.)"
   echo
 else
   echo "No .prj sidecar found next to the .asc — assuming $ASSUMED_EPSG."
   echo
-  SRC_SRS_ARGS=(-a_srs "$ASSUMED_EPSG")
 fi
 
 WORK_DIR="$(mktemp -d)"
@@ -54,7 +57,7 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 VRT="$WORK_DIR/source.vrt"
 
 # A VRT is a tiny XML wrapper — this does NOT copy or touch the 10GB source.
-gdal_translate -of VRT "${SRC_SRS_ARGS[@]}" "$SRC_ASC" "$VRT"
+gdal_translate -of VRT -a_srs "$ASSUMED_EPSG" "$SRC_ASC" "$VRT"
 
 echo "== gdalinfo: extent, resolution, CRS =="
 gdalinfo "$VRT"
