@@ -46,14 +46,34 @@ overhead before we hit a UI problem that actually needs it.
 `DEM/heightmap_pngp_4033.png`, calibrated against `DEM/pngp_extraction_report.txt`:
 
 - 4033 × 4033 px, 16-bit grayscale PNG, non-interlaced.
-- Source: `DTM0508_002_UNICO.ASC`, native resolution 2.0 m/px.
-- Bounding box: UTM32N (EPSG:32632) **E 329116–413000, N 5036775–5085000**
-  — a 83,884 m × 48,225 m rectangle. Includes the Gran Paradiso summit.
+- Source: `DTM0508_002_UNICO.ASC`, native resolution 2.0 m/px. Regione Valle
+  d'Aosta DTM, per `DEM/scripts/extract_pngp_from_vda.py` (the extraction
+  script itself, found alongside the data).
+- Bounding box: **E 329116–413000, N 5036775–5085000** in **ED50 / UTM zone
+  32N (EPSG:23032)** — a 83,884 m × 48,225 m rectangle. The extraction
+  script itself flagged this datum as an approximation ("EPSG:23032... il
+  più comune per VdA"); we confirmed it directly (see box below) rather
+  than taking it on faith, since ED50 vs. the more common modern ETRS89/
+  WGS84 UTM32N (EPSG:32632/25832) differ by ~100-200 m at this latitude —
+  enough to matter for the compass/position feature (§7) even though it's
+  irrelevant to terrain shape.
 - Elevation calibration is **linear across the full pixel range**:
   `real_elevation_m = 292.0 + (pixel_value / 65535) * 4519.7`
   (min 292.0 m, max 4811.7 m, mean 2057.1 m). Verified against the report's
   own vegetation-band thresholds (§5) — the formula reproduces all five
   band boundaries to within 1 m, so this mapping is solid.
+
+  > **Note**: the max (4811.7 m) is *higher* than the Gran Paradiso summit
+  > (4061 m) because the crop's bbox extends far enough northwest to catch
+  > the southern flank of the **Mont Blanc massif** (4808–4810 m) — the
+  > report's "★ Gran Paradiso incluso" check only verifies `alt_max > 4000`,
+  > it doesn't verify *which* peak that max belongs to. Confirmed by
+  > back-projecting the max-value pixel's approximate source coordinates:
+  > under EPSG:23032 it lands within ~15 m of Mont Blanc's published summit
+  > coordinates (45.8325°N, 6.8650°E); under EPSG:32632/25832 it's off by
+  > ~200 m. This is also what settled the datum question above — a real
+  > independent check, not just repeating the extraction script's own
+  > assumption.
 
 **Open item — non-square resample.** The source rectangle is not square
 (83.9 km E-W × 48.2 km N-S) but the PNG is a square 4033×4033 canvas (a UE5
@@ -68,16 +88,20 @@ own UE5 notes assume (`Scale X/Y: 200` applied to both axes). If we reused
 that uniform scale as-is, the terrain would be visibly stretched ~1.74×
 along N-S (wrong slopes, wrong distances, wrong waterfall drop heights).
 
-Fix: our own `tools/process-heightmap.mjs` will use the *two different*
-per-axis meters/pixel values derived directly from the bbox above
-(83884/4033 and 48225/4033) rather than a single uniform scale, so the
-terrain reconstructs at correct real-world proportions regardless of what
-the square canvas was optimized for. This only requires the bbox numbers we
-already have — **no new data needed** — but it's worth confirming with
-whoever ran the original extraction (or re-deriving straight from
-`DTM0508_002_UNICO.ASC` if still available) since it's an inference from
-image statistics, not a documented fact. Tracked in
-[docs/PROGRESS.md](PROGRESS.md).
+Fix, fallback: if we ever only have the current square PNG to work with,
+`tools/process-heightmap.mjs` can use *two different* per-axis meters/pixel
+values derived from the bbox above (83884/4033 and 48225/4033) rather than
+a single uniform scale, so the terrain still reconstructs at correct
+real-world proportions.
+
+**Superseded by a better option**: the 10 GB native-resolution source
+(`DTM0508_002_UNICO.ASC`) is available. `tools/dtm-source/extract-heightmap.sh`
+crops+resamples directly from it with GDAL, producing a heightmap whose
+pixel dimensions already match the true (non-square) aspect ratio — no
+per-axis correction needed downstream, and the calibration is written out
+by the script instead of inferred from image statistics. This is the
+preferred path once it's been run; see `tools/dtm-source/README.md`. Not
+run yet as of this writing — tracked in [docs/PROGRESS.md](PROGRESS.md).
 
 ## 4. Data pipeline
 
@@ -85,6 +109,18 @@ Build-time only, static output — no backend/server, everything is prebuilt
 and shipped as static assets (matches the reference project's
 `npm run fetch-terrain` step, adapted since our DEM is already local rather
 than tiled from a remote source).
+
+There are two stages, kept deliberately separate:
+
+- **`tools/dtm-source/*.sh`** — external, manual, run outside this repo and
+  outside the normal build (see §3). Turns the 10 GB native DTM into a
+  small, correctly-calibrated heightmap crop. Occasional/one-off, not run
+  on every build, not something a fresh clone of this repo can run (it
+  needs the 10 GB source file, which isn't checked in).
+- **`tools/*.mjs`** below — the regular, repo-local build pipeline. Takes
+  whatever heightmap currently sits in `DEM/` (regardless of which of the
+  two calibration paths in §3 produced it) and turns it into the web-ready
+  assets under `public/data/`.
 
 ```
 tools/
@@ -139,11 +175,15 @@ Local metric frame, same principle as the reference project: 1 unit = 1
 meter, origin at a fixed reference point inside the bbox (e.g. the DEM's
 southwest corner or park centroid — TBD once we scaffold the pipeline).
 Compass and position features need a fixed mapping between this local frame
-and WGS84 lat/lon — straightforward now that we have the real UTM32N bbox
-(§3): project local meters back to UTM32N using the origin offset, then
-UTM32N → WGS84 with a small conversion (e.g. `proj4`). No longer blocked on
-missing data; roadmap phase 5, "Navigation aids" (§7), just needs this
-implemented.
+and WGS84 lat/lon — straightforward now that we have the real bbox (§3):
+project local meters back to **ED50 UTM32N (EPSG:23032)** using the origin
+offset, then EPSG:23032 → WGS84 (EPSG:4326) with a small conversion (e.g.
+`proj4`, which ships this datum transform). Using EPSG:32632 here instead
+would be a plausible-looking but wrong default — worth a code comment when
+this gets implemented, since it's the kind of mistake that silently produces
+a position readout ~100-200 m off rather than an obvious error. No longer
+blocked on missing data; roadmap phase 5, "Navigation aids" (§7), just needs
+this implemented.
 
 ## 7. Feature roadmap
 
@@ -165,11 +205,13 @@ user's stated priorities; can reshuffle as we learn more.
 
 ```
 pngp-viewer/
-├── DEM/                    raw source heightmap (already present)
+├── DEM/                    raw source heightmap + original UE5 extraction scripts (already present)
 ├── docs/
 │   ├── ARCHITECTURE.md     this document
 │   └── PROGRESS.md         running status/decision log — read this first each session
-├── tools/                  build-time node scripts (see §4)
+├── tools/
+│   ├── dtm-source/         external/manual GDAL scripts, run outside the repo (see §3-4)
+│   └── *.mjs               regular build-time node scripts (see §4)
 ├── public/
 │   └── data/               generated static assets (heights.bin, heightmap.png, poi.json, ...)
 ├── src/
@@ -224,8 +266,10 @@ phase 7 at earliest).
 Tracked with current status in [docs/PROGRESS.md](PROGRESS.md) — check there
 before assuming anything below is still unresolved.
 
-1. Confirmation of the non-square resample handling (§3) — we have a fix
-   that needs no new data, just worth double-checking against the original
-   extraction script/`DTM0508_002_UNICO.ASC` if still available.
+1. Run `tools/dtm-source/extract-heightmap.sh` against the real
+   `DTM0508_002_UNICO.ASC` (§3-4) to get an undistorted heightmap straight
+   from source, superseding the current square/UE5-derived PNG. Not
+   blocking — the per-axis-scale fallback works with what's already in the
+   repo — but preferred once done.
 2. Exact basemap/orthophoto source for later imagery draping, once we get to
    phase 6/7 polish (§9).

@@ -14,8 +14,9 @@ No application code yet.
 - Found and read `DEM/pngp_extraction_report.txt` (appeared mid-session) —
   this resolved the DEM calibration question:
   - Source: `DTM0508_002_UNICO.ASC`, native res 2.0 m/px.
-  - Bbox: UTM32N (EPSG:32632) E 329116–413000, N 5036775–5085000
-    (83,884 × 48,225 m). Includes Gran Paradiso summit.
+  - Bbox: E 329116–413000, N 5036775–5085000 (83,884 × 48,225 m),
+    CRS later corrected to EPSG:23032 (see below). Includes both the Gran
+    Paradiso summit and the southern flank of the Mont Blanc massif.
   - Elevation: linear, `292.0 + (pixel/65535) * 4519.7` m (min 292.0,
     max 4811.7, mean 2057.1) — verified against the report's own
     vegetation-band thresholds, matches to within 1 m.
@@ -25,11 +26,36 @@ No application code yet.
 - Caught a non-obvious issue by inspecting pixel data directly: the source
   rectangle isn't square (83.9 × 48.2 km) but the PNG is a square 4033×4033
   canvas (a UE5 Landscape sizing constraint) — border pixels carry real data,
-  not padding, so it was resampled non-uniformly to fit the square. Fix
-  identified (use two different m/px values per axis, not the UE5 project's
-  uniform one) — needs no new data, but flagged for the user to confirm
-  against the original extraction script if they still have it. Full
-  writeup in `docs/ARCHITECTURE.md` §3.
+  not padding, so it was resampled non-uniformly to fit the square. Fallback
+  fix identified (use two different m/px values per axis) if we ever only
+  have this PNG to work with. Full writeup in `docs/ARCHITECTURE.md` §3.
+- User has the actual 10 GB source (`DTM0508_002_UNICO.ASC`, on their Ubuntu
+  WSL machine, root access), separate from this repo. Wrote
+  `tools/dtm-source/inspect-dtm.sh` (read-only header/CRS/extent check) and
+  `tools/dtm-source/extract-heightmap.sh` (GDAL crop+resample+normalize,
+  writes to an external work dir, outputs a heightmap PNG + JSON calibration
+  sidecar with the TRUE non-square aspect ratio preserved — no per-axis
+  correction needed once this is run). Neither script has been run yet.
+  Both default to the same bbox already in `pngp_extraction_report.txt`.
+  See `tools/dtm-source/README.md`.
+- Two more files appeared mid-session: `DEM/scripts/extract_pngp_from_vda.py`
+  (the actual script that produced the current heightmap) and
+  `DEM/scripts/vda_dtm_to_ue5.py`. Reading the real code: (a) confirmed the
+  square-canvas distortion as fact, not inference — it does a plain
+  `.resize((size, size))` on a non-square array; (b) revealed the script
+  assumed **EPSG:23032 (ED50 UTM32N)**, not EPSG:32632/25832 (WGS84/ETRS89
+  UTM32N) as this doc previously said — and flagged that assumption itself
+  as approximate ("il più comune per VdA").
+- **Independently verified the datum**: found the max-elevation pixel
+  (65493, ~4809m) in the heightmap, back-projected its approximate source
+  coordinates, and transformed under both candidate CRSes. EPSG:23032 lands
+  within ~15m of Mont Blanc's published summit (45.8325°N, 6.8650°E);
+  EPSG:32632/25832 is ~200m off. Also explains why the reported max
+  elevation (4811.7m) exceeds Gran Paradiso's 4061m — the bbox's northwest
+  corner catches Mont Blanc's southern flank, and the report's "Gran
+  Paradiso incluso" check only tests `alt_max > 4000`, not which peak.
+  **Corrected ARCHITECTURE.md §3 and §6 to EPSG:23032 and fixed the same
+  default in both `tools/dtm-source/*.sh` scripts.**
 - Reviewed the reference project (github.com/shlokkhemani/ode-to-yosemite):
   vanilla Three.js + Vite, `three`/`vite`/`sharp`/`playwright` only, one
   module per concern (`terrain.js`, `lighting.js`, `atmosphere.js`,
@@ -53,14 +79,15 @@ No application code yet.
   project from scratch.
 
 ### Open questions (non-blocking)
-1. **Non-square resample confirmation** — we have a working fix (per-axis
-   m/px instead of the UE5 project's uniform scale) that needs no new data,
-   but it's an inference from image statistics, not a documented fact.
-   Worth a quick confirmation from whoever ran the original extraction, or
-   re-deriving from `DTM0508_002_UNICO.ASC` directly if still reachable
-   (report path suggests a WSL machine: `/mnt/c/LoP/UE5/PNGP Trekking/...`).
-   Doesn't block phase 1 or the pipeline — we can proceed with the fix as
-   designed.
+1. **Run the DTM re-extraction** — user needs to edit `SRC_ASC` (and
+   optionally the crop bbox/`RES_M`) in `tools/dtm-source/extract-heightmap.sh`
+   and run it on their WSL machine, then copy `pngp_heightmap.png` +
+   `pngp_heightmap_meta.json` into this repo's `DEM/` folder. Once done,
+   `docs/ARCHITECTURE.md` §3 should be updated to reflect the new
+   calibration values (should be very close to current ones, but now
+   exact/non-inferred) and the per-axis-scale fallback note can likely be
+   dropped. Doesn't block phase 1 — current heightmap + fallback fix work
+   fine meanwhile.
 2. **Basemap/orthophoto source** for later imagery draping (phase 6/7) —
    not needed until then.
 
