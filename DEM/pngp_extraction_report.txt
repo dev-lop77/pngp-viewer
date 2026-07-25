@@ -1,0 +1,61 @@
+PNGP DTM Extraction Report
+==========================
+Data sorgente : DTM0508_002_UNICO.ASC
+Risoluzione   : 2.0m/px
+Area estratta : 83.9 × 48.2 km
+                E 329116–413000, N 5036775–5085000 (UTM32)
+
+ALTIMETRIA
+----------
+Quota minima  : 292.0 m
+Quota media   : 2057.1 m
+Quota massima : 4811.7 m
+Dislivello    : 4520 m
+Gran Paradiso : INCLUSO ★
+
+FILE OUTPUT
+-----------
+Heightmap PNG : /mnt/c/LoP/UE5/PNGP Trekking/scripts/DEM/heightmap_pngp_4033.png
+Dimensione    : 4033 × 4033 px
+File size     : 15.9 MB
+
+IMPOSTAZIONI UE5 LANDSCAPE
+----------------------------
+Section Size           : 63 quads
+Sections/Component     : 2×2
+Heightmap File         : /mnt/c/LoP/UE5/PNGP Trekking/scripts/DEM/heightmap_pngp_4033.png
+
+Scale X/Y              : 200
+  (1 pixel = 2.0m reali; con resize 4033px su 41941px
+   la risoluzione effettiva = 20.8 m/px)
+
+Scale Z                : 883
+  (calibrato su range altimetrico 292–4812m = 4520m)
+
+Location Z             : 29204
+  (quota minima in cm, UE5 usa centimetri)
+
+LANDSCAPE MATERIAL – Layer per altitudine
+------------------------------------------
+Fascia montana     (foresta larici/abeti) :  800 – 1600m
+  WorldHeight < 18965  (valore heightmap)
+
+Fascia subalpina   (rododendri/mirtilli)  : 1600 – 2200m
+  WorldHeight 18965 – 27665
+
+Fascia alpina      (prato alpino)         : 2200 – 3000m
+  WorldHeight 27665 – 39265
+
+Fascia rocciosa                           : 3000 – 3800m
+  WorldHeight 39265 – 50865
+
+Fascia nivale      (ghiacciai/neve)       : > 3800m
+  WorldHeight > 50865
+
+WORLD PARTITION (Open World template)
+---------------------------------------
+Suggerimento: usa 4 streaming layers
+  Layer 0 (sempre caricato): area 2×2 km intorno al player
+  Layer 1: raggio 4 km
+  Layer 2: raggio 8 km
+  Layer 3: raggio 16 km
