@@ -262,11 +262,11 @@ Vercel/Netlify — decided 2026-07-28, §9) is the only phase-1 item left.
    simulation, incl. sub-path serving, is done too (see Done above), so
    what's left is mostly host-specific mechanics (GitHub Pages' build
    action, or Apache vhost/mod_deflate config, §9) rather than app-level
-   risk. Also worth a real-browser sanity check, not just headless -
-   especially Firefox, given the encoding fix above was specifically about
-   a Firefox gap the headless test happened to also reproduce. Use
-   `tools/dev/start-preview.sh` for this (see its README) — closer to
-   real hosting than `npm run dev`.
+   risk. Real-browser check: done 2026-07-28 - user confirmed the terrain
+   renders correctly via `tools/dev/start-dev.sh` + VS Code port
+   forwarding, in their own actual browser (not recorded which one - worth
+   specifically confirming Firefox if not already, given the encoding fix
+   above was about a Firefox-specific gap).
 2. Phase 2, when it starts: run `tools/trails-source/fetch-trails.sh`, then
    write `tools/build-trails.mjs` to turn its output into
    `public/data/trails.json` alongside `build-poi.mjs`. Apply §10 here in
