@@ -149,13 +149,17 @@ There are two stages, kept deliberately separate:
 
 ```
 tools/
-  process-heightmap.mjs   PNG DEM -> calibrated height data:
-                             - public/data/heightmap.png   (GPU displacement texture,
-                               resampled/mipmapped as needed)
-                             - public/data/heights.bin      (flat Uint16 array + a small
-                               JSON sidecar with bbox, real min/max elevation, meters/px —
-                               used for CPU-side height queries: POI placement, waterfall
-                               brink height, camera/terrain clamping)
+  process-heightmap.mjs   PNG DEM -> public/data/heightfield.<hash>.bin + heightfield.json:
+                             one Uint16 raw array (not a PNG - see below), used both to build
+                             the GPU displacement THREE.DataTexture and for CPU-side height
+                             queries (POI placement, waterfall brink height, camera/terrain
+                             clamping) — a single shared source so the two can never disagree
+                             (docs/ARCHITECTURE_SUGGESTIONS.md #1). The manifest carries CRS,
+                             bbox, real per-axis resolution, local origin/axes (§6), pixel
+                             convention, row orientation, elevation scale, and a content hash
+                             for cache-busting. Content-hashed output + deterministic bilinear
+                             resampling means re-running with unchanged input is a no-op (no
+                             git diff) — see docs/PROGRESS.md.
   build-trails.mjs        Regione VDA GeoJSON (from tools/trails-source/fetch-trails.sh)
                              -> public/data/trails.json (segnavia number, name, difficulty
                              T/E/EE/EEA, length, dislivello) — see §3. Requires the CC BY 4.0
@@ -169,6 +173,23 @@ tools/
   verify.mjs (optional)   Playwright screenshot/QA pass, same idea as the reference
                              project's shoot/verify scripts — nice-to-have, not MVP.
 ```
+
+**Why the height data is a raw binary, not a PNG (decided 2026-07-28,
+resolving `docs/ARCHITECTURE_SUGGESTIONS.md` #1)**: browsers decode PNGs
+through the HTML canvas/image pipeline, which is specified as 8 bits per
+channel — always, regardless of the source file's real bit depth. Loading
+a 16-bit grayscale heightmap PNG via `THREE.TextureLoader` would silently
+quantize it to 256 levels (visible banding on slopes). This only affects
+the browser/runtime path — reading the *source* `DEM/pngp_heightmap.png`
+during the build (Node) is fine as long as the library used actually
+preserves 16 bits: `sharp` was tried first and silently truncated this
+file's values to 8 bits on raw extraction (confirmed against
+`gdalinfo -stats` and Python/PIL ground truth — full 0–65535 range);
+`fast-png` decodes it correctly and is what `process-heightmap.mjs` uses.
+The output binary is uploaded at runtime as a `THREE.DataTexture`
+(`RedFormat`/`UnsignedShortType`, normalized R16 under WebGL2), which
+preserves full precision *and* gets correct hardware bilinear filtering
+with no shader-side unpacking.
 
 Design choice: terrain is **GPU-displaced**, not a literal CPU mesh at DEM
 resolution. A 4033×4033 heightmap is ~16.3M samples — far too many to hand
@@ -200,9 +221,28 @@ revisit only if/when we add real satellite/orthophoto draping (§9).
 
 ## 6. Coordinate system & real-world scale
 
-Local metric frame, same principle as the reference project: 1 unit = 1
-meter, origin at a fixed reference point inside the bbox (e.g. the DEM's
-southwest corner or park centroid — TBD once we scaffold the pipeline).
+**Decided 2026-07-28** (was TBD): local metric frame, 1 unit = 1 meter.
+
+- **Origin**: bbox center in EPSG:23032 (`(xmin+xmax)/2, (ymin+ymax)/2`,
+  written out per-asset in each `public/data/*.json` manifest's
+  `localOrigin` field, e.g. `heightfield.json`) — keeps rendered
+  coordinates small and symmetric (max ~42 km from origin, comfortably
+  within float32 precision) without a directional bias toward one corner.
+- **Axes**: `+X = East`, `+Y = Up` (elevation, real meters — no vertical
+  exaggeration unless a feature explicitly opts into it, and if it does
+  that must be documented at the call site, not silently baked into the
+  data), `+Z = South`. This isn't arbitrary: it's the right-handed mapping
+  that falls out of real-world ENU (East-North-Up, itself right-handed)
+  when reprojected onto Three.js's right-handed Y-up convention — East ×
+  Up = South, so `+Z = South` is the only choice consistent with both.
+  Net effect: a default camera looking down -Z (Three.js's convention)
+  faces **north**, matching map intuition.
+- **Conversion**: any world EPSG:23032 coordinate `(E, N)` → local scene
+  meters: `X = E - originX`, `Z = originY - N`. Keep this — and nothing
+  else — as the one place this math lives once `src/` exists (a small
+  geo/coords module), rather than reproducing it in terrain, trails, POI,
+  and UI code separately (`docs/ARCHITECTURE_SUGGESTIONS.md` #5).
+
 Compass and position features need a fixed mapping between this local frame
 and WGS84 lat/lon — straightforward now that we have the real bbox (§3):
 project local meters back to **ED50 UTM32N (EPSG:23032)** using the origin
@@ -221,7 +261,7 @@ user's stated priorities; can reshuffle as we learn more.
 
 | Phase | Scope |
 |---|---|
-| 0 — Setup | This doc, repo scaffold (Vite + Three.js), DEM calibration resolved, heightmap pipeline producing calibrated `heights.bin` + displacement texture |
+| 0 — Setup | This doc, repo scaffold (Vite + Three.js), DEM calibration resolved, `process-heightmap.mjs` producing the calibrated `heightfield.bin` + manifest |
 | 1 — MVP terrain | GPU-displaced terrain mesh, fly/orbit camera, static sun + simple sky/fog. First deploy to Vercel to validate the static-hosting pipeline end to end |
 | 2 — Points of interest | Curated POI dataset (peaks, rifugi, lakes, valleys), map markers + info panel, fly-to-POI navigation. **Numbered/graded trails from the VDA dataset (§3) also land here** — moved up from the old OSM-only phase-6 scope, decided 2026-07-28 |
 | 3 — Water & animation | Rivers/lakes, waterfalls (e.g. Cascate di Lillaz) with shader animation + mist, glaciers as a distinct surface |
@@ -243,7 +283,7 @@ pngp-viewer/
 │   ├── trails-source/      external/manual trail dataset fetch+clip, run outside the repo (see §3-4)
 │   └── *.mjs               regular build-time node scripts (see §4)
 ├── public/
-│   └── data/               generated static assets (heights.bin, heightmap.png, poi.json, trails.json, ...)
+│   └── data/               generated static assets (heightfield.<hash>.bin + heightfield.json, poi.json, trails.json, ...)
 ├── src/
 │   ├── main.js             entry point, scene setup, render loop
 │   ├── terrain.js          heightmap-driven terrain mesh + displacement shader

@@ -64,9 +64,12 @@ verified rendering. Next work starts phase 1 (real terrain).
   review (11 points, P0–P2). Triaged for phase-0 relevance and verified
   the concrete claims rather than taking them on faith — found the
   reviewer was right about a real, small rounding inconsistency: our own
-  bbox ÷ image dimensions gives **9.9995 m/px (E-W) and 9.999 m/px (N-S)**,
-  not the uniform 10 m/px declared in `DEM/pngp_heightmap_meta.json`
-  (artifact of how `gdalwarp -te`+`-tr` rounds pixel counts). Also spotted
+  bbox ÷ image dimensions gives **10.0005 m/px (E-W) and 9.9990 m/px (N-S)**
+  (corrected 2026-07-28 — an earlier note here had the E-W figure wrong,
+  9.9995; `tools/process-heightmap.mjs` computes this directly now instead
+  of relying on hand arithmetic), not the uniform 10 m/px declared in
+  `DEM/pngp_heightmap_meta.json` (artifact of how `gdalwarp -te`+`-tr`
+  rounds pixel counts). Also spotted
   a real wording tension between §10 ("LOD always") and §7 phase 7 ("LOD/
   tiling if draw distance needs it", reading as optional). **User's call:
   don't act on any of this now** — tracked below, revisit at the specific
@@ -87,6 +90,59 @@ verified rendering. Next work starts phase 1 (real terrain).
   once real-world coordinates enter the picture, i.e. `process-heightmap.mjs`
   and `terrain.js`. Moved that item down to the process-heightmap.mjs
   milestone below rather than block on it here.
+- **Wrote `tools/process-heightmap.mjs`**, resolving most of open question
+  #3's deferred items now that they were actually needed:
+  - **Height encoding (#1)** — asked the user directly since this had real
+    trade-offs; confirmed: one raw Uint16 binary (`public/data/
+    heightfield.<hash>.bin`), used both to build the GPU displacement
+    `THREE.DataTexture` and for CPU height queries, instead of a PNG.
+    Reason: browsers always decode PNGs at 8 bits/channel through the
+    canvas pipeline regardless of source depth — `TextureLoader` on a
+    16-bit PNG would've silently quantized to 256 levels. Documented in
+    `docs/ARCHITECTURE.md` §4.
+  - **Found a real bug while implementing this**: `sharp` (tried first)
+    silently truncates this exact file's 16-bit grayscale data to 8 bits
+    on raw extraction — caught by cross-checking against `gdalinfo -stats`
+    and Python/PIL (both correctly show the full 0–65535 range). Switched
+    to `fast-png`, which decodes it correctly (verified byte-for-byte
+    range match). Worth remembering if any future script reaches for
+    `sharp` on this or similar 16-bit single-channel PNGs.
+  - **Resolution precision (#2)** — the script now computes real per-axis
+    resolution directly from bbox ÷ dimensions rather than trusting a
+    nominal value (see the corrected note above).
+  - **Local origin/axes (#5)** — decided and documented in
+    `docs/ARCHITECTURE.md` §6: origin = bbox center (EPSG:23032), axes
+    `+X=East, +Y=Up, +Z=South` (the right-handed mapping consistent with
+    real-world ENU under Three.js's Y-up convention — not arbitrary).
+  - **Manifest convention (#4) + provenance (#11)** — `heightfield.json`
+    carries schema version, CRS, bbox, local origin, axes, real
+    resolution, **pixel convention** (see next bullet), row orientation,
+    elevation scale formula, encoding, a content hash (`heightfield.
+    <hash>.bin` — re-running with unchanged input reproduces the same
+    hash byte-for-byte, confirmed by running it twice; stale hashed files
+    get cleaned up automatically), and source provenance. DEM license
+    itself is still unverified (flagged as a TODO in the manifest — don't
+    assume it's CC BY 4.0 like the trail dataset without checking).
+  - **Caught and fixed my own bug while writing the corner round-trip
+    check** (the exact kind of validation `docs/ARCHITECTURE_SUGGESTIONS.md`
+    #2/#10 asked for): the resampler initially used align-corners index
+    mapping, but the source data is pixel-is-**area** (GDAL `-te`/`-tr`
+    convention — pixel centers, not point samples at grid corners).
+    Fixed to a half-pixel-center bilinear resample and added a
+    `pixelConvention` field to the manifest documenting this explicitly,
+    so it doesn't have to be reverse-engineered later.
+  - Downsamples the native 8388×4823 heightmap to a configurable max
+    dimension (default 2048, `--max-dim` flag) — full native resolution
+    is ~81 MB raw, both too large for the asset budget (§9) and for
+    typical GPU max-texture-size limits (`docs/ARCHITECTURE_SUGGESTIONS.md`
+    #3); real tiling/LOD is still deferred to the phase-1 terrain
+    renderer decision, this is just a workable single-texture MVP size.
+  - Ran it: outputs `public/data/heightfield.7ac118fb.bin` (4.60 MB) +
+    `heightfield.json`. Verified independently (not just trusting the
+    script's own printout): file size matches width×height×2 exactly,
+    reconstructed elevation range ≈ 292–4805 m (consistent with the source's
+    292.2–4809.8 m — the couple-meter difference is expected, downsampling
+    smooths the single most extreme peak/valley pixel).
 
 ### Open questions (non-blocking)
 1. **Basemap/orthophoto source** for later imagery draping (phase 6/7) —
@@ -94,20 +150,19 @@ verified rendering. Next work starts phase 1 (real terrain).
 2. The CC BY 4.0 attribution string for the trail data needs to actually
    show up in the shipped UI (credits/about panel) once trails render —
    not urgent until that phase, but don't forget it (§9).
-3. **Deferred items from `docs/ARCHITECTURE_SUGGESTIONS.md`** (not acted on
-   per user's explicit choice 2026-07-28 — revisit at the milestone noted,
-   don't assume still unresolved without checking the doc first):
-   - Before writing `tools/process-heightmap.mjs` / `src/terrain.js`
-     (Next steps #1): #1 browser-safe height encoding (PNG vs tiled Uint16
-     binary vs packed 8-bit), #2 the rounding inconsistency above (store
-     the real per-axis resolution / affine transform, not a nominal "10"),
-     #4 a versioned manifest convention, #5 lock local origin/axis
-     convention and where the EPSG:23032↔WGS84 conversion lives (unblocks
-     ARCHITECTURE.md §6, currently "TBD"), #11 provenance metadata (stable
-     source id instead of a local path, checksums, tool versions).
+3. **Deferred items from `docs/ARCHITECTURE_SUGGESTIONS.md`** still
+   pending (don't assume still unresolved without checking the doc first —
+   #1, #2, #4, #5's origin/axes half, and #11 were resolved 2026-07-28
+   while writing `tools/process-heightmap.mjs`, see Done above):
    - Before/during the phase 1 terrain renderer: #3 decide the tile/LOD
      contract as part of the terrain design itself (not bolted on later),
-     and fix the §7/§10 wording tension found above.
+     and fix the §7/§10 wording tension found earlier. Also where the
+     shared local-coords conversion module lives (§6) — the math is
+     decided, just needs a home once `src/` has more than `main.js`.
+   - Before phase 5 (navigation aids): the other half of #5, the
+     EPSG:23032↔WGS84 conversion (via `proj4` or similar) — not needed
+     for terrain/trails/POI, only for compass/position readout, so it's
+     fine to defer further than originally scoped.
    - Before finalizing the phase 2 trail contract: #6 verify the VDA trail
      dataset actually covers the whole park (not just intersects our bbox)
      against the real park boundary, once we have one.
@@ -115,21 +170,19 @@ verified rendering. Next work starts phase 1 (real terrain).
      #9 performance budgets, #10 automated pipeline/correctness tests.
    - Good practice to keep in mind, no dedicated decision needed: #7 module/
      layer boundaries, #8 runtime failure/fallback behavior.
+4. The DEM's own license/attribution (distinct from the trail dataset's
+   confirmed CC BY 4.0) is unverified — flagged as a TODO directly in
+   `public/data/heightfield.json`'s `source.license` field. Check before
+   shipping publicly (§9).
 
 ### Next steps (not yet started)
-1. Write `tools/process-heightmap.mjs`: DEM PNG → `public/data/heightmap.png`
-   (GPU displacement texture) + `public/data/heights.bin` + JSON sidecar,
-   using the calibration in `DEM/pngp_heightmap_meta.json` / ARCHITECTURE.md
-   §3. Revisit open question #3's "before process-heightmap.mjs" items
-   first (height encoding, resolution precision, origin/axes, manifest,
-   provenance) — several are genuine decisions, not just cleanup.
-2. Phase 1 MVP: GPU-displaced terrain mesh + fly/orbit camera + basic
+1. Phase 1 MVP: GPU-displaced terrain mesh + fly/orbit camera + basic
    sky/fog (replacing `src/main.js`'s placeholder cube), first deploy to
    Vercel to prove the static-hosting pipeline. Keep §10 in mind even here:
    sanity-check frame rate while flying across the whole map, not just at a
    fixed viewpoint. Decide the tile/LOD contract as part of this, not after
    (open question #3).
-3. Phase 2, when it starts: run `tools/trails-source/fetch-trails.sh`, then
+2. Phase 2, when it starts: run `tools/trails-source/fetch-trails.sh`, then
    write `tools/build-trails.mjs` to turn its output into
    `public/data/trails.json` alongside `build-poi.mjs`. Apply §10 here in
    particular — ~1,200 itineraries/~11,000 segments is enough data to need
@@ -140,9 +193,14 @@ verified rendering. Next work starts phase 1 (real terrain).
 ### How to resume
 Read `docs/ARCHITECTURE.md` for the full plan and rationale, then this file
 for exact status. The Vite + Three.js scaffold runs and renders (verified
-headlessly, see Done above) — `npm run dev` should just work. Pick up at
-"Next steps" above; check open question #3 before each one, there are
-specific `docs/ARCHITECTURE_SUGGESTIONS.md` items to revisit at each
+headlessly, see Done above) — `npm run dev` should just work. The real
+calibrated heightfield exists (`public/data/heightfield.*.bin` +
+`heightfield.json`, from `tools/process-heightmap.mjs`) but `src/main.js`
+doesn't consume it yet — that's phase 1's first real task (build the
+`THREE.DataTexture` from it and displace the terrain mesh, replacing the
+placeholder cube). Pick up at "Next steps" above; check open question #3
+before each one, there are specific `docs/ARCHITECTURE_SUGGESTIONS.md`
+items to revisit at each
 milestone.
 
 ## Status as of 2026-07-25 (historical)

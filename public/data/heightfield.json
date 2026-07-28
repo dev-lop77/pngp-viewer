@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "crs": "EPSG:23032",
+  "bboxCrsUnits": {
+    "xmin": 329116,
+    "ymin": 5036775,
+    "xmax": 413000,
+    "ymax": 5085000
+  },
+  "localOrigin": {
+    "crs": "EPSG:23032",
+    "x": 371058,
+    "y": 5060887.5,
+    "note": "bbox center. World (E,N) -> local scene meters: X = E - originX, Z = originY - N, Y = elevationM (see docs/ARCHITECTURE.md §6)."
+  },
+  "axes": "+X = East, +Y = Up (elevation, meters), +Z = South - right-handed, matches Three.js Y-up (East x Up = South in real-world ENU).",
+  "dimensions": {
+    "width": 2048,
+    "height": 1178
+  },
+  "resolutionMPerPx": {
+    "x": 40.958984375,
+    "y": 40.93803056027165
+  },
+  "pixelConvention": "area (cell-center), not point-sample: pixel (i,j) center = (xmin + (i+0.5)*resX, ymax - (j+0.5)*resY). Matches GDAL -te/-tr semantics used to produce the source PNG.",
+  "rowOrientation": "row 0 = north edge (ymax); row N-1 = south edge (ymin)",
+  "elevationRangeM": {
+    "min": 292.2356262207,
+    "max": 4809.8129882812,
+    "units": "meters"
+  },
+  "encoding": {
+    "dtype": "uint16",
+    "byteOrder": "little-endian",
+    "channels": 1,
+    "valueToElevationM": "elevation = min + (value / 65535) * (max - min)",
+    "noData": null
+  },
+  "file": {
+    "name": "heightfield.7ac118fb.bin",
+    "bytes": 4825088,
+    "sha256Prefix": "7ac118fb"
+  },
+  "source": {
+    "dataset": "DTM0508_002_UNICO (Regione Autonoma Valle d'Aosta digital terrain model)",
+    "extractedVia": "tools/dtm-source/extract-heightmap.sh",
+    "nativeHeightmap": "DEM/pngp_heightmap.png",
+    "nativeDimensions": {
+      "width": 8388,
+      "height": 4823
+    },
+    "nativeResolutionMPerPx": {
+      "x": 10.000476871721506,
+      "y": 9.998963300850093
+    },
+    "license": "not yet verified for the DTM itself - TODO, see docs/PROGRESS.md"
+  },
+  "generatedBy": "tools/process-heightmap.mjs",
+  "generatedAt": "2026-07-28T11:01:06.550Z"
+}
