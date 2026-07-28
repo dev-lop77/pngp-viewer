@@ -4,16 +4,18 @@ Read this first at the start of each session. Update it before ending one.
 
 ## Status as of 2026-07-28
 
-**Phase: 2 — functionally complete (trails + POI).** Real GPU-displaced
-terrain (phase 1) renders correctly; an actual deploy (GitHub Pages or
-self-managed Apache, §9) is the only phase-1 item left, not blocking.
-Numbered/graded trails render over the terrain, difficulty shown via line
-style (solid/dashed/dotted/ferrata-ticks, not color - user request), with
-real computed elevation and a working CC BY 4.0 credits overlay. 370 POI
-(peaks/huts/passes/waterfalls/lakes) from OSM, filtered to the real park
-boundary (not the oversized DEM bbox) since the full 2,421-candidate draft
-was too large to hand-curate - click a marker for an info panel + fly-to
-camera. **Found a significant DEM data gap while building trails (see
+**Phase: 2 — fully complete (trails + POI, both scoped to the real park
+boundary).** Real GPU-displaced terrain (phase 1) renders correctly; an
+actual deploy (GitHub Pages or self-managed Apache, §9) is the only
+phase-1 item left, not blocking. 73 numbered/graded trails (down from
+1130 - only ones actually inside the park, per user request) render over
+the terrain, difficulty shown via line style (solid/dashed/dotted/
+ferrata-ticks, not color - user request), with real computed elevation
+and a working CC BY 4.0 credits overlay. 370 POI (peaks/huts/passes/
+waterfalls/lakes) from OSM, also filtered to the real park boundary (not
+the oversized DEM bbox) since the full 2,421-candidate draft was too
+large to hand-curate - click a marker for an info panel + fly-to camera.
+**Found a significant DEM data gap while building trails (see
 below)**: ~25% of the map (the Piemonte side of the park) has no real
 elevation data - accepted as a known limitation for now, per the user.
 Next: phase 3 (water) or the phase-1 deploy, neither started yet.
@@ -335,7 +337,7 @@ Next: phase 3 (water) or the phase-1 deploy, neither started yet.
     our heightfield's actual max-elevation pixel lands 20.4 m from the
     published summit coordinates - consistent with the ~15-20 m GDAL-based
     check from the original investigation. This resolves the EPSG:23032↔
-    WGS84 half of open question #4's #5 (see below) earlier than
+    WGS84 half of open question #3's #5 (see below) earlier than
     originally scoped, since OSM data needed it now.
   - Wrote `tools/fetch-osm.mjs`: converts our EPSG:23032 bbox to WGS84 to
     query Overpass, pulls `natural=peak`, `tourism=alpine_hut`,
@@ -428,6 +430,21 @@ Next: phase 3 (water) or the phase-1 deploy, neither started yet.
     camera actually moved (position changed, screenshot shows a
     significantly closer view of the marker cluster afterward) - not just
     "no console errors."
+- **Scoped trails to the real park boundary too**, per explicit user
+  request (same treatment as POI). Updated `tools/build-trails.mjs`:
+  converts `tools/park-boundary.geojson`'s ring to local scene coordinates
+  once (cheaper than converting every trail point to WGS84 - same
+  `@turf/boolean-point-in-polygon` approach as `build-poi.mjs`, just done
+  in local-coordinate space instead of lat/lon space), then keeps a trail
+  (whole, not clipped to the boundary) if any of its points fall inside.
+  1130 -> **73 trails**, matching the 7.1%-inside figure already found
+  while resolving `docs/ARCHITECTURE_SUGGESTIONS.md` #6 - so this wasn't a
+  new computation, just applying that same filter as the actual output
+  now. `public/data/trails.json` shrank from 7.8 MB to 654 KB. Verified
+  visually: rendered trail lines are now clustered in the park area,
+  matching where the POI markers already cluster, instead of spread across
+  the whole DEM bbox. This closes the open question from last session
+  about whether to do this.
 
 ### Open questions (non-blocking)
 1. **Basemap/orthophoto source** for later imagery draping (phase 6/7) —
@@ -440,13 +457,7 @@ Next: phase 3 (water) or the phase-1 deploy, neither started yet.
    `elevMin` (292.2356m) in `heightfield.json` is very likely the nodata
    floor, not a real elevation - don't treat it as one in future work
    (e.g. don't use it as "lowest point in the park" for anything).
-3. **Should trails also be scoped to the real park boundary, like POI
-   now is?** Only 73/1130 trails (7.1% of points) fall within
-   `tools/park-boundary.geojson` - the rest is regionally-relevant VDA
-   network, not "in the park". Not decided - the user asked for this
-   scoping on POI specifically, hasn't been asked about trails. Revisit
-   before considering phase 2's trail contract fully final.
-4. **Deferred items from `docs/ARCHITECTURE_SUGGESTIONS.md`** still
+3. **Deferred items from `docs/ARCHITECTURE_SUGGESTIONS.md`** still
    pending (don't assume still unresolved without checking the doc first —
    #1, #2, #4, #5's origin/axes half, and #11 were resolved 2026-07-28
    while writing `tools/process-heightmap.mjs`, see Done above):
@@ -501,9 +512,8 @@ Next: phase 3 (water) or the phase-1 deploy, neither started yet.
    forwarding, in their own actual browser (not recorded which one - worth
    specifically confirming Firefox if not already, given the encoding fix
    above was about a Firefox-specific gap).
-2. **Phase 2 is now functionally complete** (trails + POI both done, see
-   Done above) - phase 2's remaining open item is only the trails-vs-
-   park-boundary scoping question (open question #3), not blocking.
+2. **Phase 2 is now fully complete** (trails + POI both done and both
+   scoped to the real park boundary, see Done above).
 3. Not started: phase 3 (water & animation - rivers/lakes, waterfalls e.g.
    Cascate di Lillaz, glaciers), per `docs/ARCHITECTURE.md` §7. Note
    `tools/fetch-osm.mjs` already has the `waterway=waterfall` category
@@ -519,12 +529,13 @@ difficulty shown via line style (`src/trails.js`), both verified correct
 (not just error-free) -
 see Done above before assuming anything about the rendering pipeline needs
 re-deriving. POI markers (`src/poi.js`) render too, with click -> info
-panel + fly-to-camera - see Done above, phase 2 is functionally complete
-(trails + POI). **Important caveat to internalize before touching
-elevation data**: ~25% of the DEM (Piemonte side of the park) is a nodata
-gap masquerading as real elevation - see open question #2 before trusting
-`elevMin`/any "lowest point" claim, or before being surprised that some
-POIs/trails there look wrong. Check open question #4 before
+panel + fly-to-camera; both trails and POI are now scoped to the real
+park boundary (`tools/park-boundary.geojson`) - phase 2 is fully complete.
+**Important caveat to internalize before touching elevation data**: ~25%
+of the DEM (Piemonte side of the park) is a nodata gap masquerading as
+real elevation - see open question #2 before trusting `elevMin`/any
+"lowest point" claim, or before being surprised that some POIs/trails
+there look wrong. Check open question #3 before
 terrain-renderer/phase-5/phase-2-trail-contract milestones, there are
 specific `docs/ARCHITECTURE_SUGGESTIONS.md` items to revisit at each. Next
 up: phase 3 (water/waterfalls) per `docs/ARCHITECTURE.md` §7, or finishing

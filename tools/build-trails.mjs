@@ -9,15 +9,21 @@
 // Usage: node tools/build-trails.mjs [path to pngp_sentieri.geojson]
 
 import { readFileSync, writeFileSync } from 'node:fs';
+import proj4 from 'proj4';
+import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
+import { point, polygon } from '@turf/helpers';
 import { setLocalOrigin, worldToLocal } from '../src/geo.js';
 import { sampleHeightfield, isNearNoData } from '../src/heightfield.js';
 
 const SRC_GEOJSON = process.argv[2] ?? `${process.env.HOME}/pngp-trails-work/pngp_sentieri.geojson`;
 const HEIGHTFIELD_DIR = 'public/data';
+const BOUNDARY_FILE = 'tools/park-boundary.geojson';
 const OUT_FILE = 'public/data/trails.json';
 
 const CC_BY_ATTRIBUTION =
   "Dati forniti dalla Struttura Forestazione e Sentieristica della Regione Autonoma Valle d'Aosta.";
+
+proj4.defs('EPSG:23032', '+proj=utm +zone=32 +ellps=intl +towgs84=-87,-98,-121,0,0,0,0 +units=m +no_defs');
 
 const heightfieldManifest = JSON.parse(readFileSync(`${HEIGHTFIELD_DIR}/heightfield.json`, 'utf8'));
 const heightfieldBuffer = readFileSync(`${HEIGHTFIELD_DIR}/${heightfieldManifest.file.name}`);
@@ -27,6 +33,26 @@ const heights = new Uint16Array(
   heightfieldBuffer.byteLength / 2,
 );
 setLocalOrigin(heightfieldManifest.localOrigin.x, heightfieldManifest.localOrigin.y);
+
+// Park boundary, converted to local scene coordinates once (cheaper than
+// converting every trail point to WGS84) - same filter as build-poi.mjs,
+// applied to trails per the user's explicit request 2026-07-28.
+const boundaryGeoJSON = JSON.parse(readFileSync(BOUNDARY_FILE, 'utf8'));
+const boundaryLocalRing = boundaryGeoJSON.geometry.coordinates[0].map(([lon, lat]) => {
+  const [e, n] = proj4('WGS84', 'EPSG:23032', [lon, lat]);
+  const { x, z } = worldToLocal(e, n);
+  return [x, z];
+});
+const boundaryPoly = polygon([boundaryLocalRing]);
+
+function anyPointInBoundary(lines) {
+  for (const line of lines) {
+    for (const [x, , z] of line) {
+      if (booleanPointInPolygon(point([x, z]), boundaryPoly)) return true;
+    }
+  }
+  return false;
+}
 
 const round1 = (n) => Math.round(n * 10) / 10;
 
@@ -90,6 +116,7 @@ let reversedCount = 0;
 let noDataCount = 0;
 let unexplainedBad = 0; // large mismatch on a trail that ISN'T flagged as nodata-affected
 let maxUnexplainedDiff = 0;
+let outsideParkCount = 0;
 
 for (const feature of geojson.features) {
   const p = feature.properties;
@@ -125,6 +152,18 @@ for (const feature of geojson.features) {
       maxUnexplainedDiff = Math.max(maxUnexplainedDiff, bestDiff);
     }
     checkedCount++;
+  }
+
+  // Same filter as build-poi.mjs, applied to trails per the user's
+  // explicit request: keep a trail if any part of it falls within the
+  // real park boundary (not clipped to it - the whole trail still
+  // renders, same as before, just excluded entirely if it never enters
+  // the park). Regional-only trails (most of them - only ~7% of the raw
+  // dataset's points fall inside the park, see docs/PROGRESS.md) are
+  // dropped here.
+  if (!anyPointInBoundary(lines)) {
+    outsideParkCount++;
+    continue;
   }
 
   const { gain, loss } = elevationGainLoss(lines);
@@ -171,6 +210,10 @@ console.log(
     (unexplainedBad ? ` (max ${maxUnexplainedDiff.toFixed(1)} m)` : '') +
     '.',
 );
+console.log(
+  `${outsideParkCount} of ${geojson.features.length} trails never enter the real park ` +
+    `boundary and were dropped -> ${trails.length} left.`,
+);
 
 const output = {
   schemaVersion: 1,
@@ -180,6 +223,11 @@ const output = {
   coordUnits: 'local scene meters [x, y, z], see localOrigin/axes above - same frame as the terrain',
   difficultyScale: 'CAI: T (turistico) / E (escursionistico) / EE (escursionisti esperti) / EEA (con attrezzatura)',
   count: trails.length,
+  boundary: {
+    name: boundaryGeoJSON.properties.name,
+    source: boundaryGeoJSON.properties.source,
+    filter: 'a trail is included only if at least one point falls inside this polygon (not clipped to it)',
+  },
   knownLimitations: [
     "The DEM only has real data for Valle d'Aosta - it does not cover the " +
       'Piemonte side of the Gran Paradiso massif (~25% of the bbox). Trails ' +

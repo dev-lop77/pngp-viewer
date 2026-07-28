@@ -201,7 +201,12 @@ tools/
                              Flags trails crossing the DEM nodata gap above (`dataIncomplete:
                              true`) rather than silently shipping wrong numbers for them. The
                              CC BY 4.0 attribution is surfaced in the shipped UI (§9) - done,
-                             not just planned.
+                             not just planned. **Revised 2026-07-28**: also filters to
+                             tools/park-boundary.geojson like build-poi.mjs, per explicit user
+                             request - a trail is kept (whole, not clipped) if any point falls
+                             inside the real park boundary. 1130 -> 73 (the VDA dataset is
+                             region-wide; only ~7% of it was actually inside the park -
+                             resolves the open question this raised, see docs/PROGRESS.md).
   fetch-osm.mjs           Written 2026-07-28. Queries Overpass for the PNGP bbox (WGS84,
                              derived from our EPSG:23032 bbox via proj4 - verified against
                              the known Mont Blanc control point, §3) for peaks, alpine huts,
