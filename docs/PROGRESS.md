@@ -22,16 +22,17 @@ heightmap is now in the repo. No application code yet.
   demoted `DEM/heightmap_pngp_4033.png` to legacy/reference-only.
 - Noted: `DEM/DTM0508_002_UNICO.PRJ` (untracked, appeared in the repo) is
   just a stray copy of the old source sidecar `.prj` — not one of the
-  extraction outputs, not needed, user confirmed it's an old file.
+  extraction outputs, not needed, user confirmed it's an old file. Left
+  untracked, not committed.
+- Committed the new heightmap + meta.json and removed
+  `DEM/heightmap_pngp_4033.png` from the repo (still recoverable from git
+  history) — user's call, to keep a single authoritative heightmap.
+  `.git` is now ~54 MB (was ~17 MB).
 
 ### Open questions (non-blocking)
 1. **Basemap/orthophoto source** for later imagery draping (phase 6/7) —
-   not needed until then. (Only remaining open question — the DTM
-   re-extraction question from 2026-07-25 is resolved, see Done above.)
-2. Whether to commit the new `DEM/pngp_heightmap.png` (~39 MB) +
-   `pngp_heightmap_meta.json` to git, and whether to remove the now-legacy
-   `DEM/heightmap_pngp_4033.png` (~16 MB, already committed) or keep it
-   for reference — not yet decided with the user.
+   not needed until then. (Only remaining open question — everything else
+   from 2026-07-25 is resolved, see Done above.)
 
 ### Next steps (not yet started)
 1. Scaffold the actual Vite + Three.js project (`package.json`,
