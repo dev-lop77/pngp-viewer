@@ -4,8 +4,8 @@ Read this first at the start of each session. Update it before ending one.
 
 ## Status as of 2026-07-28
 
-**Phase: 0 — Setup, wrapping up.** The real, correctly-proportioned
-heightmap is now in the repo. No application code yet.
+**Phase: 0 — Setup, complete.** Vite + Three.js scaffold is in place and
+verified rendering. Next work starts phase 1 (real terrain).
 
 ### Done since 2026-07-25
 - Ran `tools/dtm-source/extract-heightmap.sh` on the processing machine
@@ -71,6 +71,22 @@ heightmap is now in the repo. No application code yet.
   tiling if draw distance needs it", reading as optional). **User's call:
   don't act on any of this now** — tracked below, revisit at the specific
   milestone each point is tied to, not before.
+- **Scaffolded the Vite + Three.js project**: `package.json` (`type:
+  module`, `dev`/`build`/`preview` scripts), `vite.config.js` (`base:
+  './'` so the build works unmodified on Vercel/Netlify/GitHub Pages —
+  deployment target still undecided, §9), `index.html`, `src/main.js`
+  (scene/camera/renderer, `OrbitControls`, basic lighting, a grid helper +
+  placeholder cube standing in for real terrain). Dependencies: `three@^0.185.1`,
+  `vite@^8.1.5` (current at install time — versions drift, check
+  `package.json` rather than trusting this note later). Verified with a
+  real headless-browser run (not just `vite build`): dev server up, page
+  renders the expected scene, zero console/page errors (only an
+  expected headless-GPU driver perf warning and Vite HMR debug lines).
+  **Note**: this bare scaffold didn't actually need open question #3's
+  "before scaffolding" item (local origin/axis lock) — that only matters
+  once real-world coordinates enter the picture, i.e. `process-heightmap.mjs`
+  and `terrain.js`. Moved that item down to the process-heightmap.mjs
+  milestone below rather than block on it here.
 
 ### Open questions (non-blocking)
 1. **Basemap/orthophoto source** for later imagery draping (phase 6/7) —
@@ -81,15 +97,14 @@ heightmap is now in the repo. No application code yet.
 3. **Deferred items from `docs/ARCHITECTURE_SUGGESTIONS.md`** (not acted on
    per user's explicit choice 2026-07-28 — revisit at the milestone noted,
    don't assume still unresolved without checking the doc first):
-   - Before writing `tools/process-heightmap.mjs` (Next steps #2): #1
-     browser-safe height encoding (PNG vs tiled Uint16 binary vs packed
-     8-bit), #2 the rounding inconsistency above (store the real per-axis
-     resolution / affine transform, not a nominal "10"), #4 a versioned
-     manifest convention, #11 provenance metadata (stable source id instead
-     of a local path, checksums, tool versions).
-   - Before scaffolding the Vite app (Next steps #1): #5 lock local
-     origin/axis convention and where the EPSG:23032↔WGS84 conversion lives
-     (unblocks ARCHITECTURE.md §6, currently "TBD").
+   - Before writing `tools/process-heightmap.mjs` / `src/terrain.js`
+     (Next steps #1): #1 browser-safe height encoding (PNG vs tiled Uint16
+     binary vs packed 8-bit), #2 the rounding inconsistency above (store
+     the real per-axis resolution / affine transform, not a nominal "10"),
+     #4 a versioned manifest convention, #5 lock local origin/axis
+     convention and where the EPSG:23032↔WGS84 conversion lives (unblocks
+     ARCHITECTURE.md §6, currently "TBD"), #11 provenance metadata (stable
+     source id instead of a local path, checksums, tool versions).
    - Before/during the phase 1 terrain renderer: #3 decide the tile/LOD
      contract as part of the terrain design itself (not bolted on later),
      and fix the §7/§10 wording tension found above.
@@ -102,20 +117,19 @@ heightmap is now in the repo. No application code yet.
      layer boundaries, #8 runtime failure/fallback behavior.
 
 ### Next steps (not yet started)
-1. Scaffold the actual Vite + Three.js project (`package.json`,
-   `vite.config.js`, `index.html`, minimal `src/main.js`). Revisit open
-   question #3's "before scaffolding" item first (local origin/axes).
-2. Write `tools/process-heightmap.mjs`: DEM PNG → `public/data/heightmap.png`
+1. Write `tools/process-heightmap.mjs`: DEM PNG → `public/data/heightmap.png`
    (GPU displacement texture) + `public/data/heights.bin` + JSON sidecar,
    using the calibration in `DEM/pngp_heightmap_meta.json` / ARCHITECTURE.md
    §3. Revisit open question #3's "before process-heightmap.mjs" items
-   first (height encoding, resolution precision, manifest, provenance).
-3. Phase 1 MVP: GPU-displaced terrain mesh + fly/orbit camera + basic
-   sky/fog, first deploy to Vercel to prove the static-hosting pipeline.
-   Keep §10 in mind even here: sanity-check frame rate while flying across
-   the whole map, not just at a fixed viewpoint. Decide the tile/LOD
-   contract as part of this, not after (open question #3).
-4. Phase 2, when it starts: run `tools/trails-source/fetch-trails.sh`, then
+   first (height encoding, resolution precision, origin/axes, manifest,
+   provenance) — several are genuine decisions, not just cleanup.
+2. Phase 1 MVP: GPU-displaced terrain mesh + fly/orbit camera + basic
+   sky/fog (replacing `src/main.js`'s placeholder cube), first deploy to
+   Vercel to prove the static-hosting pipeline. Keep §10 in mind even here:
+   sanity-check frame rate while flying across the whole map, not just at a
+   fixed viewpoint. Decide the tile/LOD contract as part of this, not after
+   (open question #3).
+3. Phase 2, when it starts: run `tools/trails-source/fetch-trails.sh`, then
    write `tools/build-trails.mjs` to turn its output into
    `public/data/trails.json` alongside `build-poi.mjs`. Apply §10 here in
    particular — ~1,200 itineraries/~11,000 segments is enough data to need
@@ -125,10 +139,11 @@ heightmap is now in the repo. No application code yet.
 
 ### How to resume
 Read `docs/ARCHITECTURE.md` for the full plan and rationale, then this file
-for exact status. The real heightmap is in place and calibrated — nothing
-blocks starting phase 1, just pick up at "Next steps" above. Check open
-question #3 before each of those steps — there are specific
-`docs/ARCHITECTURE_SUGGESTIONS.md` items to revisit at each one.
+for exact status. The Vite + Three.js scaffold runs and renders (verified
+headlessly, see Done above) — `npm run dev` should just work. Pick up at
+"Next steps" above; check open question #3 before each one, there are
+specific `docs/ARCHITECTURE_SUGGESTIONS.md` items to revisit at each
+milestone.
 
 ## Status as of 2026-07-25 (historical)
 
