@@ -352,7 +352,10 @@ pngp-viewer/
 │   ├── terrain.js          heightmap-driven terrain mesh + displacement shader,
 │                              plus the shared CPU-side height query (§4)
 │   ├── trails.js           loads public/data/trails.json, one merged THREE.LineSegments
-│                              draw call per CAI difficulty class (§10)
+│                              draw call per line STYLE (§10) - difficulty is shown via
+│                              line pattern (solid/dashed/dotted/ferrata-ticks), not
+│                              color, matching real hiking-map convention (user request,
+│                              2026-07-28)
 │   ├── lighting.js         sun position, day/night cycle
 │   ├── atmosphere.js       sky, fog, aerial perspective
 │   ├── weather.js          clear/clouds/rain/snow state machine

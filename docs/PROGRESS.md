@@ -7,9 +7,10 @@ Read this first at the start of each session. Update it before ending one.
 **Phase: 2 — trails done, POI not started.** Real GPU-displaced terrain
 (phase 1) renders correctly; an actual deploy (GitHub Pages or
 self-managed Apache, §9) is the only phase-1 item left, not blocking.
-Numbered/graded trails now render over the terrain, colored by CAI
-difficulty, with real computed elevation and a working CC BY 4.0 credits
-overlay. **Found a significant DEM data gap while building this (see
+Numbered/graded trails now render over the terrain, difficulty shown via
+line style (solid/dashed/dotted/ferrata-ticks, not color - user request),
+with real computed elevation and a working CC BY 4.0 credits overlay.
+**Found a significant DEM data gap while building this (see
 below)**: ~25% of the map (the Piemonte side of the park) has no real
 elevation data - accepted as a known limitation for now, per the user.
 
@@ -287,13 +288,29 @@ elevation data - accepted as a known limitation for now, per the user.
     source GeoJSON -> 7.8MB), so `docs/ARCHITECTURE.md` §10's anticipated
     "spatial chunking + line simplification" wasn't needed for phase 2.
   - Wrote `src/trails.js`: loads `trails.json`, merges all 1130 trails
-    into **one `THREE.LineSegments` draw call per CAI difficulty class**
-    (5 total, not 1130) - directly applying §10's instancing principle to
-    line geometry. Colored T=green, E=blue, EE=orange, EEA=red, lifted 3m
-    above the terrain surface to avoid z-fighting against the GPU-displaced
-    mesh (the CPU-sampled trail elevation and the GPU-displaced terrain
-    elevation come from the same data but different code paths, close
-    enough to z-fight without the offset).
+    into one `THREE.LineSegments` draw call per line **style** (not 1130
+    draws) - directly applying §10's instancing principle to line
+    geometry. Lifted 3m above the terrain surface to avoid z-fighting
+    against the GPU-displaced mesh (the CPU-sampled trail elevation and
+    the GPU-displaced terrain elevation come from the same data but
+    different code paths, close enough to z-fight without the offset).
+  - **Revised same day, per user request**: difficulty shown via line
+    style instead of color (matches real hiking-map convention - a single
+    trail color, difficulty read off the pattern). T = solid
+    (`LineBasicMaterial`), E = dashed, EE = dotted (both
+    `LineDashedMaterial`, different dashSize/gapSize ratios - confirmed
+    `LineSegments.computeLineDistances()` treats a merged multi-trail
+    buffer as one cumulative path rather than resetting per trail, which
+    only shifts each trail's dash *phase* and is visually inconsequential
+    for a repeating pattern, so merging for the single draw call was still
+    safe). EEA = a solid base line plus small "x" tick marks every 40m
+    (two crossing segments aligned to the local path direction) for the
+    via-ferrata/cavo-d'acciaio convention - low-volume enough (10 of 1130
+    trails) that per-trail overhead here doesn't matter. Verified with
+    close-up screenshots (not just the overview shot) since dash/dot
+    patterns are invisible at whole-map zoom: all four styles read
+    correctly, ferrata ticks form a clear repeated "x x x x" pattern along
+    the path.
   - Added a small always-visible `#credits` overlay (`index.html` +
     `main.js`, populated from `trails.json`'s own `source.attribution`
     field) satisfying the CC BY 4.0 requirement that's been flagged as
@@ -370,8 +387,9 @@ elevation data - accepted as a known limitation for now, per the user.
 ### How to resume
 Read `docs/ARCHITECTURE.md` for the full plan and rationale, then this file
 for exact status. `npm run dev` renders real GPU-displaced terrain
-(`src/terrain.js` + `src/geo.js`) plus numbered/graded trails colored by
-difficulty (`src/trails.js`), both verified correct (not just error-free) -
+(`src/terrain.js` + `src/geo.js`) plus numbered/graded trails with
+difficulty shown via line style (`src/trails.js`), both verified correct
+(not just error-free) -
 see Done above before assuming anything about the rendering pipeline needs
 re-deriving. **Important caveat to internalize before touching elevation
 data**: ~25% of the DEM (Piemonte side of the park) is a nodata gap
