@@ -4,8 +4,8 @@ Read this first at the start of each session. Update it before ending one.
 
 ## Status as of 2026-07-28
 
-**Phase: 2 — trails done, POI not started.** Real GPU-displaced terrain
-(phase 1) renders correctly; an actual deploy (GitHub Pages or
+**Phase: 2 — trails done, POI awaiting user curation.** Real GPU-displaced
+terrain (phase 1) renders correctly; an actual deploy (GitHub Pages or
 self-managed Apache, §9) is the only phase-1 item left, not blocking.
 Numbered/graded trails now render over the terrain, difficulty shown via
 line style (solid/dashed/dotted/ferrata-ticks, not color - user request),
@@ -13,6 +13,11 @@ with real computed elevation and a working CC BY 4.0 credits overlay.
 **Found a significant DEM data gap while building this (see
 below)**: ~25% of the map (the Piemonte side of the park) has no real
 elevation data - accepted as a known limitation for now, per the user.
+For POI, user chose to use OSM as the starting draft (not just a
+cross-check) - `tools/fetch-osm.mjs` written and run, producing
+`tools/osm-poi-draft.json` (2,421 named candidates). **Waiting on the
+user to review/curate that file** before `build-poi.mjs`/`src/poi.js` get
+written - see Next steps.
 
 ### Done since 2026-07-25
 - Ran `tools/dtm-source/extract-heightmap.sh` on the processing machine
@@ -320,6 +325,50 @@ elevation data - accepted as a known limitation for now, per the user.
     plausible valley/ridge patterns across the terrain in the expected
     colors, credits text renders correctly, zero console errors, no failed
     network requests.
+- **Started POI (phase 2, part 2)**: asked the user how to source POI
+  content rather than inventing a list unilaterally (hand-curated by
+  design, `docs/ARCHITECTURE.md` §4). Chose: OSM as the starting draft,
+  not just a cross-check as originally scoped.
+  - Installed `proj4`, defined `EPSG:23032` explicitly
+    (`+proj=utm +zone=32 +ellps=intl +towgs84=-87,-98,-121,0,0,0,0`), and
+    **verified it against the known Mont Blanc summit control point again**
+    (same one used to originally confirm the datum, §3): back-projecting
+    our heightfield's actual max-elevation pixel lands 20.4 m from the
+    published summit coordinates - consistent with the ~15-20 m GDAL-based
+    check from the original investigation. This resolves the EPSG:23032↔
+    WGS84 half of open question #3's #5 (see below) earlier than
+    originally scoped, since OSM data needed it now.
+  - Wrote `tools/fetch-osm.mjs`: converts our EPSG:23032 bbox to WGS84 to
+    query Overpass, pulls `natural=peak`, `tourism=alpine_hut`,
+    `mountain_pass=yes`/`natural=saddle`, `waterway=waterfall`, and
+    `natural=water`/`natural=lake` (way/relation centroids via `out
+    center`) within it, converts each result back to local scene
+    coordinates and samples our own heightfield for elevation - same
+    approach as `build-trails.mjs`, same shared `src/geo.js`/
+    `src/heightfield.js` modules.
+  - **Extra validation for free**: OSM's own `ele` tag for "Gran Paradiso"
+    (the peak) is 4061 m; our independently-computed elevation at that
+    exact point is 4038.4 m - only 22.6 m off, another data point
+    corroborating the whole pipeline (calibration, WGS84 transform, local
+    coordinate math) beyond the Mont Blanc check.
+  - First Overpass query hit a 406 (wrong headers - fixed: needs a real
+    `User-Agent` and form-encoded body, not raw `text/plain`) then a
+    transient 504 (server load, succeeded on retry) - both worth knowing
+    about if this script needs re-running and seems to fail.
+  - Raw result: 3,746 elements (1357 peaks, 40 huts, 724 passes, 108
+    waterfalls, 1517 lakes) across the whole bbox - which extends well
+    beyond the park into neighboring France/Switzerland border areas
+    (e.g. "Lac du Chevril", "Lac de Tignes" showed up - literally in
+    France). Dropped 1,325 unnamed elements (can't show a POI with no
+    label) -> **2,421 named candidates**, written to
+    `tools/osm-poi-draft.json` (772 KB, committed - a working artifact the
+    user needs to open and edit, not a disposable build byproduct). 857 of
+    2,421 (35%) are flagged `dataIncomplete: true`
+    (fall in the DEM nodata gap above) - worth knowing when reviewing,
+    though not excluded from the draft.
+  - **Waiting on the user to review/curate `tools/osm-poi-draft.json`**
+    before writing `tools/build-poi.mjs` (curated JSON -> `public/data/
+    poi.json`) and `src/poi.js` (markers + info panel + fly-to, per §7/§8).
 
 ### Open questions (non-blocking)
 1. **Basemap/orthophoto source** for later imagery draping (phase 6/7) —
@@ -343,10 +392,15 @@ elevation data - accepted as a known limitation for now, per the user.
      phase 1's whole-map overview, but not yet a quadtree/multi-tile
      system. Revisit before phase 7 if draw-distance/detail needs force
      the issue sooner (§7's wording tension here is now fixed).
-   - Before phase 5 (navigation aids): the other half of #5, the
-     EPSG:23032↔WGS84 conversion (via `proj4` or similar) — not needed
-     for terrain/trails/POI, only for compass/position readout, so it's
-     fine to defer further than originally scoped.
+   - The other half of #5, EPSG:23032↔WGS84, is **now implemented and
+     verified** (`proj4`, `+towgs84=-87,-98,-121,0,0,0,0` — confirmed
+     against the Mont Blanc summit control point again: 20.4 m off,
+     consistent with the earlier ~15-20 m GDAL-based check) - used in
+     `tools/fetch-osm.mjs` to convert OSM's WGS84 to our bbox. Still not
+     wired into the runtime app for a compass/position HUD (phase 5) -
+     `proj4` is currently a devDependency (build-time only); promote it to
+     a regular dependency (or inline just the needed math) when phase 5
+     actually needs it client-side.
    - #6 (verify park-wide trail coverage): now understood better, not yet
      resolved. We know the DEM has zero coverage for the Piemonte side of
      the park (open question #2) - the *trail* dataset (VDA-only by
@@ -377,12 +431,13 @@ elevation data - accepted as a known limitation for now, per the user.
    forwarding, in their own actual browser (not recorded which one - worth
    specifically confirming Firefox if not already, given the encoding fix
    above was about a Firefox-specific gap).
-2. Phase 2 continued: POI (peaks, rifugi, lakes, valleys, passes) - the
-   trails half is done (see Done above). Needs `build-poi.mjs` and a
-   curated dataset - this one needs the user's input on which POIs to
-   include (hand-authored per `docs/ARCHITECTURE.md` §4), not something to
-   invent unilaterally. `src/poi.js` for markers + info panel + fly-to
-   navigation, per `docs/ARCHITECTURE.md` §7/§8.
+2. Phase 2 continued: POI. **Blocked on the user** reviewing/curating
+   `tools/osm-poi-draft.json` (2,421 named candidates from OSM, see Done
+   above) - trim it down, fix names, add anything missing. Once curated:
+   write `tools/build-poi.mjs` (curated JSON -> `public/data/poi.json`,
+   same manifest/provenance conventions as trails - OSM is ODbL, needs
+   attribution too, §9) and `src/poi.js` (markers + info panel + fly-to
+   navigation, per `docs/ARCHITECTURE.md` §7/§8).
 
 ### How to resume
 Read `docs/ARCHITECTURE.md` for the full plan and rationale, then this file
@@ -395,10 +450,12 @@ re-deriving. **Important caveat to internalize before touching elevation
 data**: ~25% of the DEM (Piemonte side of the park) is a nodata gap
 masquerading as real elevation - see open question #2 before trusting
 `elevMin`/any "lowest point" claim, or before being surprised that some
-POIs/trails there look wrong. Pick up at "Next steps" above (POI is next);
-check open question #3 before terrain-renderer/phase-5/phase-2-trail-
-contract milestones, there are specific `docs/ARCHITECTURE_SUGGESTIONS.md`
-items to revisit at each.
+POIs/trails there look wrong. **Currently blocked on the user** reviewing
+`tools/osm-poi-draft.json` before POI work can continue (see Next steps)
+- if that hasn't happened yet, there's nothing to build; check in with
+them rather than guessing a curated list. Check open question #3 before
+terrain-renderer/phase-5/phase-2-trail-contract milestones, there are
+specific `docs/ARCHITECTURE_SUGGESTIONS.md` items to revisit at each.
 
 ## Status as of 2026-07-25 (historical)
 

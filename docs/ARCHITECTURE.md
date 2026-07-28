@@ -202,12 +202,23 @@ tools/
                              true`) rather than silently shipping wrong numbers for them. The
                              CC BY 4.0 attribution is surfaced in the shipped UI (§9) - done,
                              not just planned.
-  fetch-osm.mjs           Pulls mountain huts (rifugi), hydrology, and the park boundary
-                             from OpenStreetMap/Overpass for the PNGP bbox (attribution
-                             required, ODbL). No longer used for trails — see §3.
-  build-poi.mjs           Curated points of interest -> public/data/poi.json
-                             (peaks, rifugi, lakes, valleys, passes — hand-authored,
-                             cross-checked against OSM output).
+  fetch-osm.mjs           Written 2026-07-28. Queries Overpass for the PNGP bbox (WGS84,
+                             derived from our EPSG:23032 bbox via proj4 - verified against
+                             the known Mont Blanc control point, §3) for peaks, alpine huts,
+                             passes, waterfalls, and lakes; converts to local scene
+                             coordinates and samples our own heightfield for elevation, same
+                             as build-trails.mjs. Drops unnamed elements (can't show a POI
+                             with no label). Writes tools/osm-poi-draft.json - a DRAFT for
+                             the user to review/curate (not public/data/poi.json), per their
+                             explicit choice to use OSM as the starting point rather than
+                             only a cross-check against a hand-authored list. Hydrology and
+                             the park boundary aren't fetched yet - separate Overpass
+                             queries, needed for phase 3 (water) and open question #6
+                             respectively, not phase 2.
+  build-poi.mjs           Not written yet - takes the user's curated version of
+                             tools/osm-poi-draft.json -> public/data/poi.json. No longer
+                             "hand-authored from scratch, cross-checked against OSM" as
+                             originally scoped - OSM is now the starting draft itself.
   verify.mjs (optional)   Playwright screenshot/QA pass, same idea as the reference
                              project's shoot/verify scripts — nice-to-have, not MVP.
 ```
