@@ -118,12 +118,13 @@ As of 2026-07-28, the trail source is the official regional dataset
   (`public/data/trails.json`, once written) would be small enough and
   project-specific enough to check in.
 
-This changes the roadmap: trails/huts were scoped as an OSM-based phase-6
-stretch goal (§7) when we only had OSM as the option. Worth revisiting
-that phasing now that we have a real, numbered, difficulty-graded dataset
-— not decided yet, flagged in `docs/PROGRESS.md`. OSM likely still has a
-role for what this dataset doesn't cover (park boundary, hydrology,
-rifugi as standalone POIs).
+**Decided 2026-07-28**: trails move up to phase 2, alongside POI (§7) —
+they were originally scoped as an OSM-based phase-6 stretch goal only
+because OSM was the only option we had; now that we have a real, numbered,
+difficulty-graded dataset, they belong with the other core map content,
+not the late-game "life & atmosphere" polish. OSM still has a role for
+what this dataset doesn't cover (park boundary, hydrology, rifugi as
+standalone POIs).
 
 ## 4. Data pipeline
 
@@ -222,7 +223,7 @@ user's stated priorities; can reshuffle as we learn more.
 |---|---|
 | 0 — Setup | This doc, repo scaffold (Vite + Three.js), DEM calibration resolved, heightmap pipeline producing calibrated `heights.bin` + displacement texture |
 | 1 — MVP terrain | GPU-displaced terrain mesh, fly/orbit camera, static sun + simple sky/fog. First deploy to Vercel to validate the static-hosting pipeline end to end |
-| 2 — Points of interest | Curated POI dataset (peaks, rifugi, lakes, valleys), map markers + info panel, fly-to-POI navigation. **Candidate to also bring in numbered/graded trails here** (§3) — was OSM-only phase-6 scope, revisit now that we have the VDA dataset; not decided yet |
+| 2 — Points of interest | Curated POI dataset (peaks, rifugi, lakes, valleys), map markers + info panel, fly-to-POI navigation. **Numbered/graded trails from the VDA dataset (§3) also land here** — moved up from the old OSM-only phase-6 scope, decided 2026-07-28 |
 | 3 — Water & animation | Rivers/lakes, waterfalls (e.g. Cascate di Lillaz) with shader animation + mist, glaciers as a distinct surface |
 | 4 — Environment | Time-of-day slider driving sun position/sky/fog/exposure; weather states (clear → clouds → rain → snow) |
 | 5 — Navigation aids | Compass HUD, live position readout (lat/lon, elevation, nearest place name) |
@@ -287,20 +288,55 @@ retrofit later:
   restrictions worth reading closely before shipping publicly. Decide when
   we get to imagery draping, not blocking now.
 
-## 10. Non-goals (for now)
+## 10. Performance & fluidity principles
+
+**Standing principle (2026-07-28)**: smoothness and navigability of the
+map are a first-class concern in every implementation choice, not a
+phase-7 polish item to retrofit at the end. Concretely, this means:
+
+- **LOD (level of detail), not just for phase 7**: terrain is already
+  designed as GPU-displaced (§4) rather than a literal CPU mesh at DEM
+  resolution — that's the main LOD lever for terrain (lower-resolution
+  displacement grid / lower mip sampled at distance). Apply the same
+  thinking as other geometry is added: don't default to full-resolution
+  everywhere and defer LOD to "phase 7 polish" (§7) — bake distance-based
+  detail reduction into terrain, trees/vegetation, and any dense line/point
+  data (trails, POI markers) as each is built, even if the actual tiling/
+  mip-selection code lands later.
+- **Lazy/progressive loading of data, not one big upfront JSON**: `public/
+  data/*` assets (heightmap, `trails.json`, `poi.json`, future OSM layers)
+  should load progressively — by visible region/bbox tile, or deferred
+  until a feature is actually needed — rather than blocking startup on
+  every phase's dataset at once. Matters especially for trails (§3, §7):
+  ~1,200 itineraries / ~11,000 segments across the whole park is enough
+  data that naively rendering all of it eagerly, in full geometric detail,
+  is a likely frame-rate/interaction cost worth designing around from the
+  start (spatial chunking + line simplification at distance), not
+  discovering as a bug later.
+- **Frustum culling and instancing**: don't render what's off-screen;
+  repeated markers (POI icons, trail waypoints) should use instanced
+  draws, not one draw call each.
+- **Treat frame rate as a correctness check, not just a phase-7 pass**:
+  when a phase's "done" criteria are checked (§7), that should include
+  trying the golden-path navigation (flying across the whole map, zooming
+  from overview to ground level) and watching for stutter, not just
+  checking the feature renders correctly at one fixed camera position.
+
+This doesn't mandate a specific LOD/streaming implementation upfront —
+the point is to keep it in mind as each phase's geometry/data volume
+grows, rather than treating it as separable "later" work.
+
+## 11. Non-goals (for now)
 
 Not pursuing unless priorities change: multiplayer/shared sessions, a
 native/VR client, a CMS/backend for editing POIs (hand-authored JSON is
 plenty at this scale), mobile-first design (desktop-first, mobile pass is
 phase 7 at earliest).
 
-## 11. Open questions
+## 12. Open questions
 
 Tracked with current status in [docs/PROGRESS.md](PROGRESS.md) — check there
 before assuming anything below is still unresolved.
 
 1. Exact basemap/orthophoto source for later imagery draping, once we get to
    phase 6/7 polish (§9).
-2. Whether to move numbered/graded trails from phase 6 (OSM-based stretch
-   goal) up to phase 2 alongside POI, now that we have the official VDA
-   dataset instead of just OSM (§3, §7) — not decided with the user yet.

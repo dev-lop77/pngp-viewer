@@ -45,15 +45,26 @@ heightmap is now in the repo. No application code yet.
   `tools/trails-source/fetch-trails.sh` (downloads + clips to our bbox,
   outputs GeoJSON to `$HOME/pngp-trails-work`) and its README. Updated
   `docs/ARCHITECTURE.md` §3, §4, §7, §9, §11 accordingly.
+- **Decided: trails move to phase 2**, alongside POI (was phase-6/OSM-only
+  scope) — user confirmed, now that we have the numbered/graded VDA
+  dataset there's no reason to treat trails as late-stage stretch content.
+  Updated `docs/ARCHITECTURE.md` §7 roadmap table and §3 accordingly.
+- **New standing principle: performance/fluidity/navigability is a
+  first-class concern in every implementation choice**, not a phase-7
+  retrofit — user asked explicitly for this (LOD/level-of-detail,
+  lazy-loading of data, not depth-of-field — confirmed that's what they
+  meant when the phrase was ambiguous). Wrote up concretely in new
+  `docs/ARCHITECTURE.md` §10 ("Performance & fluidity principles"): LOD
+  applied as each phase's geometry grows (not deferred to phase 7),
+  lazy/progressive data loading (esp. relevant for the ~1,200-itinerary
+  trail dataset — don't render it all eagerly at full detail), frustum
+  culling + instancing for repeated markers, and frame-rate/navigation
+  smoothness treated as part of each phase's "done" check.
 
 ### Open questions (non-blocking)
 1. **Basemap/orthophoto source** for later imagery draping (phase 6/7) —
    not needed until then.
-2. **Trail roadmap phasing** — trails were phase-6/OSM-stretch scope; now
-   that we have the VDA dataset, does it make sense to pull numbered/graded
-   trails into phase 2 alongside POI instead? Flagged in
-   `docs/ARCHITECTURE.md` §7/§11, not decided with the user yet.
-3. The CC BY 4.0 attribution string for the trail data needs to actually
+2. The CC BY 4.0 attribution string for the trail data needs to actually
    show up in the shipped UI (credits/about panel) once trails render —
    not urgent until that phase, but don't forget it (§9).
 
@@ -66,9 +77,14 @@ heightmap is now in the repo. No application code yet.
    §3 (uniform 10 m/px, no per-axis correction needed).
 3. Phase 1 MVP: GPU-displaced terrain mesh + fly/orbit camera + basic
    sky/fog, first deploy to Vercel to prove the static-hosting pipeline.
-4. Whenever trails work starts (phase 2 or 6, see open question #2): run
-   `tools/trails-source/fetch-trails.sh`, then write
-   `tools/build-trails.mjs` to turn its output into `public/data/trails.json`.
+   Keep §10 in mind even here: sanity-check frame rate while flying across
+   the whole map, not just at a fixed viewpoint.
+4. Phase 2, when it starts: run `tools/trails-source/fetch-trails.sh`, then
+   write `tools/build-trails.mjs` to turn its output into
+   `public/data/trails.json` alongside `build-poi.mjs`. Apply §10 here in
+   particular — ~1,200 itineraries/~11,000 segments is enough data to need
+   spatial chunking + lazy loading + distance-based line simplification
+   from the start, not as an afterthought.
 
 ### How to resume
 Read `docs/ARCHITECTURE.md` for the full plan and rationale, then this file
