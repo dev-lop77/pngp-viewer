@@ -6,8 +6,8 @@ Read this first at the start of each session. Update it before ending one.
 
 **Phase: 1 — MVP terrain, core rendering working.** Real GPU-displaced
 terrain renders correctly (verified, not just "no errors" - see below).
-Remaining for phase 1: first deploy to Vercel to validate the
-static-hosting pipeline end to end (not done yet).
+Static-hosting mechanics validated locally (root + sub-path serving, see
+below) - an actual Vercel deploy is the only phase-1 item left.
 
 ### Done since 2026-07-25
 - Ran `tools/dtm-source/extract-heightmap.sh` on the processing machine
@@ -201,6 +201,23 @@ static-hosting pipeline end to end (not done yet).
     heightfield) - a single tile, not yet quadtree/LOD (open question
     below still tracks that decision for later, once profiling data
     exists).
+- **Simulated static hosting locally** (user asked specifically, ahead of
+  an actual Vercel deploy): `npm run build` + `vite preview` serves the
+  real production bundle, not the dev server - verified headlessly
+  (screenshot + console/network check), identical render to dev.
+  - **Also tested serving the build from a sub-path** (`/pngp-viewer/`
+    via a plain `python3 -m http.server`, simulating GitHub Pages'
+    `user.github.io/repo/` layout) since `vite.config.js`'s `base: './'`
+    was specifically chosen for that case (§9) - this caught a real bug:
+    `terrain.js` fetched `/data/heightfield.json` (root-absolute), which
+    404s under a sub-path. `base: './'` only rewrites Vite-injected asset
+    URLs (the script tag), not manual `fetch()` calls. Fixed by resolving
+    against `import.meta.env.BASE_URL` instead (Vite's own mechanism for
+    exactly this), re-verified under the same sub-path setup - no more
+    404s, terrain renders correctly. Worth remembering: any future
+    `fetch()`/`new URL()` against `public/data/*` must go through
+    `BASE_URL`, a root-absolute path will quietly break under any
+    non-root deploy.
 
 ### Open questions (non-blocking)
 1. **Basemap/orthophoto source** for later imagery draping (phase 6/7) —
@@ -238,12 +255,14 @@ static-hosting pipeline end to end (not done yet).
    shipping publicly (§9).
 
 ### Next steps (not yet started)
-1. Finish phase 1: first deploy to Vercel to prove the static-hosting
-   pipeline end to end (terrain mesh + camera + fog are done, see Done
-   above). Worth a real-browser sanity check too, not just the headless
-   verification done so far - especially Firefox, given the encoding fix
-   above was specifically about a Firefox gap the headless test happened
-   to also reproduce.
+1. Finish phase 1: an actual Vercel deploy (terrain mesh + camera + fog are
+   done; local static-hosting simulation, incl. sub-path serving, is done
+   too - see Done above). A real Vercel deploy mainly still needs checking
+   Vercel-specific mechanics (build detection, CDN/HTTPS headers) rather
+   than app-level risk, which is now fairly well covered. Also worth a
+   real-browser sanity check, not just headless - especially Firefox,
+   given the encoding fix above was specifically about a Firefox gap the
+   headless test happened to also reproduce.
 2. Phase 2, when it starts: run `tools/trails-source/fetch-trails.sh`, then
    write `tools/build-trails.mjs` to turn its output into
    `public/data/trails.json` alongside `build-poi.mjs`. Apply §10 here in
