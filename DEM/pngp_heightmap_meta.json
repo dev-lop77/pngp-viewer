@@ -1,0 +1,9 @@
+{
+  "source_file": "../DEM/DTM0508_002_UNICO.ASC",
+  "crs": "EPSG:23032",
+  "bbox_utm32n": { "xmin": 329116, "ymin": 5036775, "xmax": 413000, "ymax": 5085000 },
+  "resolution_m_per_px": { "x": 10, "y": 10 },
+  "image_size_px": { "width": 8388, "height": 4823 },
+  "elevation_m": { "min": 292.2356262207, "max": 4809.8129882812 },
+  "note": "Aspect ratio matches the real bbox exactly - no square-canvas resampling, unlike the original UE5 export (DEM/heightmap_pngp_4033.png)."
+}

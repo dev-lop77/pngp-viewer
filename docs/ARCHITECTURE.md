@@ -43,81 +43,51 @@ overhead before we hit a UI problem that actually needs it.
 
 ## 3. Source data
 
-`DEM/heightmap_pngp_4033.png`, calibrated against `DEM/pngp_extraction_report.txt`:
+**Primary heightmap (as of 2026-07-28): `DEM/pngp_heightmap.png` +
+`DEM/pngp_heightmap_meta.json`.** Produced by running
+`tools/dtm-source/extract-heightmap.sh` against the real 10 GB source
+(`DTM0508_002_UNICO.ASC`) on the machine holding it, then copying the two
+outputs into this repo's `DEM/` folder. This supersedes the UE5-derived
+`DEM/heightmap_pngp_4033.png` below (kept for history/reference, not used
+going forward) — it has no square-canvas distortion and its calibration is
+written out directly by GDAL rather than inferred from image statistics.
 
-- 4033 × 4033 px, 16-bit grayscale PNG, non-interlaced.
-- Source: `DTM0508_002_UNICO.ASC`, native resolution 2.0 m/px. Regione Valle
-  d'Aosta DTM, per `DEM/scripts/extract_pngp_from_vda.py` (the extraction
-  script itself, found alongside the data).
-- Bounding box: **E 329116–413000, N 5036775–5085000** in **ED50 / UTM zone
-  32N (EPSG:23032)** — a 83,884 m × 48,225 m rectangle. The extraction
-  script itself flagged this datum as an approximation ("EPSG:23032... il
-  più comune per VdA"); we confirmed it directly (see box below) rather
-  than taking it on faith, since ED50 vs. the more common modern ETRS89/
-  WGS84 UTM32N (EPSG:32632/25832) differ by ~100-200 m at this latitude —
-  enough to matter for the compass/position feature (§7) even though it's
-  irrelevant to terrain shape.
-  - The source ships a sidecar `DTM0508_002_UNICO.prj` (confirmed by
-    running `tools/dtm-source/inspect-dtm.sh`): `Datum EUR_M, Spheroid
-    INT1909`. The International 1924 ellipsoid (INT1909) is what ED50 uses
-    — this rules out Roma40/Gauss-Boaga (Bessel 1841 ellipsoid) and is
-    consistent with EPSG:23032, corroborating the Mont Blanc cross-check
-    below. It's *not* precise enough on its own, though: GDAL can't map the
-    ESRI keyword `EUR_M` to a specific registered EPSG code, and parses it
-    as an "unspecified datum" with no defined WGS84 transform — so our
-    tooling forces `EPSG:23032` explicitly rather than trusting that
-    auto-detection (see comments in `tools/dtm-source/*.sh`).
-  - Also confirmed the full source file's own extent while we were at it:
-    44174 × 28557 px at 2 m/px, origin E 329116.00/N 5036775.00 (lower-left)
-    → E 329116–417464, N 5036775–5093889 overall. Our crop's west/south
-    edges exactly match the source file's own edges (not an arbitrary
-    crop) — there's room to extend east/north if a future crop ever wants
-    more of the Valle d'Aosta side.
-- Elevation calibration is **linear across the full pixel range**:
-  `real_elevation_m = 292.0 + (pixel_value / 65535) * 4519.7`
-  (min 292.0 m, max 4811.7 m, mean 2057.1 m). Verified against the report's
-  own vegetation-band thresholds (§5) — the formula reproduces all five
-  band boundaries to within 1 m, so this mapping is solid.
+- 8388 × 4823 px, 16-bit grayscale, uniform **10 m/px on both axes** (the
+  true bbox aspect ratio, 83884:48225 ≈ 1.739, matches 8388:4823 exactly —
+  no per-axis correction needed).
+- CRS: **ED50 UTM32N (EPSG:23032)**, forced explicitly by the script (see
+  below for why, not auto-detected).
+- Bbox: same as the legacy extraction, **E 329116–413000, N
+  5036775–5085000**.
+- Elevation, linear across the full pixel range:
+  `real_elevation_m = 292.2356262207 + (pixel_value / 65535) * 4517.5773620605`
+  (min 292.2356262207 m, max 4809.8129882812 m — matches the independent
+  Mont Blanc cross-check below to within 2 m of the previous estimate).
 
-  > **Note**: the max (4811.7 m) is *higher* than the Gran Paradiso summit
-  > (4061 m) because the crop's bbox extends far enough northwest to catch
-  > the southern flank of the **Mont Blanc massif** (4808–4810 m) — the
-  > report's "★ Gran Paradiso incluso" check only verifies `alt_max > 4000`,
-  > it doesn't verify *which* peak that max belongs to. Confirmed by
-  > back-projecting the max-value pixel's approximate source coordinates:
-  > under EPSG:23032 it lands within ~15 m of Mont Blanc's published summit
-  > coordinates (45.8325°N, 6.8650°E); under EPSG:32632/25832 it's off by
-  > ~200 m. This is also what settled the datum question above — a real
-  > independent check, not just repeating the extraction script's own
-  > assumption.
+**Legacy heightmap — removed from the repo as of 2026-07-28** (was
+`DEM/heightmap_pngp_4033.png`, still recoverable from git history if ever
+needed). It was a 4033×4033 px square canvas — a UE5 Landscape sizing
+constraint (`32 components × 63 quads + 1 = 4033`) — produced by
+non-uniformly resampling the true (non-square) bbox rectangle to fit that
+square, which gave it different real-world pixel spacing per axis (≈ 20.8
+m/px E-W, ≈ 11.96 m/px N-S). The primary heightmap above has no such
+distortion (uniform 10 m/px both axes), so this no longer matters for
+`tools/process-heightmap.mjs`.
 
-**Open item — non-square resample.** The source rectangle is not square
-(83.9 km E-W × 48.2 km N-S) but the PNG is a square 4033×4033 canvas (a UE5
-Landscape constraint: `32 components × 63 quads + 1 = 4033` — this heightmap
-was originally produced for a UE5 project, per the report's "IMPOSTAZIONI
-UE5 LANDSCAPE" section). Pixel inspection confirms real elevation data runs
-to all four edges with no zero/nodata border — i.e. it's **not
-letterboxed/padded**, so the rectangle was resampled (non-uniformly) to fit
-the square. Net effect: **X and Y have different real-world pixel spacing**
-(≈ 20.8 m/px E-W, ≈ 11.96 m/px N-S) — not the uniform 20.8 m/px the report's
-own UE5 notes assume (`Scale X/Y: 200` applied to both axes). If we reused
-that uniform scale as-is, the terrain would be visibly stretched ~1.74×
-along N-S (wrong slopes, wrong distances, wrong waterfall drop heights).
-
-Fix, fallback: if we ever only have the current square PNG to work with,
-`tools/process-heightmap.mjs` can use *two different* per-axis meters/pixel
-values derived from the bbox above (83884/4033 and 48225/4033) rather than
-a single uniform scale, so the terrain still reconstructs at correct
-real-world proportions.
-
-**Superseded by a better option**: the 10 GB native-resolution source
-(`DTM0508_002_UNICO.ASC`) is available. `tools/dtm-source/extract-heightmap.sh`
-crops+resamples directly from it with GDAL, producing a heightmap whose
-pixel dimensions already match the true (non-square) aspect ratio — no
-per-axis correction needed downstream, and the calibration is written out
-by the script instead of inferred from image statistics. This is the
-preferred path once it's been run; see `tools/dtm-source/README.md`. Not
-run yet as of this writing — tracked in [docs/PROGRESS.md](PROGRESS.md).
+The one thing worth preserving from that file's investigation: the
+**independent EPSG:23032 (ED50) verification**. The extraction script that
+produced it flagged its own datum choice as approximate ("EPSG:23032... il
+più comune per VdA"), and its sidecar `.prj` used old ESRI keywords (`Datum
+EUR_M, Spheroid INT1909`) that GDAL can't map to a specific EPSG code. We
+confirmed EPSG:23032 independently by back-projecting the legacy
+heightmap's max-elevation pixel: it lands within ~15 m of Mont Blanc's
+published summit (45.8325°N, 6.8650°E) under EPSG:23032, vs. ~200 m off
+under the more common modern EPSG:32632/25832 — enough to matter for the
+compass/position feature (§7) even though it's irrelevant to terrain shape.
+This is why `tools/dtm-source/*.sh` forces `-a_srs EPSG:23032` explicitly
+rather than trusting `.prj` auto-detection, and why the primary heightmap's
+elevation max (4809.8 m) exceeds the Gran Paradiso summit (4061 m) — the
+bbox's northwest corner also catches the southern flank of Mont Blanc.
 
 ## 4. Data pipeline
 

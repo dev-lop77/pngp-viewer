@@ -2,7 +2,55 @@
 
 Read this first at the start of each session. Update it before ending one.
 
-## Status as of 2026-07-25
+## Status as of 2026-07-28
+
+**Phase: 0 — Setup, wrapping up.** The real, correctly-proportioned
+heightmap is now in the repo. No application code yet.
+
+### Done since 2026-07-25
+- Ran `tools/dtm-source/extract-heightmap.sh` on the processing machine
+  against the real 10 GB source and copied the two outputs into `DEM/`:
+  `pngp_heightmap.png` (8388×4823px, 16-bit, uniform 10 m/px both axes) and
+  `pngp_heightmap_meta.json` (calibration sidecar). Verified: image
+  dimensions match the bbox aspect ratio exactly (1.739), elevation range
+  292.2356262207–4809.8129882812 m (within 2m of the earlier UE5-derived
+  estimate), CRS EPSG:23032 as expected.
+- This resolves open question #1 from the previous status (non-square
+  resample correction) — it's now moot, since the new heightmap has no
+  distortion to correct for. Updated `docs/ARCHITECTURE.md` §3 to make
+  `DEM/pngp_heightmap.png` the primary/authoritative heightmap and
+  demoted `DEM/heightmap_pngp_4033.png` to legacy/reference-only.
+- Noted: `DEM/DTM0508_002_UNICO.PRJ` (untracked, appeared in the repo) is
+  just a stray copy of the old source sidecar `.prj` — not one of the
+  extraction outputs, not needed, user confirmed it's an old file.
+
+### Open questions (non-blocking)
+1. **Basemap/orthophoto source** for later imagery draping (phase 6/7) —
+   not needed until then. (Only remaining open question — the DTM
+   re-extraction question from 2026-07-25 is resolved, see Done above.)
+2. Whether to commit the new `DEM/pngp_heightmap.png` (~39 MB) +
+   `pngp_heightmap_meta.json` to git, and whether to remove the now-legacy
+   `DEM/heightmap_pngp_4033.png` (~16 MB, already committed) or keep it
+   for reference — not yet decided with the user.
+
+### Next steps (not yet started)
+1. Scaffold the actual Vite + Three.js project (`package.json`,
+   `vite.config.js`, `index.html`, minimal `src/main.js`).
+2. Write `tools/process-heightmap.mjs`: DEM PNG → `public/data/heightmap.png`
+   (GPU displacement texture) + `public/data/heights.bin` + JSON sidecar,
+   using the calibration in `DEM/pngp_heightmap_meta.json` / ARCHITECTURE.md
+   §3 (uniform 10 m/px, no per-axis correction needed).
+3. Phase 1 MVP: GPU-displaced terrain mesh + fly/orbit camera + basic
+   sky/fog, first deploy to Vercel to prove the static-hosting pipeline.
+
+### How to resume
+Read `docs/ARCHITECTURE.md` for the full plan and rationale, then this file
+for exact status. The real heightmap is in place and calibrated — nothing
+blocks starting phase 1, just pick up at "Next steps" above (git
+commit/cleanup of DEM files is a small open item to sort out first, see
+open question #2).
+
+## Status as of 2026-07-25 (historical)
 
 **Phase: 0 — Setup.** Architecture doc written and repo skeleton created.
 No application code yet.
@@ -86,35 +134,5 @@ No application code yet.
   Original DEM was produced for a UE5 project, not built for this web
   project from scratch.
 
-### Open questions (non-blocking)
-1. **Run the DTM re-extraction** — `inspect-dtm.sh` has been run (header/CRS
-   confirmed, see Done above). Still need: run
-   `tools/dtm-source/extract-heightmap.sh` (same `SRC_ASC` path already
-   known to work) on the WSL machine, then copy `pngp_heightmap.png` +
-   `pngp_heightmap_meta.json` into this repo's `DEM/` folder. Once done,
-   `docs/ARCHITECTURE.md` §3 should be updated to reflect the new
-   calibration values (should be very close to current ones, but now
-   exact/non-inferred) and the per-axis-scale fallback note can likely be
-   dropped. Doesn't block phase 1 — current heightmap + fallback fix work
-   fine meanwhile.
-2. **Basemap/orthophoto source** for later imagery draping (phase 6/7) —
-   not needed until then.
-
-### Next steps (not yet started)
-1. Scaffold the actual Vite + Three.js project (`package.json`,
-   `vite.config.js`, `index.html`, minimal `src/main.js`) — waiting on
-   architecture doc sign-off before doing this, to avoid rework.
-2. Write `tools/process-heightmap.mjs`: DEM PNG → `public/data/heightmap.png`
-   (GPU displacement texture) + `public/data/heights.bin` + JSON sidecar,
-   using the real bbox/elevation calibration and per-axis m/px values now
-   in ARCHITECTURE.md §3 (no placeholders needed).
-3. Phase 1 MVP: GPU-displaced terrain mesh + fly/orbit camera + basic
-   sky/fog, first deploy to Vercel to prove the static-hosting pipeline.
-
-### How to resume
-Read `docs/ARCHITECTURE.md` for the full plan and rationale, then this file
-for exact status. Calibration is resolved and nothing currently blocks
-starting phase 1 — just pick up at "Next steps" above. If the user has since
-confirmed or corrected the non-square resample handling (open question #1),
-update that section and ARCHITECTURE.md §3 accordingly before writing
-`process-heightmap.mjs`.
+(Open questions / next steps from this date are superseded — see the
+2026-07-28 status above for the current list.)
