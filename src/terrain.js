@@ -6,7 +6,14 @@ const MESH_SEGMENTS_X = 256;
 // GPU displacement + CPU height queries both read the exact same
 // heightfield.json / heightfield.<hash>.bin pair (docs/ARCHITECTURE.md §4)
 // so they can never silently disagree.
-export async function loadTerrain(dataUrl = '/data') {
+//
+// dataUrl must be resolved against import.meta.env.BASE_URL, not a
+// root-absolute path - vite.config.js sets base: './' so the build works
+// unmodified under a sub-path deployment (GitHub Pages: user.github.io/repo/),
+// but that only rewrites Vite-injected asset URLs (script/css tags), not
+// fetch() calls we write ourselves. Confirmed by actually serving a build
+// from a sub-path and watching a root-absolute '/data/...' fetch 404.
+export async function loadTerrain(dataUrl = `${import.meta.env.BASE_URL}data`) {
   const manifest = await fetch(`${dataUrl}/heightfield.json`).then((r) => r.json());
   const buffer = await fetch(`${dataUrl}/${manifest.file.name}`).then((r) => r.arrayBuffer());
   const heights = new Uint16Array(buffer);
