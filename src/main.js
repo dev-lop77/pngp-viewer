@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadTerrain } from './terrain.js';
+import { loadTrails } from './trails.js';
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9fc9e8);
@@ -32,6 +33,18 @@ scene.add(sun);
 
 loadTerrain().then(({ mesh }) => {
   scene.add(mesh);
+});
+
+const creditLines = [];
+loadTrails().then(({ group, manifest }) => {
+  scene.add(group);
+  // CC BY 4.0 requires this attribution wherever the data (or a render of
+  // it) is shown - docs/ARCHITECTURE.md §9, tools/trails-source/README.md.
+  creditLines.push(
+    `${manifest.source.attribution} ` +
+      `<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">${manifest.source.license}</a>`,
+  );
+  document.getElementById('credits').innerHTML = creditLines.join('<br>');
 });
 
 window.addEventListener('resize', () => {

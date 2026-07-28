@@ -4,11 +4,14 @@ Read this first at the start of each session. Update it before ending one.
 
 ## Status as of 2026-07-28
 
-**Phase: 1 — MVP terrain, core rendering working.** Real GPU-displaced
-terrain renders correctly (verified, not just "no errors" - see below).
-Static-hosting mechanics validated locally (root + sub-path serving, see
-below) - an actual deploy (GitHub Pages or self-managed Apache, not
-Vercel/Netlify — decided 2026-07-28, §9) is the only phase-1 item left.
+**Phase: 2 — trails done, POI not started.** Real GPU-displaced terrain
+(phase 1) renders correctly; an actual deploy (GitHub Pages or
+self-managed Apache, §9) is the only phase-1 item left, not blocking.
+Numbered/graded trails now render over the terrain, colored by CAI
+difficulty, with real computed elevation and a working CC BY 4.0 credits
+overlay. **Found a significant DEM data gap while building this (see
+below)**: ~25% of the map (the Piemonte side of the park) has no real
+elevation data - accepted as a known limitation for now, per the user.
 
 ### Done since 2026-07-25
 - Ran `tools/dtm-source/extract-heightmap.sh` on the processing machine
@@ -219,13 +222,99 @@ Vercel/Netlify — decided 2026-07-28, §9) is the only phase-1 item left.
     `fetch()`/`new URL()` against `public/data/*` must go through
     `BASE_URL`, a root-absolute path will quietly break under any
     non-root deploy.
+- **Started phase 2: trails.** Ran `tools/trails-source/fetch-trails.sh`
+  for real (previously only written/tested conceptually) - 1130
+  `sentieri` features within our bbox, 309,294 total coordinate points.
+  - Refactored `terrain.js`'s CPU height-sampling into standalone
+    `src/heightfield.js` (pure functions, no THREE/fetch/DOM) so it can be
+    imported from both the browser runtime and `tools/build-trails.mjs`
+    (Node) - one implementation of "raw sample -> real elevation", not two
+    that could drift apart.
+  - Wrote `tools/build-trails.mjs`: converts each trail's coordinates to
+    local scene meters (via `src/geo.js`) and computes real elevation by
+    sampling our own heightfield - deliberately not the source's own
+    dislivello-adjacent fields (`sen_tota_1..6`), which are ambiguous,
+    undocumented in the metadata PDF, and risky to guess at (e.g. one
+    plausibly reads as a time-in-minutes field, not a distance).
+  - **Found and fixed a real bug via a cross-check against the source's
+    own start/end elevation fields** (`sen_quota_`/`sen_quota1`): about
+    45% of trails (514/1130) have their geometry stored in the *opposite*
+    direction from their labeled start/end - confirmed on a specific case
+    ("Chanté - Mont Saron") where the geometry's first point matched the
+    *end* label almost exactly (diff ~11m) and the last point matched the
+    *start* label (diff ~4m). Fixed by detecting whichever direction fits
+    best against the labels and reversing when needed, so `lines` always
+    runs start→end and `elevGainM`/`elevLossM` mean what their names say.
+  - **This cross-check then surfaced a much bigger finding**: a cluster of
+    trails were "falling" to ~292m (our heightfield's minimum) at high-
+    mountain locations (e.g. "Col Rosset", real elevation ~3025m). Traced
+    to the actual pixel data: **24.8% of all pixels in
+    `DEM/pngp_heightmap.png` are exactly value `0`** - a nodata sentinel
+    never explicitly declared anywhere in the pipeline (confirmed already
+    present in the native-resolution source, not introduced by our own
+    downsampling). Masked and visualized `value == 0` across the whole
+    image - the resulting shape is a near-exact match for Valle d'Aosta's
+    real administrative boundary. The source DTM (`DTM0508_002_UNICO`, a
+    *Regione Autonoma Valle d'Aosta* dataset) simply has no data outside
+    VDA - and **Gran Paradiso National Park straddles VDA and Piemonte**,
+    so the Piemonte side of the park (~25% of our bbox) has been rendering
+    as a flat fake plain since phase 1, not real mountains. This also means
+    the documented `elevMin` (292.2356m) is very likely the nodata floor,
+    not a real valley elevation.
+  - **Surfaced this to the user before continuing** (this affects
+    already-shipped terrain, not just the new trails work) with the
+    masked-region image as evidence. **User's decision: accept the
+    limitation for now, don't block on it** - continue with trails/POI
+    using the data as-is, rather than sourcing additional DTM coverage
+    first. Documented as a known, tracked limitation in
+    `docs/ARCHITECTURE.md` §3/§12, not silently absorbed.
+  - Added `isNearNoData()` to `src/heightfield.js` and used it in
+    `build-trails.mjs` to flag affected trails (`dataIncomplete: true`,
+    39 of 1130) rather than silently shipping wrong elevation figures for
+    them. A further ~63 trails show large start/end mismatches not caught
+    by that flag - spot-checked several (e.g. "Col du Grand-Saint-Bernard
+    - Col Fenetre Durand", "Fontainemore - Mont Mars") and they're
+    cross-border routes where VDA's own geometry stops at the region
+    boundary while the label still names the true destination beyond it -
+    same root cause, different symptom. Not chased further individually
+    given the underlying cause is already understood and accepted.
+  - Output: `public/data/trails.json` (7.8 MB, 1130 trails, single file -
+    not content-hashed like the heightfield, a deliberate simplification
+    for now since it's self-describing JSON rather than raw bytes needing
+    external metadata). No line simplification needed - 309K points at
+    ~20m average spacing turned out to be a reasonable size as-is once
+    excess property fields and coordinate precision were trimmed (16MB
+    source GeoJSON -> 7.8MB), so `docs/ARCHITECTURE.md` §10's anticipated
+    "spatial chunking + line simplification" wasn't needed for phase 2.
+  - Wrote `src/trails.js`: loads `trails.json`, merges all 1130 trails
+    into **one `THREE.LineSegments` draw call per CAI difficulty class**
+    (5 total, not 1130) - directly applying §10's instancing principle to
+    line geometry. Colored T=green, E=blue, EE=orange, EEA=red, lifted 3m
+    above the terrain surface to avoid z-fighting against the GPU-displaced
+    mesh (the CPU-sampled trail elevation and the GPU-displaced terrain
+    elevation come from the same data but different code paths, close
+    enough to z-fight without the offset).
+  - Added a small always-visible `#credits` overlay (`index.html` +
+    `main.js`, populated from `trails.json`'s own `source.attribution`
+    field) satisfying the CC BY 4.0 requirement that's been flagged as
+    pending since the trail-source decision - done now, not deferred
+    further.
+  - Verified: build succeeds, headless render shows trail lines following
+    plausible valley/ridge patterns across the terrain in the expected
+    colors, credits text renders correctly, zero console errors, no failed
+    network requests.
 
 ### Open questions (non-blocking)
 1. **Basemap/orthophoto source** for later imagery draping (phase 6/7) —
    not needed until then.
-2. The CC BY 4.0 attribution string for the trail data needs to actually
-   show up in the shipped UI (credits/about panel) once trails render —
-   not urgent until that phase, but don't forget it (§9).
+2. **DEM coverage gap - Piemonte side of the park has no real elevation
+   data** (~25% of the bbox, see Done above and `docs/ARCHITECTURE.md`
+   §3/§12). Accepted as a known limitation 2026-07-28, not blocking -
+   revisit by sourcing a Piemonte-side or national DTM (TINITALY/
+   Geoportale Nazionale) to merge in, whenever a priority. Until then:
+   `elevMin` (292.2356m) in `heightfield.json` is very likely the nodata
+   floor, not a real elevation - don't treat it as one in future work
+   (e.g. don't use it as "lowest point in the park" for anything).
 3. **Deferred items from `docs/ARCHITECTURE_SUGGESTIONS.md`** still
    pending (don't assume still unresolved without checking the doc first —
    #1, #2, #4, #5's origin/axes half, and #11 were resolved 2026-07-28
@@ -241,9 +330,13 @@ Vercel/Netlify — decided 2026-07-28, §9) is the only phase-1 item left.
      EPSG:23032↔WGS84 conversion (via `proj4` or similar) — not needed
      for terrain/trails/POI, only for compass/position readout, so it's
      fine to defer further than originally scoped.
-   - Before finalizing the phase 2 trail contract: #6 verify the VDA trail
-     dataset actually covers the whole park (not just intersects our bbox)
-     against the real park boundary, once we have one.
+   - #6 (verify park-wide trail coverage): now understood better, not yet
+     resolved. We know the DEM has zero coverage for the Piemonte side of
+     the park (open question #2) - the *trail* dataset (VDA-only by
+     definition) presumably has the same gap for Piemonte-side trails, but
+     this hasn't been separately confirmed (VDA trail data could still be
+     complete for the VDA-side portion of the park, which is the more
+     relevant question once we have a real park boundary to check against).
    - #9 performance budgets and #10 automated pipeline/correctness tests
      were gated on "a running prototype exists" - that's now true (terrain
      renders), so these are available to pick up whenever useful, just not
@@ -267,25 +360,27 @@ Vercel/Netlify — decided 2026-07-28, §9) is the only phase-1 item left.
    forwarding, in their own actual browser (not recorded which one - worth
    specifically confirming Firefox if not already, given the encoding fix
    above was about a Firefox-specific gap).
-2. Phase 2, when it starts: run `tools/trails-source/fetch-trails.sh`, then
-   write `tools/build-trails.mjs` to turn its output into
-   `public/data/trails.json` alongside `build-poi.mjs`. Apply §10 here in
-   particular — ~1,200 itineraries/~11,000 segments is enough data to need
-   spatial chunking + lazy loading + distance-based line simplification
-   from the start, not as an afterthought. Verify park-wide trail coverage
-   first (open question #3).
+2. Phase 2 continued: POI (peaks, rifugi, lakes, valleys, passes) - the
+   trails half is done (see Done above). Needs `build-poi.mjs` and a
+   curated dataset - this one needs the user's input on which POIs to
+   include (hand-authored per `docs/ARCHITECTURE.md` §4), not something to
+   invent unilaterally. `src/poi.js` for markers + info panel + fly-to
+   navigation, per `docs/ARCHITECTURE.md` §7/§8.
 
 ### How to resume
 Read `docs/ARCHITECTURE.md` for the full plan and rationale, then this file
-for exact status. `npm run dev` renders real GPU-displaced terrain from the
-calibrated heightfield (`src/terrain.js` + `src/geo.js`), verified correct
-(not just error-free) via a direct pixel comparison against the source
-heightmap and a known-landmark orientation check - see Done above before
-assuming anything about the rendering pipeline needs re-deriving. Pick up
-at "Next steps" above; check open question #3
-before each one, there are specific `docs/ARCHITECTURE_SUGGESTIONS.md`
-items to revisit at each
-milestone.
+for exact status. `npm run dev` renders real GPU-displaced terrain
+(`src/terrain.js` + `src/geo.js`) plus numbered/graded trails colored by
+difficulty (`src/trails.js`), both verified correct (not just error-free) -
+see Done above before assuming anything about the rendering pipeline needs
+re-deriving. **Important caveat to internalize before touching elevation
+data**: ~25% of the DEM (Piemonte side of the park) is a nodata gap
+masquerading as real elevation - see open question #2 before trusting
+`elevMin`/any "lowest point" claim, or before being surprised that some
+POIs/trails there look wrong. Pick up at "Next steps" above (POI is next);
+check open question #3 before terrain-renderer/phase-5/phase-2-trail-
+contract milestones, there are specific `docs/ARCHITECTURE_SUGGESTIONS.md`
+items to revisit at each.
 
 ## Status as of 2026-07-25 (historical)
 

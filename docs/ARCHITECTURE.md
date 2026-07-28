@@ -63,6 +63,33 @@ written out directly by GDAL rather than inferred from image statistics.
   `real_elevation_m = 292.2356262207 + (pixel_value / 65535) * 4517.5773620605`
   (min 292.2356262207 m, max 4809.8129882812 m — matches the independent
   Mont Blanc cross-check below to within 2 m of the previous estimate).
+  **The stated min is very likely a nodata artifact, not a real elevation
+  — see the gap noted just below.**
+
+> **Known gap: no real elevation data for the Piemonte side of the park
+> (found 2026-07-28, while building trails).** Pixel value `0` is a nodata
+> sentinel that was never explicitly declared anywhere in the pipeline (not
+> by the original UE5 extraction, not by `tools/dtm-source/*.sh`) — it's
+> silently treated as a real elevation of 292.2 m (the formula's own
+> floor). **24.8% of all pixels in `DEM/pngp_heightmap.png` are exactly
+> `0`**, in one contiguous region whose shape matches Valle d'Aosta's real
+> administrative boundary almost exactly. The source DTM
+> (`DTM0508_002_UNICO`, a *Regione Autonoma Valle d'Aosta* dataset) simply
+> doesn't cover anything outside VDA — and Gran Paradiso National Park
+> straddles VDA **and Piemonte**, so a real, substantial part of the park
+> (the Piemonte side) currently renders as a flat fake plain at ~292 m
+> instead of real mountains. Confirmed by masking `value == 0` and
+> comparing the resulting shape directly against the DEM (see
+> `docs/PROGRESS.md` for the image), and by cross-checking trail elevation
+> data against it — several trails "fall" to exactly this floor value
+> right where their real-world path crosses into Piemonte.
+>
+> **User's call (2026-07-28): accept this limitation for now, don't block
+> other work on it.** `tools/build-trails.mjs` flags affected trails
+> (`dataIncomplete: true`) rather than silently shipping wrong numbers for
+> them. Revisit if/when sourcing a Piemonte-side (or national, e.g.
+> TINITALY/Geoportale Nazionale) DTM to merge in becomes a priority — see
+> §12.
 
 **Legacy heightmap — removed from the repo as of 2026-07-28** (was
 `DEM/heightmap_pngp_4033.png`, still recoverable from git history if ever
@@ -98,9 +125,12 @@ As of 2026-07-28, the trail source is the official regional dataset
 - Three related layers: `tratte` (~11,000 elementary segments: code,
   length, percorribilità, difficoltà), `sentieri` (~1,200 named/numbered
   itineraries: name, segnavia number e.g. "25A", length, dislivello,
-  difficulty — often null at this aggregate level, use `tratte` for
-  reliable per-segment difficulty), `poderali` (dirt/service roads, not
-  currently planned for use).
+  difficulty), `poderali` (dirt/service roads, not currently planned for
+  use). **Correction, 2026-07-28**: earlier guessed `sentieri`'s difficulty
+  was "often null" from a single sampled feature — checked the real
+  distribution across all 1,130 features within our bbox instead: only 7
+  (0.6%) are null (928 E, 150 EE, 35 T, 10 EEA). It's reliably populated;
+  `build-trails.mjs` uses `sentieri` directly, `tratte` isn't needed.
 - Difficulty is the standard CAI scale: **T / E / EE / EEA** — confirmed
   by inspecting real attribute values, not just the docs.
 - CRS: **EPSG:23032**, confirmed by inspecting the shapefile's own `.prj`
@@ -160,10 +190,18 @@ tools/
                              for cache-busting. Content-hashed output + deterministic bilinear
                              resampling means re-running with unchanged input is a no-op (no
                              git diff) — see docs/PROGRESS.md.
-  build-trails.mjs        Regione VDA GeoJSON (from tools/trails-source/fetch-trails.sh)
-                             -> public/data/trails.json (segnavia number, name, difficulty
-                             T/E/EE/EEA, length, dislivello) — see §3. Requires the CC BY 4.0
-                             attribution to be surfaced wherever this renders (§9).
+  build-trails.mjs        Written 2026-07-28. Regione VDA `sentieri` GeoJSON (from
+                             tools/trails-source/fetch-trails.sh) -> public/data/trails.json:
+                             local scene coordinates (§6, via src/geo.js) with elevation
+                             computed by sampling our own heightfield (src/heightfield.js) -
+                             NOT the source's own dislivello-adjacent fields (ambiguous field
+                             names, see docs/PROGRESS.md). Detects and corrects trails whose
+                             geometry runs opposite to their labeled start/end (found via
+                             cross-checking against real elevations - ~45% needed correcting).
+                             Flags trails crossing the DEM nodata gap above (`dataIncomplete:
+                             true`) rather than silently shipping wrong numbers for them. The
+                             CC BY 4.0 attribution is surfaced in the shipped UI (§9) - done,
+                             not just planned.
   fetch-osm.mjs           Pulls mountain huts (rifugi), hydrology, and the park boundary
                              from OpenStreetMap/Overpass for the PNGP bbox (attribution
                              required, ODbL). No longer used for trails — see §3.
@@ -308,8 +346,13 @@ pngp-viewer/
 │   ├── main.js             entry point, scene setup, render loop
 │   ├── geo.js              world (EPSG:23032) <-> local scene-meter conversion, the one
 │                              place this math lives (§6)
+│   ├── heightfield.js      pure height-sampling math (no THREE/fetch/DOM) - shared by
+│                              terrain.js AND tools/build-trails.mjs (Node), one
+│                              implementation of "raw sample -> real elevation" (§4)
 │   ├── terrain.js          heightmap-driven terrain mesh + displacement shader,
 │                              plus the shared CPU-side height query (§4)
+│   ├── trails.js           loads public/data/trails.json, one merged THREE.LineSegments
+│                              draw call per CAI difficulty class (§10)
 │   ├── lighting.js         sun position, day/night cycle
 │   ├── atmosphere.js       sky, fog, aerial perspective
 │   ├── weather.js          clear/clouds/rain/snow state machine
@@ -317,7 +360,10 @@ pngp-viewer/
 │   ├── poi.js              point-of-interest markers + fly-to
 │   ├── controls.js         camera navigation
 │   ├── wildlife.js         (phase 6) ibex/chamois/marmots
-│   └── ui/                 DOM HUD: compass, position readout, POI panel, time/weather controls
+│   └── ui/                 DOM HUD: compass, position readout, POI panel, time/weather
+│                              controls. `#credits` (index.html) already covers CC BY
+│                              attribution for trails - a fuller about/credits panel
+│                              belongs here once there's more than one attributed source.
 ├── index.html
 ├── package.json
 ├── vite.config.js
@@ -357,8 +403,11 @@ later:
   of derived renders is fine). The Regione Valle d'Aosta trail dataset (§3)
   is CC BY 4.0 — commercial use and modification both fine, but requires a
   specific attribution string shown wherever the data (or a render of it)
-  appears; needs an actual credits/about panel in the UI once trails ship,
-  not just a code comment. Any satellite/orthophoto basemap needs its
+  appears. **Done, 2026-07-28**: a small always-visible `#credits` overlay
+  (`index.html`, populated from `trails.json`'s own `source.attribution`
+  field in `main.js`) covers this — not just a code comment. Will need to
+  become a fuller panel once more than one attributed source ships. Any
+  satellite/orthophoto basemap needs its
   license checked before going public — Italy's Geoportale Nazionale/PCN
   orthophotos are a good candidate (open), ESRI World Imagery has usage
   restrictions worth reading closely before shipping publicly. Decide when
@@ -416,3 +465,8 @@ before assuming anything below is still unresolved.
 
 1. Exact basemap/orthophoto source for later imagery draping, once we get to
    phase 6/7 polish (§9).
+2. **DEM coverage gap for the Piemonte side of the park** (§3) — accepted
+   as a known limitation for now (2026-07-28), not blocking. Revisit by
+   sourcing a Piemonte-side or national DTM (e.g. TINITALY/Geoportale
+   Nazionale) to merge in, whenever filling in that ~25% of the map
+   becomes a priority.

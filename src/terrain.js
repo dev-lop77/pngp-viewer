@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { setLocalOrigin } from './geo.js';
+import { sampleHeightfield } from './heightfield.js';
 
 const MESH_SEGMENTS_X = 256;
 
@@ -90,31 +91,11 @@ export async function loadTerrain(dataUrl = `${import.meta.env.BASE_URL}data`) {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'terrain';
 
-  function valueToElevation(v) {
-    return elevMin + (v / 65535) * (elevMax - elevMin);
-  }
-
-  // Bilinear CPU-side height query, in scene-local (x,z) meters - same
-  // array, same calibration, same pixel-is-area convention as the GPU
-  // texture (manifest.pixelConvention), just without the GPU/shader layer.
+  // CPU-side height query, in scene-local (x,z) meters - shared with the
+  // build pipeline via src/heightfield.js, so this and the GPU texture
+  // above can never disagree.
   function sampleHeight(x, z) {
-    const colF = (x + worldWidth / 2) / resX - 0.5;
-    const rowF = (z + worldDepth / 2) / resY - 0.5;
-
-    const col0 = Math.min(Math.max(Math.floor(colF), 0), width - 1);
-    const col1 = Math.min(col0 + 1, width - 1);
-    const row0 = Math.min(Math.max(Math.floor(rowF), 0), height - 1);
-    const row1 = Math.min(row0 + 1, height - 1);
-    const fx = Math.min(Math.max(colF - col0, 0), 1);
-    const fz = Math.min(Math.max(rowF - row0, 0), 1);
-
-    const v00 = heights[row0 * width + col0];
-    const v10 = heights[row0 * width + col1];
-    const v01 = heights[row1 * width + col0];
-    const v11 = heights[row1 * width + col1];
-    const top = v00 + (v10 - v00) * fx;
-    const bottom = v01 + (v11 - v01) * fx;
-    return valueToElevation(top + (bottom - top) * fz);
+    return sampleHeightfield(heights, manifest, x, z);
   }
 
   return { mesh, manifest, heights, sampleHeight };
