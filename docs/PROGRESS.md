@@ -60,6 +60,17 @@ heightmap is now in the repo. No application code yet.
   trail dataset — don't render it all eagerly at full detail), frustum
   culling + instancing for repeated markers, and frame-rate/navigation
   smoothness treated as part of each phase's "done" check.
+- Reviewed `docs/ARCHITECTURE_SUGGESTIONS.md`, an external architecture
+  review (11 points, P0–P2). Triaged for phase-0 relevance and verified
+  the concrete claims rather than taking them on faith — found the
+  reviewer was right about a real, small rounding inconsistency: our own
+  bbox ÷ image dimensions gives **9.9995 m/px (E-W) and 9.999 m/px (N-S)**,
+  not the uniform 10 m/px declared in `DEM/pngp_heightmap_meta.json`
+  (artifact of how `gdalwarp -te`+`-tr` rounds pixel counts). Also spotted
+  a real wording tension between §10 ("LOD always") and §7 phase 7 ("LOD/
+  tiling if draw distance needs it", reading as optional). **User's call:
+  don't act on any of this now** — tracked below, revisit at the specific
+  milestone each point is tied to, not before.
 
 ### Open questions (non-blocking)
 1. **Basemap/orthophoto source** for later imagery draping (phase 6/7) —
@@ -67,31 +78,57 @@ heightmap is now in the repo. No application code yet.
 2. The CC BY 4.0 attribution string for the trail data needs to actually
    show up in the shipped UI (credits/about panel) once trails render —
    not urgent until that phase, but don't forget it (§9).
+3. **Deferred items from `docs/ARCHITECTURE_SUGGESTIONS.md`** (not acted on
+   per user's explicit choice 2026-07-28 — revisit at the milestone noted,
+   don't assume still unresolved without checking the doc first):
+   - Before writing `tools/process-heightmap.mjs` (Next steps #2): #1
+     browser-safe height encoding (PNG vs tiled Uint16 binary vs packed
+     8-bit), #2 the rounding inconsistency above (store the real per-axis
+     resolution / affine transform, not a nominal "10"), #4 a versioned
+     manifest convention, #11 provenance metadata (stable source id instead
+     of a local path, checksums, tool versions).
+   - Before scaffolding the Vite app (Next steps #1): #5 lock local
+     origin/axis convention and where the EPSG:23032↔WGS84 conversion lives
+     (unblocks ARCHITECTURE.md §6, currently "TBD").
+   - Before/during the phase 1 terrain renderer: #3 decide the tile/LOD
+     contract as part of the terrain design itself (not bolted on later),
+     and fix the §7/§10 wording tension found above.
+   - Before finalizing the phase 2 trail contract: #6 verify the VDA trail
+     dataset actually covers the whole park (not just intersects our bbox)
+     against the real park boundary, once we have one.
+   - Not meaningful before a running prototype exists (§7 phase 1 done):
+     #9 performance budgets, #10 automated pipeline/correctness tests.
+   - Good practice to keep in mind, no dedicated decision needed: #7 module/
+     layer boundaries, #8 runtime failure/fallback behavior.
 
 ### Next steps (not yet started)
 1. Scaffold the actual Vite + Three.js project (`package.json`,
-   `vite.config.js`, `index.html`, minimal `src/main.js`).
+   `vite.config.js`, `index.html`, minimal `src/main.js`). Revisit open
+   question #3's "before scaffolding" item first (local origin/axes).
 2. Write `tools/process-heightmap.mjs`: DEM PNG → `public/data/heightmap.png`
    (GPU displacement texture) + `public/data/heights.bin` + JSON sidecar,
    using the calibration in `DEM/pngp_heightmap_meta.json` / ARCHITECTURE.md
-   §3 (uniform 10 m/px, no per-axis correction needed).
+   §3. Revisit open question #3's "before process-heightmap.mjs" items
+   first (height encoding, resolution precision, manifest, provenance).
 3. Phase 1 MVP: GPU-displaced terrain mesh + fly/orbit camera + basic
    sky/fog, first deploy to Vercel to prove the static-hosting pipeline.
    Keep §10 in mind even here: sanity-check frame rate while flying across
-   the whole map, not just at a fixed viewpoint.
+   the whole map, not just at a fixed viewpoint. Decide the tile/LOD
+   contract as part of this, not after (open question #3).
 4. Phase 2, when it starts: run `tools/trails-source/fetch-trails.sh`, then
    write `tools/build-trails.mjs` to turn its output into
    `public/data/trails.json` alongside `build-poi.mjs`. Apply §10 here in
    particular — ~1,200 itineraries/~11,000 segments is enough data to need
    spatial chunking + lazy loading + distance-based line simplification
-   from the start, not as an afterthought.
+   from the start, not as an afterthought. Verify park-wide trail coverage
+   first (open question #3).
 
 ### How to resume
 Read `docs/ARCHITECTURE.md` for the full plan and rationale, then this file
 for exact status. The real heightmap is in place and calibrated — nothing
-blocks starting phase 1, just pick up at "Next steps" above (git
-commit/cleanup of DEM files is a small open item to sort out first, see
-open question #2).
+blocks starting phase 1, just pick up at "Next steps" above. Check open
+question #3 before each of those steps — there are specific
+`docs/ARCHITECTURE_SUGGESTIONS.md` items to revisit at each one.
 
 ## Status as of 2026-07-25 (historical)
 
