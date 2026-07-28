@@ -280,7 +280,7 @@ user's stated priorities; can reshuffle as we learn more.
 | Phase | Scope |
 |---|---|
 | 0 — Setup | This doc, repo scaffold (Vite + Three.js), DEM calibration resolved, `process-heightmap.mjs` producing the calibrated `heightfield.bin` + manifest |
-| 1 — MVP terrain | GPU-displaced terrain mesh, fly/orbit camera, static sun + simple sky/fog. First deploy to Vercel to validate the static-hosting pipeline end to end |
+| 1 — MVP terrain | GPU-displaced terrain mesh, fly/orbit camera, static sun + simple sky/fog. First real deploy (GitHub Pages or self-managed Apache, §9) to validate the static-hosting pipeline end to end |
 | 2 — Points of interest | Curated POI dataset (peaks, rifugi, lakes, valleys), map markers + info panel, fly-to-POI navigation. **Numbered/graded trails from the VDA dataset (§3) also land here** — moved up from the old OSM-only phase-6 scope, decided 2026-07-28 |
 | 3 — Water & animation | Rivers/lakes, waterfalls (e.g. Cascate di Lillaz) with shader animation + mist, glaciers as a distinct surface |
 | 4 — Environment | Time-of-day slider driving sun position/sky/fog/exposure; weather states (clear → clouds → rain → snow) |
@@ -299,6 +299,8 @@ pngp-viewer/
 ├── tools/
 │   ├── dtm-source/         external/manual GDAL scripts, run outside the repo (see §3-4)
 │   ├── trails-source/      external/manual trail dataset fetch+clip, run outside the repo (see §3-4)
+│   ├── dev/                dev-workflow helper scripts (start/stop local test servers, etc.);
+│                              a growing library, see tools/dev/README.md
 │   └── *.mjs               regular build-time node scripts (see §4)
 ├── public/
 │   └── data/               generated static assets (heightfield.<hash>.bin + heightfield.json, poi.json, trails.json, ...)
@@ -324,9 +326,22 @@ pngp-viewer/
 
 ## 9. Deployment target
 
-Static hosting (Vercel, Netlify, or GitHub Pages), no backend. Since this is
-meant to go online, a few things to keep in mind from the start rather than
-retrofit later:
+**Decided 2026-07-28**: static hosting, no backend, but **not Vercel/
+Netlify** — the user will use either **GitHub Pages** or **self-managed
+Apache** (their own server), not yet chosen between the two. Both are
+plain static-file hosts, so the app-level requirements are the same either
+way and already validated (§4, §6): a relative build (`vite.config.js`
+`base: './'`) and every runtime asset fetch resolved against
+`import.meta.env.BASE_URL`, confirmed by actually serving a production
+build from both the site root and a sub-path (`tools/dev/` has the local
+scripts used for this - see its README). One thing to flag for the
+self-managed-Apache path specifically, whenever it's chosen: gzip/brotli
+compression of the JS/JSON assets needs `mod_deflate` (or similar)
+explicitly enabled — GitHub Pages does this automatically, a stock Apache
+vhost may not.
+
+A few more things to keep in mind from the start rather than retrofit
+later:
 
 - **Asset budget**: reference project ships ~76 MB of prebuilt data. Worth
   tracking our own total and deciding a target ceiling once phase 1 data is

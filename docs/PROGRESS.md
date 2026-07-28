@@ -7,7 +7,8 @@ Read this first at the start of each session. Update it before ending one.
 **Phase: 1 — MVP terrain, core rendering working.** Real GPU-displaced
 terrain renders correctly (verified, not just "no errors" - see below).
 Static-hosting mechanics validated locally (root + sub-path serving, see
-below) - an actual Vercel deploy is the only phase-1 item left.
+below) - an actual deploy (GitHub Pages or self-managed Apache, not
+Vercel/Netlify — decided 2026-07-28, §9) is the only phase-1 item left.
 
 ### Done since 2026-07-25
 - Ran `tools/dtm-source/extract-heightmap.sh` on the processing machine
@@ -255,14 +256,17 @@ below) - an actual Vercel deploy is the only phase-1 item left.
    shipping publicly (§9).
 
 ### Next steps (not yet started)
-1. Finish phase 1: an actual Vercel deploy (terrain mesh + camera + fog are
-   done; local static-hosting simulation, incl. sub-path serving, is done
-   too - see Done above). A real Vercel deploy mainly still needs checking
-   Vercel-specific mechanics (build detection, CDN/HTTPS headers) rather
-   than app-level risk, which is now fairly well covered. Also worth a
-   real-browser sanity check, not just headless - especially Firefox,
-   given the encoding fix above was specifically about a Firefox gap the
-   headless test happened to also reproduce.
+1. Finish phase 1: an actual deploy to whichever the user picks — GitHub
+   Pages or self-managed Apache, not Vercel/Netlify (decided 2026-07-28,
+   §9). Terrain mesh + camera + fog are done; local static-hosting
+   simulation, incl. sub-path serving, is done too (see Done above), so
+   what's left is mostly host-specific mechanics (GitHub Pages' build
+   action, or Apache vhost/mod_deflate config, §9) rather than app-level
+   risk. Also worth a real-browser sanity check, not just headless -
+   especially Firefox, given the encoding fix above was specifically about
+   a Firefox gap the headless test happened to also reproduce. Use
+   `tools/dev/start-preview.sh` for this (see its README) — closer to
+   real hosting than `npm run dev`.
 2. Phase 2, when it starts: run `tools/trails-source/fetch-trails.sh`, then
    write `tools/build-trails.mjs` to turn its output into
    `public/data/trails.json` alongside `build-poi.mjs`. Apply §10 here in
