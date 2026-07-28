@@ -28,11 +28,34 @@ heightmap is now in the repo. No application code yet.
   `DEM/heightmap_pngp_4033.png` from the repo (still recoverable from git
   history) — user's call, to keep a single authoritative heightmap.
   `.git` is now ~54 MB (was ~17 MB).
+- **Found and verified an official trail data source**: user asked about
+  alternatives to OSM for trails (wanted numbering + difficulty grading).
+  Researched and directly inspected (downloaded the actual dataset, ran
+  `ogrinfo`, read the license PDFs — not just read the marketing page) the
+  Regione Valle d'Aosta "Rete Sentieristica" dataset (Geoportale SCT):
+  ~1,200 numbered itineraries + ~11,000 elementary segments, real CAI
+  difficulty (T/E/EE/EEA confirmed from actual attribute values), CRS
+  EPSG:23032 (matches our DEM exactly), **CC BY 4.0** license (confirmed
+  from the actual license PDF — free incl. commercial use, needs a specific
+  attribution string wherever shown). Full detail in `docs/ARCHITECTURE.md`
+  §3. User decided: this **replaces OSM as the trail source** (OSM may
+  still cover rifugi/hydrology/park boundary), and the raw dataset is
+  handled as an **external download+script**, same pattern as
+  `tools/dtm-source/` — not committed to the repo. Wrote
+  `tools/trails-source/fetch-trails.sh` (downloads + clips to our bbox,
+  outputs GeoJSON to `$HOME/pngp-trails-work`) and its README. Updated
+  `docs/ARCHITECTURE.md` §3, §4, §7, §9, §11 accordingly.
 
 ### Open questions (non-blocking)
 1. **Basemap/orthophoto source** for later imagery draping (phase 6/7) —
-   not needed until then. (Only remaining open question — everything else
-   from 2026-07-25 is resolved, see Done above.)
+   not needed until then.
+2. **Trail roadmap phasing** — trails were phase-6/OSM-stretch scope; now
+   that we have the VDA dataset, does it make sense to pull numbered/graded
+   trails into phase 2 alongside POI instead? Flagged in
+   `docs/ARCHITECTURE.md` §7/§11, not decided with the user yet.
+3. The CC BY 4.0 attribution string for the trail data needs to actually
+   show up in the shipped UI (credits/about panel) once trails render —
+   not urgent until that phase, but don't forget it (§9).
 
 ### Next steps (not yet started)
 1. Scaffold the actual Vite + Three.js project (`package.json`,
@@ -43,6 +66,9 @@ heightmap is now in the repo. No application code yet.
    §3 (uniform 10 m/px, no per-axis correction needed).
 3. Phase 1 MVP: GPU-displaced terrain mesh + fly/orbit camera + basic
    sky/fog, first deploy to Vercel to prove the static-hosting pipeline.
+4. Whenever trails work starts (phase 2 or 6, see open question #2): run
+   `tools/trails-source/fetch-trails.sh`, then write
+   `tools/build-trails.mjs` to turn its output into `public/data/trails.json`.
 
 ### How to resume
 Read `docs/ARCHITECTURE.md` for the full plan and rationale, then this file

@@ -89,6 +89,42 @@ rather than trusting `.prj` auto-detection, and why the primary heightmap's
 elevation max (4809.8 m) exceeds the Gran Paradiso summit (4061 m) — the
 bbox's northwest corner also catches the southern flank of Mont Blanc.
 
+### Trails — Regione Valle d'Aosta "Rete Sentieristica" (replaces OSM)
+
+As of 2026-07-28, the trail source is the official regional dataset
+(Geoportale SCT), not OSM — verified directly rather than assumed, see
+`tools/trails-source/README.md` for the full writeup:
+
+- Three related layers: `tratte` (~11,000 elementary segments: code,
+  length, percorribilità, difficoltà), `sentieri` (~1,200 named/numbered
+  itineraries: name, segnavia number e.g. "25A", length, dislivello,
+  difficulty — often null at this aggregate level, use `tratte` for
+  reliable per-segment difficulty), `poderali` (dirt/service roads, not
+  currently planned for use).
+- Difficulty is the standard CAI scale: **T / E / EE / EEA** — confirmed
+  by inspecting real attribute values, not just the docs.
+- CRS: **EPSG:23032**, confirmed by inspecting the shapefile's own `.prj`
+  — matches our DEM exactly, no reprojection needed anywhere in the
+  pipeline.
+- License: **CC BY 4.0** (DGR 899/2014, DGR 1620/2016) — free reuse
+  including commercial and modification, on condition of a specific
+  attribution string (see the README) shown wherever the data or a
+  derived render is displayed. This needs a credits/about panel in the
+  shipped app eventually (tracked in `docs/PROGRESS.md`).
+- `tools/trails-source/fetch-trails.sh` downloads + clips it to our bbox;
+  unlike the DTM source this needs no special machine, just a small direct
+  download, but the raw whole-region shapefile still stays external/
+  gitignored rather than committed — only a future build script's output
+  (`public/data/trails.json`, once written) would be small enough and
+  project-specific enough to check in.
+
+This changes the roadmap: trails/huts were scoped as an OSM-based phase-6
+stretch goal (§7) when we only had OSM as the option. Worth revisiting
+that phasing now that we have a real, numbered, difficulty-graded dataset
+— not decided yet, flagged in `docs/PROGRESS.md`. OSM likely still has a
+role for what this dataset doesn't cover (park boundary, hydrology,
+rifugi as standalone POIs).
+
 ## 4. Data pipeline
 
 Build-time only, static output — no backend/server, everything is prebuilt
@@ -98,15 +134,17 @@ than tiled from a remote source).
 
 There are two stages, kept deliberately separate:
 
-- **`tools/dtm-source/*.sh`** — external, manual, run outside this repo and
-  outside the normal build (see §3). Turns the 10 GB native DTM into a
-  small, correctly-calibrated heightmap crop. Occasional/one-off, not run
-  on every build, not something a fresh clone of this repo can run (it
-  needs the 10 GB source file, which isn't checked in).
+- **`tools/dtm-source/*.sh`** and **`tools/trails-source/*.sh`** —
+  external, manual, run outside this repo and outside the normal build
+  (see §3). Turn the 10 GB native DTM and the whole-region trail dataset
+  respectively into small, PNGP-clipped extracts. Occasional/one-off, not
+  run on every build; the DTM script also isn't something a fresh clone of
+  this repo can run on its own (needs the 10 GB source file, not checked
+  in) — the trails script can, it just needs `gdal-bin` and network access.
 - **`tools/*.mjs`** below — the regular, repo-local build pipeline. Takes
-  whatever heightmap currently sits in `DEM/` (regardless of which of the
-  two calibration paths in §3 produced it) and turns it into the web-ready
-  assets under `public/data/`.
+  whatever raw extracts currently sit in `DEM/` / wherever the trail
+  extract lands, and turns them into the web-ready assets under
+  `public/data/`.
 
 ```
 tools/
@@ -117,9 +155,13 @@ tools/
                                JSON sidecar with bbox, real min/max elevation, meters/px —
                                used for CPU-side height queries: POI placement, waterfall
                                brink height, camera/terrain clamping)
-  fetch-osm.mjs           Pulls trails, mountain huts (rifugi), hydrology, and the park
-                             boundary from OpenStreetMap/Overpass for the PNGP bbox
-                             (attribution required, ODbL).
+  build-trails.mjs        Regione VDA GeoJSON (from tools/trails-source/fetch-trails.sh)
+                             -> public/data/trails.json (segnavia number, name, difficulty
+                             T/E/EE/EEA, length, dislivello) — see §3. Requires the CC BY 4.0
+                             attribution to be surfaced wherever this renders (§9).
+  fetch-osm.mjs           Pulls mountain huts (rifugi), hydrology, and the park boundary
+                             from OpenStreetMap/Overpass for the PNGP bbox (attribution
+                             required, ODbL). No longer used for trails — see §3.
   build-poi.mjs           Curated points of interest -> public/data/poi.json
                              (peaks, rifugi, lakes, valleys, passes — hand-authored,
                              cross-checked against OSM output).
@@ -180,11 +222,11 @@ user's stated priorities; can reshuffle as we learn more.
 |---|---|
 | 0 — Setup | This doc, repo scaffold (Vite + Three.js), DEM calibration resolved, heightmap pipeline producing calibrated `heights.bin` + displacement texture |
 | 1 — MVP terrain | GPU-displaced terrain mesh, fly/orbit camera, static sun + simple sky/fog. First deploy to Vercel to validate the static-hosting pipeline end to end |
-| 2 — Points of interest | Curated POI dataset (peaks, rifugi, lakes, valleys), map markers + info panel, fly-to-POI navigation |
+| 2 — Points of interest | Curated POI dataset (peaks, rifugi, lakes, valleys), map markers + info panel, fly-to-POI navigation. **Candidate to also bring in numbered/graded trails here** (§3) — was OSM-only phase-6 scope, revisit now that we have the VDA dataset; not decided yet |
 | 3 — Water & animation | Rivers/lakes, waterfalls (e.g. Cascate di Lillaz) with shader animation + mist, glaciers as a distinct surface |
 | 4 — Environment | Time-of-day slider driving sun position/sky/fog/exposure; weather states (clear → clouds → rain → snow) |
 | 5 — Navigation aids | Compass HUD, live position readout (lat/lon, elevation, nearest place name) |
-| 6 — Life & atmosphere (stretch) | Wildlife (Alpine ibex, chamois, marmots — the park's founding species), procedural ambient audio, trails/huts from OSM, treeline vegetation |
+| 6 — Life & atmosphere (stretch) | Wildlife (Alpine ibex, chamois, marmots — the park's founding species), procedural ambient audio, huts/hydrology from OSM, treeline vegetation |
 | 7 — Polish | LOD/tiling if draw distance needs it, mobile pass, optional automated screenshot QA |
 
 ## 8. Module layout
@@ -197,9 +239,10 @@ pngp-viewer/
 │   └── PROGRESS.md         running status/decision log — read this first each session
 ├── tools/
 │   ├── dtm-source/         external/manual GDAL scripts, run outside the repo (see §3-4)
+│   ├── trails-source/      external/manual trail dataset fetch+clip, run outside the repo (see §3-4)
 │   └── *.mjs               regular build-time node scripts (see §4)
 ├── public/
-│   └── data/               generated static assets (heights.bin, heightmap.png, poi.json, ...)
+│   └── data/               generated static assets (heights.bin, heightmap.png, poi.json, trails.json, ...)
 ├── src/
 │   ├── main.js             entry point, scene setup, render loop
 │   ├── terrain.js          heightmap-driven terrain mesh + displacement shader
@@ -234,7 +277,11 @@ retrofit later:
   object storage instead. Not a blocker now — flagging so it's a deliberate
   choice later, not an accident.
 - **Data licensing**: OSM data is ODbL (attribution required, redistribution
-  of derived renders is fine). Any satellite/orthophoto basemap needs its
+  of derived renders is fine). The Regione Valle d'Aosta trail dataset (§3)
+  is CC BY 4.0 — commercial use and modification both fine, but requires a
+  specific attribution string shown wherever the data (or a render of it)
+  appears; needs an actual credits/about panel in the UI once trails ship,
+  not just a code comment. Any satellite/orthophoto basemap needs its
   license checked before going public — Italy's Geoportale Nazionale/PCN
   orthophotos are a good candidate (open), ESRI World Imagery has usage
   restrictions worth reading closely before shipping publicly. Decide when
@@ -252,10 +299,8 @@ phase 7 at earliest).
 Tracked with current status in [docs/PROGRESS.md](PROGRESS.md) — check there
 before assuming anything below is still unresolved.
 
-1. Run `tools/dtm-source/extract-heightmap.sh` against the real
-   `DTM0508_002_UNICO.ASC` (§3-4) to get an undistorted heightmap straight
-   from source, superseding the current square/UE5-derived PNG. Not
-   blocking — the per-axis-scale fallback works with what's already in the
-   repo — but preferred once done.
-2. Exact basemap/orthophoto source for later imagery draping, once we get to
+1. Exact basemap/orthophoto source for later imagery draping, once we get to
    phase 6/7 polish (§9).
+2. Whether to move numbered/graded trails from phase 6 (OSM-based stretch
+   goal) up to phase 2 alongside POI, now that we have the official VDA
+   dataset instead of just OSM (§3, §7) — not decided with the user yet.
