@@ -186,10 +186,28 @@ preserves 16 bits: `sharp` was tried first and silently truncated this
 file's values to 8 bits on raw extraction (confirmed against
 `gdalinfo -stats` and Python/PIL ground truth — full 0–65535 range);
 `fast-png` decodes it correctly and is what `process-heightmap.mjs` uses.
-The output binary is uploaded at runtime as a `THREE.DataTexture`
-(`RedFormat`/`UnsignedShortType`, normalized R16 under WebGL2), which
-preserves full precision *and* gets correct hardware bilinear filtering
-with no shader-side unpacking.
+**Revised 2026-07-28, while writing `src/terrain.js`**: the output binary
+was originally meant to upload as a single-channel `THREE.DataTexture`
+(`RedFormat`/`UnsignedShortType`, normalized R16 under WebGL2). That
+requires the `EXT_texture_norm16` WebGL extension — which **Firefox does
+not support at all** (confirmed via caniuse, and independently reproduced
+directly: real `texStorage2D`/`texSubImage2D` WebGL errors and a
+completely flat, un-displaced terrain on a context lacking the extension).
+Not viable for a public site. Fixed by packing each 16-bit sample across
+two 8-bit channels instead (R = high byte, G = low byte) into an `RGFormat`/
+`UnsignedByteType` `DataTexture` — `RG8` is core WebGL2, always filterable,
+no extension needed. The vertex shader (patched via `MeshStandardMaterial.
+onBeforeCompile`, replacing the built-in `displacementmap_vertex` chunk)
+reconstructs `(r*256+g)/257` from the hardware-bilinear-filtered R/G
+samples; this is exact, not an approximation, because linear interpolation
+distributes over the `value = R*256+G` split - filtering R and G
+independently then combining gives the same result as filtering the true
+16-bit value directly. Verified by rendering the reconstructed height as a
+grayscale, unlit, top-down image and comparing it pixel-for-pixel by eye
+against the source heightmap PNG (identical drainage pattern, ridgelines,
+and silhouette - see `docs/PROGRESS.md`), plus an orientation check against
+the known Mont Blanc peak location (§3) to confirm north/south and east/
+west weren't swapped.
 
 Design choice: terrain is **GPU-displaced**, not a literal CPU mesh at DEM
 resolution. A 4033×4033 heightmap is ~16.3M samples — far too many to hand
@@ -268,7 +286,7 @@ user's stated priorities; can reshuffle as we learn more.
 | 4 — Environment | Time-of-day slider driving sun position/sky/fog/exposure; weather states (clear → clouds → rain → snow) |
 | 5 — Navigation aids | Compass HUD, live position readout (lat/lon, elevation, nearest place name) |
 | 6 — Life & atmosphere (stretch) | Wildlife (Alpine ibex, chamois, marmots — the park's founding species), procedural ambient audio, huts/hydrology from OSM, treeline vegetation |
-| 7 — Polish | LOD/tiling if draw distance needs it, mobile pass, optional automated screenshot QA |
+| 7 — Polish | Tune/extend the LOD-tiled terrain from phase 1 if draw distance needs more than one tile (§10: LOD itself is a standing principle from phase 1 on, not deferred - phase 7 is refinement, not the first attempt), mobile pass, optional automated screenshot QA |
 
 ## 8. Module layout
 
@@ -286,7 +304,10 @@ pngp-viewer/
 │   └── data/               generated static assets (heightfield.<hash>.bin + heightfield.json, poi.json, trails.json, ...)
 ├── src/
 │   ├── main.js             entry point, scene setup, render loop
-│   ├── terrain.js          heightmap-driven terrain mesh + displacement shader
+│   ├── geo.js              world (EPSG:23032) <-> local scene-meter conversion, the one
+│                              place this math lives (§6)
+│   ├── terrain.js          heightmap-driven terrain mesh + displacement shader,
+│                              plus the shared CPU-side height query (§4)
 │   ├── lighting.js         sun position, day/night cycle
 │   ├── atmosphere.js       sky, fog, aerial perspective
 │   ├── weather.js          clear/clouds/rain/snow state machine

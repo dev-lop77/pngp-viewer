@@ -4,8 +4,10 @@ Read this first at the start of each session. Update it before ending one.
 
 ## Status as of 2026-07-28
 
-**Phase: 0 — Setup, complete.** Vite + Three.js scaffold is in place and
-verified rendering. Next work starts phase 1 (real terrain).
+**Phase: 1 — MVP terrain, core rendering working.** Real GPU-displaced
+terrain renders correctly (verified, not just "no errors" - see below).
+Remaining for phase 1: first deploy to Vercel to validate the
+static-hosting pipeline end to end (not done yet).
 
 ### Done since 2026-07-25
 - Ran `tools/dtm-source/extract-heightmap.sh` on the processing machine
@@ -143,6 +145,62 @@ verified rendering. Next work starts phase 1 (real terrain).
     reconstructed elevation range ≈ 292–4805 m (consistent with the source's
     292.2–4809.8 m — the couple-meter difference is expected, downsampling
     smooths the single most extreme peak/valley pixel).
+- **Wrote `src/geo.js` and `src/terrain.js`, replacing `main.js`'s
+  placeholder cube with the real GPU-displaced terrain.**
+  - `geo.js`: the shared world↔local conversion module decided in §6
+    (bbox-center origin, `+X=East/+Y=Up/+Z=South`), so this math has
+    exactly one home going forward.
+  - **Hit the exact risk flagged when choosing the height encoding, and
+    caught it immediately rather than shipping it**: a single-channel 16-bit
+    `THREE.DataTexture` (`RedFormat`/`UnsignedShortType`) needs the
+    `EXT_texture_norm16` WebGL extension, which **Firefox doesn't support at
+    all** (checked via caniuse — not a Safari-only gap as I might have
+    assumed). Reproduced the failure directly rather than trusting the
+    caniuse table alone: real `texStorage2D`/`texSubImage2D` WebGL errors
+    and a completely flat, un-displaced terrain when tested against a
+    WebGL2 context lacking the extension (this project's headless test
+    browser, SwiftShader, happens to lack it too — useful, since it forced
+    the issue immediately instead of only surfacing on a future user's
+    Firefox). Switched to packing each 16-bit height sample across two
+    8-bit channels (R=high byte, G=low byte) in an `RGFormat`/
+    `UnsignedByteType` texture (`RG8` - core WebGL2, always filterable,
+    no extension), with the vertex shader patched via
+    `MeshStandardMaterial.onBeforeCompile` to reconstruct
+    `(r*256+g)/257` from the two channels. This is exact (not an
+    approximation) because linear interpolation distributes over that
+    split - hardware bilinear-filtering R and G independently and
+    recombining afterward gives the same result as filtering the true
+    16-bit value would. Updated `docs/ARCHITECTURE.md` §4 with the
+    corrected approach and the reasoning above.
+  - **Found and fixed a second bug via the same instinct**: my first
+    orientation attempt assumed `DataTexture`'s default `flipY=false` was
+    fine; a raycaster-based verification attempt (against the *displaced*
+    mesh) returned all zeros first - turned out GPU vertex-shader
+    displacement never touches the CPU-side geometry Three.js's `Raycaster`
+    reads, so that approach couldn't have worked regardless of
+    orientation (a real limitation of "GPU-displaced, not a literal CPU
+    mesh," §4 - worth remembering before reaching for raycasting against
+    this terrain again; `sampleHeight()` in `terrain.js` is the correct
+    way to query height, always). Verified properly instead: rendered the
+    reconstructed height as an unlit top-down grayscale image and compared
+    it directly against the source heightmap PNG - initially confirmed the
+    *shape* matched, then specifically checked orientation by placing
+    colored markers at known compass directions and at the real Mont Blanc
+    coordinates (computed independently in Node from the manifest, not
+    from the render) — all landed exactly where real-world geography says
+    they should (Mont Blanc in the NW, matching docs/ARCHITECTURE.md §3).
+    This confirmed `texture.flipY` needed to be explicitly set `true`
+    (overriding `DataTexture`'s default) since row 0 = north in the data
+    but V=0 = south on the rotated plane geometry - documented in
+    `terrain.js` directly so this doesn't have to be re-derived later.
+  - Renderer: added `logarithmicDepthBuffer: true` (the scene spans tens
+    of km, §6 flagged plain depth-buffer precision as a risk at this
+    scale) and basic `THREE.Fog` for depth cueing (satisfies phase 1's
+    "simple sky/fog", §7).
+  - Mesh resolution for now: 256×~147 segments (aspect-matched to the
+    heightfield) - a single tile, not yet quadtree/LOD (open question
+    below still tracks that decision for later, once profiling data
+    exists).
 
 ### Open questions (non-blocking)
 1. **Basemap/orthophoto source** for later imagery draping (phase 6/7) —
@@ -154,11 +212,13 @@ verified rendering. Next work starts phase 1 (real terrain).
    pending (don't assume still unresolved without checking the doc first —
    #1, #2, #4, #5's origin/axes half, and #11 were resolved 2026-07-28
    while writing `tools/process-heightmap.mjs`, see Done above):
-   - Before/during the phase 1 terrain renderer: #3 decide the tile/LOD
-     contract as part of the terrain design itself (not bolted on later),
-     and fix the §7/§10 wording tension found earlier. Also where the
-     shared local-coords conversion module lives (§6) — the math is
-     decided, just needs a home once `src/` has more than `main.js`.
+   - #5's "where the local-coords module lives" is resolved: `src/geo.js`.
+   - #3 (tile/LOD contract) is **partially resolved**: `src/terrain.js`
+     currently builds a single mesh/single-texture tile (256×~147
+     segments, matching the heightfield's aspect ratio) - workable for
+     phase 1's whole-map overview, but not yet a quadtree/multi-tile
+     system. Revisit before phase 7 if draw-distance/detail needs force
+     the issue sooner (§7's wording tension here is now fixed).
    - Before phase 5 (navigation aids): the other half of #5, the
      EPSG:23032↔WGS84 conversion (via `proj4` or similar) — not needed
      for terrain/trails/POI, only for compass/position readout, so it's
@@ -166,8 +226,10 @@ verified rendering. Next work starts phase 1 (real terrain).
    - Before finalizing the phase 2 trail contract: #6 verify the VDA trail
      dataset actually covers the whole park (not just intersects our bbox)
      against the real park boundary, once we have one.
-   - Not meaningful before a running prototype exists (§7 phase 1 done):
-     #9 performance budgets, #10 automated pipeline/correctness tests.
+   - #9 performance budgets and #10 automated pipeline/correctness tests
+     were gated on "a running prototype exists" - that's now true (terrain
+     renders), so these are available to pick up whenever useful, just not
+     done yet (nobody's asked for them specifically).
    - Good practice to keep in mind, no dedicated decision needed: #7 module/
      layer boundaries, #8 runtime failure/fallback behavior.
 4. The DEM's own license/attribution (distinct from the trail dataset's
@@ -176,12 +238,12 @@ verified rendering. Next work starts phase 1 (real terrain).
    shipping publicly (§9).
 
 ### Next steps (not yet started)
-1. Phase 1 MVP: GPU-displaced terrain mesh + fly/orbit camera + basic
-   sky/fog (replacing `src/main.js`'s placeholder cube), first deploy to
-   Vercel to prove the static-hosting pipeline. Keep §10 in mind even here:
-   sanity-check frame rate while flying across the whole map, not just at a
-   fixed viewpoint. Decide the tile/LOD contract as part of this, not after
-   (open question #3).
+1. Finish phase 1: first deploy to Vercel to prove the static-hosting
+   pipeline end to end (terrain mesh + camera + fog are done, see Done
+   above). Worth a real-browser sanity check too, not just the headless
+   verification done so far - especially Firefox, given the encoding fix
+   above was specifically about a Firefox gap the headless test happened
+   to also reproduce.
 2. Phase 2, when it starts: run `tools/trails-source/fetch-trails.sh`, then
    write `tools/build-trails.mjs` to turn its output into
    `public/data/trails.json` alongside `build-poi.mjs`. Apply §10 here in
@@ -192,13 +254,12 @@ verified rendering. Next work starts phase 1 (real terrain).
 
 ### How to resume
 Read `docs/ARCHITECTURE.md` for the full plan and rationale, then this file
-for exact status. The Vite + Three.js scaffold runs and renders (verified
-headlessly, see Done above) — `npm run dev` should just work. The real
-calibrated heightfield exists (`public/data/heightfield.*.bin` +
-`heightfield.json`, from `tools/process-heightmap.mjs`) but `src/main.js`
-doesn't consume it yet — that's phase 1's first real task (build the
-`THREE.DataTexture` from it and displace the terrain mesh, replacing the
-placeholder cube). Pick up at "Next steps" above; check open question #3
+for exact status. `npm run dev` renders real GPU-displaced terrain from the
+calibrated heightfield (`src/terrain.js` + `src/geo.js`), verified correct
+(not just error-free) via a direct pixel comparison against the source
+heightmap and a known-landmark orientation check - see Done above before
+assuming anything about the rendering pipeline needs re-deriving. Pick up
+at "Next steps" above; check open question #3
 before each one, there are specific `docs/ARCHITECTURE_SUGGESTIONS.md`
 items to revisit at each
 milestone.
