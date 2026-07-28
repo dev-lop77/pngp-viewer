@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadTerrain } from './terrain.js';
 import { loadTrails } from './trails.js';
+import { loadPOI, poiInfoHTML } from './poi.js';
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9fc9e8);
@@ -35,16 +36,65 @@ loadTerrain().then(({ mesh }) => {
   scene.add(mesh);
 });
 
-const creditLines = [];
+const creditLines = {};
+function renderCredits() {
+  document.getElementById('credits').innerHTML = Object.values(creditLines).join('<br>');
+}
+
 loadTrails().then(({ group, manifest }) => {
   scene.add(group);
   // CC BY 4.0 requires this attribution wherever the data (or a render of
   // it) is shown - docs/ARCHITECTURE.md §9, tools/trails-source/README.md.
-  creditLines.push(
+  creditLines.trails =
     `${manifest.source.attribution} ` +
-      `<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">${manifest.source.license}</a>`,
-  );
-  document.getElementById('credits').innerHTML = creditLines.join('<br>');
+    `<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">${manifest.source.license}</a>`;
+  renderCredits();
+});
+
+let poiIndex = null;
+loadPOI().then((index) => {
+  poiIndex = index;
+  scene.add(index.group);
+  // ODbL requires attribution wherever OSM data is shown - docs/ARCHITECTURE.md §9.
+  creditLines.poi =
+    `${index.manifest.source.attribution} ` +
+    `<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">${index.manifest.source.license}</a>`;
+  renderCredits();
+});
+
+// Click a POI marker: show its info panel and fly the camera toward it.
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let flying = null;
+
+function flyTo(poi) {
+  const endTarget = new THREE.Vector3(poi.local.x, poi.elevationM + 50, poi.local.z);
+  const viewDir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+  const endPos = endTarget.clone().addScaledVector(viewDir, 2500);
+  flying = {
+    startPos: camera.position.clone(),
+    endPos,
+    startTarget: controls.target.clone(),
+    endTarget,
+    t: 0,
+  };
+}
+
+renderer.domElement.addEventListener('click', (event) => {
+  if (!poiIndex) return;
+  pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+  pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+
+  const poi = poiIndex.pick(raycaster);
+  const panel = document.getElementById('poi-info');
+  if (poi) {
+    panel.innerHTML = poiInfoHTML(poi);
+    panel.style.display = 'block';
+    flyTo(poi);
+  } else {
+    panel.style.display = 'none';
+  }
 });
 
 window.addEventListener('resize', () => {
@@ -54,6 +104,13 @@ window.addEventListener('resize', () => {
 });
 
 renderer.setAnimationLoop(() => {
+  if (flying) {
+    flying.t = Math.min(1, flying.t + 0.02);
+    const e = 1 - (1 - flying.t) ** 3; // ease-out cubic
+    camera.position.lerpVectors(flying.startPos, flying.endPos, e);
+    controls.target.lerpVectors(flying.startTarget, flying.endTarget, e);
+    if (flying.t >= 1) flying = null;
+  }
   controls.update();
   renderer.render(scene, camera);
 });

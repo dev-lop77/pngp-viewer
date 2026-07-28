@@ -28,10 +28,31 @@
         color: inherit;
         pointer-events: auto;
       }
+      #poi-info {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        max-width: 20em;
+        padding: 10px 14px;
+        background: rgba(10, 14, 20, 0.75);
+        border-radius: 6px;
+        color: #fff;
+        font: 13px/1.4 -apple-system, system-ui, sans-serif;
+        display: none;
+      }
+      #poi-info .name {
+        font-size: 15px;
+        font-weight: 600;
+        margin-bottom: 2px;
+      }
+      #poi-info .warning {
+        color: #ffb74d;
+      }
     </style>
   </head>
   <body>
     <div id="credits"></div>
+    <div id="poi-info"></div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

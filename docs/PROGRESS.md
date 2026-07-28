@@ -4,20 +4,19 @@ Read this first at the start of each session. Update it before ending one.
 
 ## Status as of 2026-07-28
 
-**Phase: 2 — trails done, POI awaiting user curation.** Real GPU-displaced
+**Phase: 2 — functionally complete (trails + POI).** Real GPU-displaced
 terrain (phase 1) renders correctly; an actual deploy (GitHub Pages or
 self-managed Apache, §9) is the only phase-1 item left, not blocking.
-Numbered/graded trails now render over the terrain, difficulty shown via
-line style (solid/dashed/dotted/ferrata-ticks, not color - user request),
-with real computed elevation and a working CC BY 4.0 credits overlay.
-**Found a significant DEM data gap while building this (see
+Numbered/graded trails render over the terrain, difficulty shown via line
+style (solid/dashed/dotted/ferrata-ticks, not color - user request), with
+real computed elevation and a working CC BY 4.0 credits overlay. 370 POI
+(peaks/huts/passes/waterfalls/lakes) from OSM, filtered to the real park
+boundary (not the oversized DEM bbox) since the full 2,421-candidate draft
+was too large to hand-curate - click a marker for an info panel + fly-to
+camera. **Found a significant DEM data gap while building trails (see
 below)**: ~25% of the map (the Piemonte side of the park) has no real
 elevation data - accepted as a known limitation for now, per the user.
-For POI, user chose to use OSM as the starting draft (not just a
-cross-check) - `tools/fetch-osm.mjs` written and run, producing
-`tools/osm-poi-draft.json` (2,421 named candidates). **Waiting on the
-user to review/curate that file** before `build-poi.mjs`/`src/poi.js` get
-written - see Next steps.
+Next: phase 3 (water) or the phase-1 deploy, neither started yet.
 
 ### Done since 2026-07-25
 - Ran `tools/dtm-source/extract-heightmap.sh` on the processing machine
@@ -336,7 +335,7 @@ written - see Next steps.
     our heightfield's actual max-elevation pixel lands 20.4 m from the
     published summit coordinates - consistent with the ~15-20 m GDAL-based
     check from the original investigation. This resolves the EPSG:23032↔
-    WGS84 half of open question #3's #5 (see below) earlier than
+    WGS84 half of open question #4's #5 (see below) earlier than
     originally scoped, since OSM data needed it now.
   - Wrote `tools/fetch-osm.mjs`: converts our EPSG:23032 bbox to WGS84 to
     query Overpass, pulls `natural=peak`, `tourism=alpine_hut`,
@@ -366,9 +365,69 @@ written - see Next steps.
     2,421 (35%) are flagged `dataIncomplete: true`
     (fall in the DEM nodata gap above) - worth knowing when reviewing,
     though not excluded from the draft.
-  - **Waiting on the user to review/curate `tools/osm-poi-draft.json`**
-    before writing `tools/build-poi.mjs` (curated JSON -> `public/data/
-    poi.json`) and `src/poi.js` (markers + info panel + fly-to, per §7/§8).
+- **Finished POI**: user said the draft was too large to curate by hand -
+  "keep everything that falls within our project" (i.e. the real park,
+  not our oversized DEM bbox) instead, categories already chosen were
+  fine.
+  - Wrote `tools/fetch-park-boundary.mjs`: one-off fetch of the actual
+    Gran Paradiso NP boundary from OSM via **Nominatim** (not raw
+    Overpass) - Nominatim assembles multipolygon relations into proper
+    GeoJSON server-side, sidestepping having to reassemble ways into
+    closed rings ourselves (a real, easy-to-get-subtly-wrong geometry
+    problem - used the well-tested existing tool instead of reinventing
+    it, same instinct as choosing `fast-png`/`proj4` earlier). Result: a
+    single clean `Polygon`, 7,857 points, no holes. Saved as a static,
+    committed `tools/park-boundary.geojson` (165 KB) - no network call
+    needed by the regular build, unlike the trail/POI datasets that
+    benefit from re-fetching. This also resolves
+    `docs/ARCHITECTURE_SUGGESTIONS.md` #6 (verify against the real park
+    boundary) - see open questions below for what that turned up.
+  - Installed `@turf/boolean-point-in-polygon` + `@turf/helpers` (chose an
+    established geometry library over hand-rolling point-in-polygon, same
+    reasoning as above).
+  - Wrote `tools/build-poi.mjs`: filters `tools/osm-poi-draft.json` to
+    points falling inside `tools/park-boundary.geojson` -> `public/data/
+    poi.json`. **Verified the filter itself against two independent
+    control points** before trusting it on real data: the Gran Paradiso
+    peak (the park's own namesake) lands inside, Mont Blanc's summit
+    (correctly, a different massif) lands outside. Result: 2,421 -> 370
+    POIs (205 peaks, 116 passes, 44 lakes, 4 huts, 1 waterfall).
+  - **Noted a real OSM data-completeness gap while reviewing hut results**:
+    only 4 huts fell inside the park, and Rifugio Vittorio Emanuele II -
+    arguably the park's most famous rifugio - doesn't show up under
+    `tourism=alpine_hut` or in a direct Nominatim name search at all. Not
+    chased further (the user's instruction was to stop hand-curating, not
+    to start manually patching OSM gaps) but flagged in
+    `docs/ARCHITECTURE.md` §4 in case it matters later.
+  - Wrote `src/poi.js`: one `THREE.InstancedMesh` draw call per category
+    (5 total, colored spheres) - same instancing principle as trails.
+    Click handling in `main.js`: raycasts against all category meshes,
+    picks the closest hit across all of them (not just the first mesh
+    that happens to intersect - an easy mistake with multiple pickable
+    meshes), shows a name/category/elevation info panel (`#poi-info` in
+    `index.html`, warns if `dataIncomplete`), and flies the camera toward
+    the clicked POI via a simple eased lerp of both `camera.position` and
+    `controls.target` each frame.
+  - **Bug avoided by checking OrbitControls' source before assuming**: was
+    about to skip calling `controls.update()` during the fly-to animation
+    (based on an earlier, different debug-camera episode where manual
+    position changes seemed to need that). Actually reading
+    `OrbitControls.js` showed `update()` re-derives its internal spherical
+    state from the camera's *current* position every call rather than
+    caching stale state - so driving `camera.position`/`controls.target`
+    directly each frame and still calling `controls.update()` normally
+    works fine, no special-casing needed. Simpler code as a result.
+  - Added the ODbL attribution (`© OpenStreetMap contributors`, required
+    for OSM data, docs/ARCHITECTURE.md §9) to the same `#credits` overlay
+    used for the trails' CC BY 4.0 line - `main.js` now tracks credit
+    lines in a small keyed object so multiple sources can each contribute
+    a line without overwriting one another.
+  - Verified end-to-end with a real (simulated) click: projected a known
+    POI's world position to screen space, clicked there, confirmed the
+    info panel populated with the correct name/category/elevation and the
+    camera actually moved (position changed, screenshot shows a
+    significantly closer view of the marker cluster afterward) - not just
+    "no console errors."
 
 ### Open questions (non-blocking)
 1. **Basemap/orthophoto source** for later imagery draping (phase 6/7) —
@@ -381,7 +440,13 @@ written - see Next steps.
    `elevMin` (292.2356m) in `heightfield.json` is very likely the nodata
    floor, not a real elevation - don't treat it as one in future work
    (e.g. don't use it as "lowest point in the park" for anything).
-3. **Deferred items from `docs/ARCHITECTURE_SUGGESTIONS.md`** still
+3. **Should trails also be scoped to the real park boundary, like POI
+   now is?** Only 73/1130 trails (7.1% of points) fall within
+   `tools/park-boundary.geojson` - the rest is regionally-relevant VDA
+   network, not "in the park". Not decided - the user asked for this
+   scoping on POI specifically, hasn't been asked about trails. Revisit
+   before considering phase 2's trail contract fully final.
+4. **Deferred items from `docs/ARCHITECTURE_SUGGESTIONS.md`** still
    pending (don't assume still unresolved without checking the doc first —
    #1, #2, #4, #5's origin/axes half, and #11 were resolved 2026-07-28
    while writing `tools/process-heightmap.mjs`, see Done above):
@@ -401,13 +466,18 @@ written - see Next steps.
      `proj4` is currently a devDependency (build-time only); promote it to
      a regular dependency (or inline just the needed math) when phase 5
      actually needs it client-side.
-   - #6 (verify park-wide trail coverage): now understood better, not yet
-     resolved. We know the DEM has zero coverage for the Piemonte side of
-     the park (open question #2) - the *trail* dataset (VDA-only by
-     definition) presumably has the same gap for Piemonte-side trails, but
-     this hasn't been separately confirmed (VDA trail data could still be
-     complete for the VDA-side portion of the park, which is the more
-     relevant question once we have a real park boundary to check against).
+   - **#6 resolved, 2026-07-28**, now that `tools/park-boundary.geojson`
+     exists (fetched for POI filtering, see Done below): checked how much
+     of the VDA trail dataset actually falls within the real park boundary
+     - only **73 of 1130 trails** (7.1% of all trail points) do. This isn't
+     a coverage *gap* exactly - it's that the VDA "Rete Sentieristica" is a
+     whole-region network, and Gran Paradiso NP is a relatively small part
+     of Valle d'Aosta, so the vast majority of rendered trails are outside
+     the park (regionally relevant approach routes, not "missing park
+     trails"). Not acted on further: the user asked to scope *POI* to the
+     real park boundary but hasn't been asked about scoping *trails* the
+     same way - a real, undecided question, not a bug. Flagged as open
+     question below.
    - #9 performance budgets and #10 automated pipeline/correctness tests
      were gated on "a running prototype exists" - that's now true (terrain
      renders), so these are available to pick up whenever useful, just not
@@ -431,13 +501,15 @@ written - see Next steps.
    forwarding, in their own actual browser (not recorded which one - worth
    specifically confirming Firefox if not already, given the encoding fix
    above was about a Firefox-specific gap).
-2. Phase 2 continued: POI. **Blocked on the user** reviewing/curating
-   `tools/osm-poi-draft.json` (2,421 named candidates from OSM, see Done
-   above) - trim it down, fix names, add anything missing. Once curated:
-   write `tools/build-poi.mjs` (curated JSON -> `public/data/poi.json`,
-   same manifest/provenance conventions as trails - OSM is ODbL, needs
-   attribution too, §9) and `src/poi.js` (markers + info panel + fly-to
-   navigation, per `docs/ARCHITECTURE.md` §7/§8).
+2. **Phase 2 is now functionally complete** (trails + POI both done, see
+   Done above) - phase 2's remaining open item is only the trails-vs-
+   park-boundary scoping question (open question #3), not blocking.
+3. Not started: phase 3 (water & animation - rivers/lakes, waterfalls e.g.
+   Cascate di Lillaz, glaciers), per `docs/ARCHITECTURE.md` §7. Note
+   `tools/fetch-osm.mjs` already has the `waterway=waterfall` category
+   fetched (1 fell within the park boundary in `poi.json`, but the raw
+   draft has more outside it, and OSM hydrology/rivers/lake polygons
+   aren't fetched at all yet - see §4's fetch-osm.mjs entry).
 
 ### How to resume
 Read `docs/ARCHITECTURE.md` for the full plan and rationale, then this file
@@ -446,16 +518,17 @@ for exact status. `npm run dev` renders real GPU-displaced terrain
 difficulty shown via line style (`src/trails.js`), both verified correct
 (not just error-free) -
 see Done above before assuming anything about the rendering pipeline needs
-re-deriving. **Important caveat to internalize before touching elevation
-data**: ~25% of the DEM (Piemonte side of the park) is a nodata gap
-masquerading as real elevation - see open question #2 before trusting
+re-deriving. POI markers (`src/poi.js`) render too, with click -> info
+panel + fly-to-camera - see Done above, phase 2 is functionally complete
+(trails + POI). **Important caveat to internalize before touching
+elevation data**: ~25% of the DEM (Piemonte side of the park) is a nodata
+gap masquerading as real elevation - see open question #2 before trusting
 `elevMin`/any "lowest point" claim, or before being surprised that some
-POIs/trails there look wrong. **Currently blocked on the user** reviewing
-`tools/osm-poi-draft.json` before POI work can continue (see Next steps)
-- if that hasn't happened yet, there's nothing to build; check in with
-them rather than guessing a curated list. Check open question #3 before
+POIs/trails there look wrong. Check open question #4 before
 terrain-renderer/phase-5/phase-2-trail-contract milestones, there are
-specific `docs/ARCHITECTURE_SUGGESTIONS.md` items to revisit at each.
+specific `docs/ARCHITECTURE_SUGGESTIONS.md` items to revisit at each. Next
+up: phase 3 (water/waterfalls) per `docs/ARCHITECTURE.md` §7, or finishing
+phase 1's actual deploy - neither started, pick whichever the user wants.
 
 ## Status as of 2026-07-25 (historical)
 

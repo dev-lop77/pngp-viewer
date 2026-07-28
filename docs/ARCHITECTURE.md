@@ -208,20 +208,38 @@ tools/
                              passes, waterfalls, and lakes; converts to local scene
                              coordinates and samples our own heightfield for elevation, same
                              as build-trails.mjs. Drops unnamed elements (can't show a POI
-                             with no label). Writes tools/osm-poi-draft.json - a DRAFT for
-                             the user to review/curate (not public/data/poi.json), per their
-                             explicit choice to use OSM as the starting point rather than
-                             only a cross-check against a hand-authored list. Hydrology and
-                             the park boundary aren't fetched yet - separate Overpass
-                             queries, needed for phase 3 (water) and open question #6
-                             respectively, not phase 2.
-  build-poi.mjs           Not written yet - takes the user's curated version of
-                             tools/osm-poi-draft.json -> public/data/poi.json. No longer
-                             "hand-authored from scratch, cross-checked against OSM" as
-                             originally scoped - OSM is now the starting draft itself.
+                             with no label). Writes tools/osm-poi-draft.json - a DRAFT
+                             (3,746 raw -> 2,421 named). Hydrology isn't fetched yet -
+                             separate Overpass query, needed for phase 3 (water) only.
+  fetch-park-boundary.mjs Written 2026-07-28. One-off fetch of the real Gran Paradiso NP
+                             boundary from OSM via Nominatim (which assembles the
+                             multipolygon server-side - simpler and more reliable than
+                             reassembling ways from a raw Overpass relation ourselves).
+                             Saves tools/park-boundary.geojson (single Polygon, 7,857
+                             points, no holes) - static, no network call needed by the
+                             regular pipeline. Resolves docs/ARCHITECTURE_SUGGESTIONS.md #6.
+  build-poi.mjs           Written 2026-07-28. Filters tools/osm-poi-draft.json down to
+                             tools/park-boundary.geojson (point-in-polygon via @turf) ->
+                             public/data/poi.json - 2,421 -> 370 (205 peaks, 116 passes, 44
+                             lakes, 4 huts, 1 waterfall). Per the user's explicit call: the
+                             draft was too large to curate by hand, so "falls within the
+                             real park boundary" stands in for manual curation, rather than
+                             a hand-picked subset — supersedes the originally-planned
+                             "hand-authored, cross-checked against OSM" (§4 pipeline
+                             description originally proposed the reverse relationship).
+                             Verified the boundary/filter itself against two known control
+                             points: the Gran Paradiso peak lands inside, Mont Blanc's
+                             summit lands outside.
   verify.mjs (optional)   Playwright screenshot/QA pass, same idea as the reference
                              project's shoot/verify scripts — nice-to-have, not MVP.
 ```
+
+**Known OSM data gap**: some well-known huts are missing from the `hut`
+category (e.g. Rifugio Vittorio Emanuele II, arguably the park's most
+famous rifugio, doesn't turn up under `tourism=alpine_hut` or in Nominatim
+search at all) - OSM's tagging completeness varies and this wasn't chased
+further given the user's "keep everything, don't hand-curate" instruction.
+Worth a manual add later if it matters for the shipped experience.
 
 **Why the height data is a raw binary, not a PNG (decided 2026-07-28,
 resolving `docs/ARCHITECTURE_SUGGESTIONS.md` #1)**: browsers decode PNGs
@@ -371,7 +389,9 @@ pngp-viewer/
 │   ├── atmosphere.js       sky, fog, aerial perspective
 │   ├── weather.js          clear/clouds/rain/snow state machine
 │   ├── water.js            rivers, lakes, waterfalls
-│   ├── poi.js              point-of-interest markers + fly-to
+│   ├── poi.js              loads public/data/poi.json, one merged InstancedMesh draw
+│                              call per category (§10); click -> info panel + fly-to
+│                              camera lives in main.js (raycasts against poi.js's meshes)
 │   ├── controls.js         camera navigation
 │   ├── wildlife.js         (phase 6) ibex/chamois/marmots
 │   └── ui/                 DOM HUD: compass, position readout, POI panel, time/weather
@@ -418,10 +438,13 @@ later:
   is CC BY 4.0 — commercial use and modification both fine, but requires a
   specific attribution string shown wherever the data (or a render of it)
   appears. **Done, 2026-07-28**: a small always-visible `#credits` overlay
-  (`index.html`, populated from `trails.json`'s own `source.attribution`
-  field in `main.js`) covers this — not just a code comment. Will need to
-  become a fuller panel once more than one attributed source ships. Any
-  satellite/orthophoto basemap needs its
+  (`index.html`, populated in `main.js` from each loaded dataset's own
+  `source.attribution` field, one line per source in a small keyed object
+  so multiple sources don't overwrite each other) covers both the trails'
+  CC BY 4.0 and, since POI shipped too, OSM's ODbL — not just a code
+  comment, and already handling "more than one attributed source" since
+  that happened almost immediately. Any satellite/orthophoto basemap needs
+  its
   license checked before going public — Italy's Geoportale Nazionale/PCN
   orthophotos are a good candidate (open), ESRI World Imagery has usage
   restrictions worth reading closely before shipping publicly. Decide when
