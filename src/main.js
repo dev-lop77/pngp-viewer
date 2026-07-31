@@ -128,9 +128,21 @@ window.addEventListener('resize', () => {
 
 const timer = new THREE.Timer();
 
+const fpsEl = document.getElementById('fps');
+let fpsFrames = 0;
+let fpsAccum = 0;
+
 renderer.setAnimationLoop(() => {
   timer.update();
   waterUpdate?.(timer.getElapsed());
+
+  fpsFrames += 1;
+  fpsAccum += timer.getDelta();
+  if (fpsAccum >= 0.5) {
+    fpsEl.textContent = `${Math.round(fpsFrames / fpsAccum)} fps`;
+    fpsFrames = 0;
+    fpsAccum = 0;
+  }
   if (flying) {
     flying.t = Math.min(1, flying.t + 0.02);
     const e = 1 - (1 - flying.t) ** 3; // ease-out cubic

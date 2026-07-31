@@ -2,7 +2,28 @@
 
 Read this first at the start of each session. Update it before ending one.
 
-## Status as of 2026-07-30
+## Status as of 2026-07-31
+
+**Frame rate check done, confirmed good.** The one open item left from
+2026-07-30 (phase 3 + Piemonte DEM gap work was fully done but never
+committed - fixed first: commit `02d707a`). Added a small permanent `#fps`
+overlay (`index.html` + `src/main.js`, rolling 0.5s average via
+`THREE.Timer.getDelta()`) rather than relying on a headless measurement -
+headless Playwright runs on SwiftShader (software GL), which showed ~5
+fps and would have been a meaningless number for a real-hardware question.
+User tested for real: production preview build, port-forwarded to their
+own browser, flew across the whole map with all water features (~250:
+lakes/rivers/glaciers/waterfalls) live - **sustained ~30 fps during
+navigation**, confirmed good by the user. Satisfies §10's fluidity bar for
+phase 3; closes 2026-07-30's "Next steps" item #1. The `#fps` overlay
+stays in the app going forward as a standing, zero-cost way to spot-check
+this again at each future phase, per §10's "not just phase 7" principle.
+
+Next: phase 4 (environment: day-night/weather, `docs/ARCHITECTURE.md` §7)
+or finishing phase 1's deploy - neither started, whichever the user picks
+next (see "Next steps" below).
+
+## Status as of 2026-07-30 (historical)
 
 **Phase 3 (water & animation) done, confirmed in a real browser.** Lakes
 (198, ≥20m across), rivers (10 segments, main watercourses only), glaciers
