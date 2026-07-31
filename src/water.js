@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ATMO, ATMO_FOG_PARS, attachAtmo } from './atmosphere.js';
 
 // Lightweight custom shaders, not three.js's Water addon (real
 // render-to-texture reflection) - with up to ~200 lakes potentially
@@ -45,6 +46,11 @@ const NOISE_GLSL = `
 // all - caught by an actual real-browser screenshot showing nothing,
 // docs/PROGRESS.md). `#include <logdepthbuf_*>` are the standard chunks for
 // making a hand-written ShaderMaterial cooperate with that mode.
+//
+// Phase 4 (docs/ARCHITECTURE.md §7): same lesson applies to atmosphere.js's
+// fog patch - it only auto-instruments built-in materials (terrain/trails/
+// POI/glaciers, see attachAtmo() calls in their own modules), not a
+// hand-written one. ATMO_FOG_PARS + atmoApply() are included by hand below.
 function buildWaterMaterial({ deep, shallow, flowing }) {
   return new THREE.ShaderMaterial({
     transparent: true,
@@ -53,6 +59,7 @@ function buildWaterMaterial({ deep, shallow, flowing }) {
       uTime: time,
       uColorDeep: { value: deep },
       uColorShallow: { value: shallow },
+      ...ATMO.uniforms,
     },
     vertexShader: `
       #include <common>
@@ -77,6 +84,8 @@ function buildWaterMaterial({ deep, shallow, flowing }) {
       varying vec3 vNormal;
       varying vec2 vUv;
       ${NOISE_GLSL}
+      ${ATMO_FOG_PARS}
+      uniform vec3 uAtmoFogColor; // not declared by ATMO_FOG_PARS itself - that's the built-in materials' job via three's own 'fogColor'; custom shaders declare it themselves (same as weather.js's cloud deck)
       void main() {
         ${
           flowing
@@ -87,6 +96,7 @@ function buildWaterMaterial({ deep, shallow, flowing }) {
         vec3 viewDir = normalize(cameraPosition - vWorldPos);
         float fresnel = pow(1.0 - max(dot(viewDir, normalize(vNormal)), 0.0), 3.0);
         vec3 color = mix(uColorDeep, uColorShallow, clamp(ripple * 0.5 + fresnel * 0.6, 0.0, 1.0));
+        color = atmoApply(color, uAtmoFogColor, vWorldPos, cameraPosition);
         gl_FragColor = vec4(color, 0.72 + fresnel * 0.22);
         #include <logdepthbuf_fragment>
       }
@@ -98,13 +108,15 @@ function waterfallMaterial() {
   return new THREE.ShaderMaterial({
     transparent: true,
     side: THREE.DoubleSide,
-    uniforms: { uTime: time, uColor: { value: WATERFALL_COLOR } },
+    uniforms: { uTime: time, uColor: { value: WATERFALL_COLOR }, ...ATMO.uniforms },
     vertexShader: `
       #include <common>
       #include <logdepthbuf_pars_vertex>
       varying vec2 vUv;
+      varying vec3 vWorldPos;
       void main() {
         vUv = uv;
+        vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         #include <logdepthbuf_vertex>
       }
@@ -114,12 +126,16 @@ function waterfallMaterial() {
       uniform float uTime;
       uniform vec3 uColor;
       varying vec2 vUv;
+      varying vec3 vWorldPos;
       ${NOISE_GLSL}
+      ${ATMO_FOG_PARS}
+      uniform vec3 uAtmoFogColor;
       void main() {
         float flow = fract(vUv.y * 6.0 - uTime * 1.4 + noise(vec2(vUv.x * 10.0, vUv.y * 2.0)) * 0.3);
         float streak = smoothstep(0.0, 0.15, flow) * smoothstep(0.4, 0.15, flow);
         float brightness = 0.75 + streak * 0.35 + (1.0 - vUv.y) * 0.15;
-        gl_FragColor = vec4(uColor * brightness, 0.8);
+        vec3 color = atmoApply(uColor * brightness, uAtmoFogColor, vWorldPos, cameraPosition);
+        gl_FragColor = vec4(color, 0.8);
         #include <logdepthbuf_fragment>
       }
     `,
@@ -205,7 +221,7 @@ function buildGlaciersMesh(glaciers) {
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
 
-  const material = new THREE.MeshStandardMaterial({ color: GLACIER_COLOR, roughness: 0.85, metalness: 0, side: THREE.DoubleSide });
+  const material = attachAtmo(new THREE.MeshStandardMaterial({ color: GLACIER_COLOR, roughness: 0.85, metalness: 0, side: THREE.DoubleSide }));
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'water-glaciers';
   return mesh;
@@ -293,6 +309,12 @@ function buildWaterfalls(waterfalls) {
       transparent: true,
       opacity: 0.55,
       depthWrite: false,
+      // SpriteMaterial's stock shader includes fog_vertex but has no
+      // 'transformed' variable (different vertex construction than a Mesh) -
+      // atmosphere.js's patched chunk assumes it exists, so this would be a
+      // real GLSL compile error otherwise. Same opt-out the reference
+      // project uses for its own Sprite/Points materials.
+      fog: false,
     });
     const sprite = new THREE.Sprite(spriteMaterial);
     sprite.position.set(base[0], base[1] + 8, base[2]);

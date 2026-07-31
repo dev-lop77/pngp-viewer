@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { attachAtmo } from './atmosphere.js';
 
 const CATEGORY_STYLE = {
   peak: { color: 0xffffff, radius: 180 },
@@ -38,7 +39,7 @@ export async function loadPOI(dataUrl = `${import.meta.env.BASE_URL}data`) {
   for (const [category, pois] of byCategory) {
     const style = CATEGORY_STYLE[category] ?? { color: 0xffffff, radius: 180 };
     const geometry = new THREE.SphereGeometry(style.radius, 12, 8);
-    const material = new THREE.MeshBasicMaterial({ color: style.color });
+    const material = attachAtmo(new THREE.MeshBasicMaterial({ color: style.color }));
     const mesh = new THREE.InstancedMesh(geometry, material, pois.length);
     mesh.name = `poi-${category}`;
 

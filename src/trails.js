@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { attachAtmo } from './atmosphere.js';
 
 // CAI difficulty scale (docs/ARCHITECTURE.md §3) shown via line STYLE, not
 // color - matches real hiking-map convention (a single trail color, with
@@ -89,19 +90,19 @@ export async function loadTrails(dataUrl = `${import.meta.env.BASE_URL}data`) {
 
   if (positionsByStyle.solid.length) {
     group.add(
-      buildLineSegments(positionsByStyle.solid, new THREE.LineBasicMaterial({ color: TRAIL_COLOR }), 'trails-solid'),
+      buildLineSegments(positionsByStyle.solid, attachAtmo(new THREE.LineBasicMaterial({ color: TRAIL_COLOR })), 'trails-solid'),
     );
   }
   if (positionsByStyle.dashed.length) {
-    const material = new THREE.LineDashedMaterial({ color: TRAIL_COLOR, dashSize: 30, gapSize: 20 });
+    const material = attachAtmo(new THREE.LineDashedMaterial({ color: TRAIL_COLOR, dashSize: 30, gapSize: 20 }));
     group.add(buildLineSegments(positionsByStyle.dashed, material, 'trails-dashed'));
   }
   if (positionsByStyle.dotted.length) {
-    const material = new THREE.LineDashedMaterial({ color: TRAIL_COLOR, dashSize: 4, gapSize: 16 });
+    const material = attachAtmo(new THREE.LineDashedMaterial({ color: TRAIL_COLOR, dashSize: 4, gapSize: 16 }));
     group.add(buildLineSegments(positionsByStyle.dotted, material, 'trails-dotted'));
   }
   if (positionsByStyle.ferrata.length) {
-    const material = new THREE.LineBasicMaterial({ color: TRAIL_COLOR });
+    const material = attachAtmo(new THREE.LineBasicMaterial({ color: TRAIL_COLOR }));
     group.add(buildLineSegments(positionsByStyle.ferrata, material, 'trails-ferrata-line'));
     group.add(buildLineSegments(ferrataTicks, material, 'trails-ferrata-ticks'));
   }

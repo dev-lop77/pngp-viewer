@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { setLocalOrigin } from './geo.js';
 import { sampleHeightfield } from './heightfield.js';
+import { attachAtmo } from './atmosphere.js';
 
 const MESH_SEGMENTS_X = 256;
 
@@ -87,6 +88,7 @@ export async function loadTerrain(dataUrl = `${import.meta.env.BASE_URL}data`) {
       `,
     );
   };
+  attachAtmo(material); // phase 4: aerial-perspective fog (docs/ARCHITECTURE.md §7)
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'terrain';

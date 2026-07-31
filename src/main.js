@@ -1,12 +1,17 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Sky } from 'three/addons/objects/Sky.js';
 import { loadTerrain } from './terrain.js';
 import { loadTrails } from './trails.js';
 import { loadPOI, poiInfoHTML } from './poi.js';
 import { loadWater } from './water.js';
+import { installAtmosphere } from './atmosphere.js';
+import { Lighting } from './lighting.js';
+import { Weather } from './weather.js';
+
+installAtmosphere(); // patch the fog chunks before any material compiles (phase 4, docs/ARCHITECTURE.md §7)
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x9fc9e8);
 scene.fog = new THREE.Fog(0x9fc9e8, 20000, 140000);
 
 const camera = new THREE.PerspectiveCamera(
@@ -20,6 +25,7 @@ camera.position.set(30000, 26000, 40000);
 const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
 document.body.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -28,10 +34,21 @@ controls.enableDamping = true;
 controls.minDistance = 500;
 controls.maxDistance = 120000;
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-sun.position.set(-30000, 40000, 20000);
-scene.add(sun);
+// Real lights, moved/recolored per time-of-day preset by lighting.js below -
+// unlike the reference project's unlit/baked-tint terrain, ours uses a real
+// MeshStandardMaterial (terrain.js/water.js's glaciers), so a real light
+// gives correct shading for free instead of needing a manual tint hack.
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(ambientLight);
+const sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
+scene.add(sunLight);
+
+const sky = new Sky();
+sky.scale.setScalar(400000); // comfortably beyond controls.maxDistance + the terrain bbox
+scene.add(sky);
+
+const lighting = new Lighting({ renderer, scene, sky, sunLight, ambientLight });
+let weather = null; // created once loadTerrain() gives us the real bbox to size the cloud deck (below)
 
 const creditLines = {};
 function renderCredits() {
@@ -50,6 +67,10 @@ loadTerrain().then(({ mesh, manifest }) => {
     creditLines.dem = attributed.map((s) => s.attribution).join(' · ');
     renderCredits();
   }
+
+  const { xmin, ymin, xmax, ymax } = manifest.bboxCrsUnits;
+  weather = new Weather(scene, { worldWidth: xmax - xmin, worldDepth: ymax - ymin });
+  lighting.weather = weather;
 });
 
 loadTrails().then(({ group, manifest }) => {
@@ -126,6 +147,19 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+const envTime = document.getElementById('env-time');
+const envTimeLabel = document.getElementById('env-time-label');
+envTime.addEventListener('input', () => {
+  lighting.setTime(Number(envTime.value));
+  envTimeLabel.textContent = lighting.label;
+});
+envTimeLabel.textContent = lighting.label;
+
+const envWeather = document.getElementById('env-weather');
+envWeather.addEventListener('change', () => {
+  weather?.set(Number(envWeather.value)); // no-op if terrain (and so weather's cloud deck sizing) hasn't loaded yet
+});
+
 const timer = new THREE.Timer();
 
 const fpsEl = document.getElementById('fps');
@@ -135,6 +169,8 @@ let fpsAccum = 0;
 renderer.setAnimationLoop(() => {
   timer.update();
   waterUpdate?.(timer.getElapsed());
+  weather?.update(timer.getDelta(), camera);
+  lighting.applyState(); // re-grades every frame so an in-progress weather transition stays live
 
   fpsFrames += 1;
   fpsAccum += timer.getDelta();

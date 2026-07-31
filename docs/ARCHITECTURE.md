@@ -449,7 +449,7 @@ user's stated priorities; can reshuffle as we learn more.
 | 1 — MVP terrain | GPU-displaced terrain mesh, fly/orbit camera, static sun + simple sky/fog. First real deploy (GitHub Pages or self-managed Apache, §9) to validate the static-hosting pipeline end to end |
 | 2 — Points of interest | Curated POI dataset (peaks, rifugi, lakes, valleys), map markers + info panel, fly-to-POI navigation. **Numbered/graded trails from the VDA dataset (§3) also land here** — moved up from the old OSM-only phase-6 scope, decided 2026-07-28 |
 | 3 — Water & animation | **Done, 2026-07-30.** Rivers (main watercourses only, not minor streams — logged scope cut), lakes (≥20m across), waterfalls (hand-curated allowlist incl. Cascate di Lillaz) with shader animation + mist, glaciers as a distinct draped surface. See §4's fetch-hydrology.mjs/build-hydrology.mjs entries and docs/PROGRESS.md for the sizing/decisions behind the scope |
-| 4 — Environment | Time-of-day slider driving sun position/sky/fog/exposure; weather states (clear → clouds → rain → snow) |
+| 4 — Environment | **Done, 2026-07-31.** Time-of-day slider driving sun position/sky/fog/exposure; weather states (clear → clouds → rain → snow). See §8's lighting.js/atmosphere.js/weather.js entries and docs/PROGRESS.md |
 | 5 — Navigation aids | Compass HUD, live position readout (lat/lon, elevation, nearest place name) |
 | 6 — Life & atmosphere (stretch) | Wildlife (Alpine ibex, chamois, marmots — the park's founding species), procedural ambient audio, huts/hydrology from OSM, treeline vegetation |
 | 7 — Polish | Tune/extend the LOD-tiled terrain from phase 1 if draw distance needs more than one tile (§10: LOD itself is a standing principle from phase 1 on, not deferred - phase 7 is refinement, not the first attempt), mobile pass, optional automated screenshot QA |
@@ -484,17 +484,35 @@ pngp-viewer/
 │                              line pattern (solid/dashed/dotted/ferrata-ticks), not
 │                              color, matching real hiking-map convention (user request,
 │                              2026-07-28)
-│   ├── lighting.js         sun position, day/night cycle
-│   ├── atmosphere.js       sky, fog, aerial perspective
-│   ├── weather.js          clear/clouds/rain/snow state machine
+│   ├── lighting.js         Done, 2026-07-31 (phase 4). 5 time-of-day presets (dawn/day/
+│                              golden/dusk/night), continuously blended by a slider
+│                              (fraction 0..1 across the cycle, wraps night->dawn) rather
+│                              than the reference's discrete keyboard-cycled steps - moves
+│                              a real THREE.DirectionalLight + AmbientLight (main.js) per
+│                              preset instead of the reference's baked-tint-on-unlit-
+│                              terrain hack, since our terrain/glaciers use a real
+│                              MeshStandardMaterial (§4/§7 has the full writeup incl. a
+│                              Sky-brightness caveat still needing a real-browser check)
+│   ├── atmosphere.js       Done, 2026-07-31. Aerial-perspective fog (haze + grounded
+│                              valley fog + sun-glow inscatter), patched into three.js's
+│                              global fog chunks for every built-in material
+│                              (attachAtmo()) and included by hand in water.js's custom
+│                              shaders (ATMO_FOG_PARS/atmoApply()) - ported from the
+│                              reference, see §7
+│   ├── weather.js          Done, 2026-07-31. clear/clouds/storm(rain)/snow, an FBM cloud
+│                              deck plane sized to our real bbox + one GPU-driven
+│                              particle system that's rain or snow depending on mode: see §7
 │   ├── water.js            rivers, lakes, waterfalls
 │   ├── poi.js              loads public/data/poi.json, one merged InstancedMesh draw
 │                              call per category (§10); click -> info panel + fly-to
 │                              camera lives in main.js (raycasts against poi.js's meshes)
 │   ├── controls.js         camera navigation
 │   ├── wildlife.js         (phase 6) ibex/chamois/marmots
-│   └── ui/                 DOM HUD: compass, position readout, POI panel, time/weather
-│                              controls. `#credits` (index.html) already covers CC BY
+│   └── ui/                 Not created yet - phase 4's two controls (time-of-day slider,
+│                              weather select) turned out small enough to wire directly in
+│                              index.html/main.js. Revisit a dedicated ui/ module once
+│                              phase 5 (compass, live position readout) adds real HUD
+│                              complexity. `#credits` (index.html) already covers CC BY
 │                              attribution for trails - a fuller about/credits panel
 │                              belongs here once there's more than one attributed source.
 ├── index.html

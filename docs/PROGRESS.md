@@ -19,9 +19,126 @@ phase 3; closes 2026-07-30's "Next steps" item #1. The `#fps` overlay
 stays in the app going forward as a standing, zero-cost way to spot-check
 this again at each future phase, per §10's "not just phase 7" principle.
 
-Next: phase 4 (environment: day-night/weather, `docs/ARCHITECTURE.md` §7)
-or finishing phase 1's deploy - neither started, whichever the user picks
-next (see "Next steps" below).
+**Later the same day: phase 4 (environment) built end to end.** User chose
+to go with a full port of the reference project's lighting/atmosphere/
+weather sophistication (Sky addon + 5 time-of-day presets with crossfade,
+aerial-perspective fog replacing plain linear fog, procedural cloud deck,
+GPU rain/snow particles) rather than a simplified version, after being
+shown what the reference's actual code does (fetched and read
+`lighting.js`/`atmosphere.js`/`weather.js`/`main.js` from
+github.com/shlokkhemani/ode-to-yosemite directly, same "verify the real
+code before adapting" instinct as phase 3's waterfalls). Confirmed via
+`AskUserQuestion` before building given the real complexity/risk trade-off
+(this patches three.js's global fog shader chunks, the same class of
+shader-integration risk as phase 3's logarithmicDepthBuffer landmine).
+
+### Done: phase 4 (environment)
+- **New modules**: `src/atmosphere.js` (shared `ATMO` uniforms + global
+  `THREE.ShaderChunk.fog_*` patch + `attachAtmo()` for built-ins +
+  `ATMO_FOG_PARS`/`atmoApply()` exported for manual use), `src/lighting.js`
+  (5 presets: dawn/day/golden/dusk/night), `src/weather.js` (4 modes:
+  clear/clouds/storm/snow). `docs/ARCHITECTURE.md` §8 has the full
+  per-module writeup.
+- **Real diverges from the reference on purpose, not by accident**: the
+  reference's terrain is unlit (sun shading baked into satellite imagery),
+  so its lighting.js multiplies a manual "tint" onto materials and computes
+  its own slope-relighting hack. Ours uses a real `MeshStandardMaterial`
+  (terrain.js, water.js's glaciers) lit by a real `THREE.DirectionalLight`
+  + `THREE.AmbientLight` (main.js) - so `lighting.js` just moves/recolors
+  those two real lights per preset and gets correct shading for free, no
+  tint hack or relight term needed. Two direction vectors per preset,
+  same as the reference: `sun` (the Sky dome's literal sun position, can
+  dip below the horizon at night) vs `light` (defaults to `sun` but
+  substitutes a moon-like elevated angle at night, used for both the real
+  DirectionalLight's direction and the glow/inscatter term) - kept for the
+  same reason the reference has it: a real light shining from below the
+  horizon at night would be physically wrong and leave the terrain black.
+- **Continuous slider, not discrete keyboard cycling**: the reference cycles
+  presets with a keypress (`L`) since it's a pointer-lock walking-sim demo;
+  this project's stack decision is a DOM-overlay HUD (no React, no
+  pointer-lock), so `lighting.setTime(fraction)` instead interpolates
+  directly between whichever two presets a 0..1 slider position falls
+  between (wrapping night->dawn for a full day cycle) - instant, not
+  animated, since dragging the slider already supplies the "animation."
+  Weather stays discrete (`set()`/`cycle()`, ~4s crossfade) since "weather
+  states" is the roadmap's own wording and a `<select>` fits better than a
+  second slider.
+- **`attachAtmo()` wired into every built-in material**: terrain.js,
+  trails.js (all 4 line-style materials), poi.js (per-category
+  InstancedMesh), water.js's glaciers - each module attaches its own
+  atmosphere integration rather than main.js reaching into other modules'
+  materials, matching the existing module-ownership style.
+- **water.js's lakes/rivers/waterfall-ribbon custom `ShaderMaterial`s
+  needed manual integration**, not `attachAtmo()` - same "hand-written
+  shaders don't get automatic treatment" lesson as phase 3's
+  `logarithmicDepthBuffer` chunks, just for fog this time. Added
+  `ATMO_FOG_PARS` + a manual `atmoApply()` call in each fragment shader.
+- **Two real bugs caught by testing immediately, both loud/visible this
+  time (not silent like phase 3's landmine)**:
+  1. `ATMO_FOG_PARS` doesn't declare `uAtmoFogColor` (that uniform is only
+     auto-wired for built-in materials via three's own `fogColor`); a
+     custom shader must declare it itself. Missed on the first pass in
+     water.js, caught immediately by `tools/verify.mjs` as a real GLSL
+     compile error (`'uAtmoFogColor' : undeclared identifier`) - fixed by
+     adding the declaration explicitly, same as weather.js's cloud deck
+     already did correctly.
+  2. `SpriteMaterial`'s stock shader includes the `fog_vertex` chunk but
+     has no `transformed` variable (a different vertex construction than a
+     Mesh) - would have been a GLSL compile error for the waterfall mist
+     sprites. Caught by reading three.js's own `sprite.glsl.js` source
+     *before* running anything (the reference project's own code comments
+     flag this exact gotcha for Sprite/Points materials) - fixed
+     preemptively by setting `fog: false` on the mist `SpriteMaterial`,
+     same opt-out the reference uses.
+- **A third, much harder bug: the 'day' (midday) preset's sky rendered as
+  flat clipped white**, no blue at all, while dawn/golden/dusk/night all
+  looked right immediately. Not a wiring mistake - confirmed by sampling
+  actual rendered pixel colors (via `fast-png`-decoded screenshots, not
+  just eyeballing) that even the *reference project's own exact* midday
+  numbers (`sunElev 38, turbidity 6, rayleigh 1.8, exposure 0.62`) clip to
+  white in our setup. Root cause not fully pinned down: three.js's Sky
+  addon (Preetham model) turns out extremely sensitive to sun elevation
+  once the sun gets high (its `vSunE` term is exponential in elevation),
+  and neither lowering exposure (tried down to 0.1), lowering turbidity,
+  nor raising rayleigh reliably pulled it back below clipping in a way
+  that stayed visually distinct from "golden hour." Settled for a lower
+  midday sun elevation (25° instead of a realistic ~40°+) that stays in a
+  well-behaved range - **not fully verified**: this could plausibly be a
+  SwiftShader (headless/software GL) precision artifact in a shader this
+  full of `exp()`/`pow()` chains rather than a true rendering result, since
+  every other preset (and all of phase 1-3's rendering) has only ever been
+  confirmed correct via a *real* browser, never headless. **Ask the user to
+  specifically check the midday slider position in their real browser**
+  before trusting this is actually fixed and not just headless-plausible.
+- Added a small DOM control panel (`#env-controls`, bottom-left of
+  `index.html`): a range slider (`#env-time`) for time-of-day, a `<select>`
+  (`#env-weather`) for weather mode. Wired in `main.js`.
+- Verified with `tools/verify.mjs` (zero console/page errors after the two
+  fixes above) plus manual screenshot inspection at all 5 presets and all
+  4 weather modes (cloud deck visibly drifts/shadows the terrain, rain
+  reads as streaks, snow as flakes, storm/snow visibly greys out the whole
+  scene) - real memory of this: screenshots were taken by scripting the
+  DOM slider/select via Playwright's `page.evaluate()` + dispatching
+  `input`/`change` events, not by adding anything permanent to the app.
+
+### Open questions (non-blocking)
+1. **Midday preset's sky brightness - not yet confirmed on real hardware**
+   (see above). If it still looks washed out for real, worth trying:
+   Firefox/Chrome comparison, or abandoning the Sky addon's Preetham model
+   for high-sun angles in favor of a simpler hand-authored gradient.
+2. Previously-open items (Piemonte DTM/VDA license verification, basemap/
+   orthophoto source, `waterway=stream`/glacier relations not fetched,
+   waterfall ribbons being a visual approximation) all still stand
+   unchanged - see the 2026-07-30 section below.
+
+### Next steps (not yet started)
+1. **Get the user's real-browser confirmation on phase 4**, especially the
+   midday sky (see Open questions #1) - the standing "verify in a real
+   browser, not just headless" rule applies here more than usual given the
+   SwiftShader-precision suspicion.
+2. Phase 5 (navigation aids: compass HUD, live position readout) or
+   finishing phase 1's deploy - neither started, whichever the user wants
+   next.
 
 ## Status as of 2026-07-30 (historical)
 
