@@ -53,3 +53,35 @@ repo (`DEM/pngp_extraction_report.txt`), so running with defaults reproduces
 an equivalent-but-undistorted version of the current heightmap. Adjust
 `XMIN`/`YMIN`/`XMAX`/`YMAX` in `extract-heightmap.sh` for a different area
 of interest.
+
+## Closing the Piemonte-side gap (added 2026-07-30)
+
+The VDA source above only covers Valle d'Aosta - Gran Paradiso NP also has
+a Piemonte side, which rendered as a flat fake plain until this was added.
+See `docs/ARCHITECTURE.md` §3 ("Closing the Piemonte gap") for the full
+story. Three more scripts, run in order:
+
+3. `fetch-piemonte-dtm.sh` — automated (network + GDAL only, no source file
+   needed, unlike the VDA script). Pulls Regione Piemonte's own 5m LiDAR
+   DTM via their live WCS, tiled to respect the server's `MAXSIZE=2048`
+   limit. Outputs `piemonte_dtm.tif` in `$HOME/pngp-dtm-work/piemonte/`.
+4. `fetch-tinitaly.sh` — also automated. Downloads the INGV TINITALY tiles
+   covering the bbox directly (plain unauthenticated files, no API needed
+   despite the download page being a browser tile-picker). Outputs
+   `tinitaly.vrt` in `$HOME/pngp-dtm-work/tinitaly/`.
+5. `merge-heightmaps.sh` — run after both of the above (and after the VDA
+   `pngp_heightmap.png`/`_meta.json` are already in `DEM/`, as produced by
+   `extract-heightmap.sh` or already present). Priority-composites all 3
+   sources (VDA > Piemonte > TINITALY, best real value per pixel) and
+   writes fresh `pngp_heightmap.png`/`_meta.json` to
+   `$HOME/pngp-dtm-work/merged/` - copy those into `DEM/` same as before.
+   Hard-fails if real elevation data is still missing *inside the actual
+   park boundary* (checked via `check-park-coverage.mjs`, not the
+   oversized bbox - a residual gap on the France side is expected and
+   fine, see §3).
+
+**After copying a new heightmap into `DEM/`**, re-run the full downstream
+pipeline, not just `tools/process-heightmap.mjs`: `tools/fetch-osm.mjs` and
+`tools/fetch-hydrology.mjs` bake elevation into their own draft JSON and
+need to be re-run too (not just their `build-*.mjs` counterparts), or
+POI/water will silently keep stale elevations from the old heightfield.

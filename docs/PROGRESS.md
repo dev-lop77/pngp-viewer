@@ -2,7 +2,247 @@
 
 Read this first at the start of each session. Update it before ending one.
 
-## Status as of 2026-07-28
+## Status as of 2026-07-30
+
+**Phase 3 (water & animation) done, confirmed in a real browser.** Lakes
+(198, ≥20m across), rivers (10 segments, main watercourses only), glaciers
+(47 footprints), and 3 hand-curated waterfalls (Cascate di Lillaz, Cascata
+Entrelor, Cascata Biolet) render over the terrain with shader-animated
+ripple/flow and breathing mist sprites - all scoped to the real park
+boundary except waterfalls (see below). Getting here took three real,
+silent bugs found only via an actual browser (a user screenshot, then
+Playwright once installed) - `npm run build` and Node-side testing caught
+none of them. See "the three real bugs" below before trusting a green
+build on any *future* WebGL/shader work in this project either.
+
+**Later the same day: the long-standing Piemonte DEM gap is closed.** The
+user asked to fix it right after phase 3 shipped (building water made the
+cost of deferring it concrete - 131/198 lakes had corrupted water levels
+from it). Real before/after: trails 6→0/73 `dataIncomplete`, POI 197→1/370,
+lakes 131→0/198 (water levels now real, e.g. Lago Serrù 292.2m→2331.8m),
+rivers 4→0/10, glaciers 22→3/47. See "Closing the Piemonte gap" below and
+`docs/ARCHITECTURE.md` §3 for the full story (3-source priority mosaic,
+not a single replacement dataset).
+
+### Done since 2026-07-28
+- **Sized the real data before building anything**: live Overpass queries
+  against our actual bbox, cross-checked against the real park boundary
+  (`tools/park-boundary.geojson`) - lakes 1517 region-wide -> 211 in-park
+  (198 after dropping sub-20m ponds), rivers 125 -> 10 segments (7 named:
+  Savara, Grand Eyvia, Valnontey, Forzo, Urtier, Soana, Valleile),
+  glaciers 216 -> ~47, `waterway=stream` 8,369 region-wide (excluded, see
+  scope-cut below).
+- **Found a real gap, same shape as the missing-Rifugio-Vittorio-Emanuele-II
+  precedent**: only 1 waterfall node falls inside the *strict* park
+  boundary polygon (`Cascatone dell'Umbrias`), and it sits in the known
+  DEM nodata gap (fake ~292m elevation) - so the strict point-in-polygon
+  rule used for POI/trails would leave phase 3 with zero usable
+  waterfalls. **Cascate di Lillaz** - the one waterfall
+  `docs/ARCHITECTURE.md` names explicitly - sits just 36m outside the
+  boundary; checked every other named, non-nodata candidate in
+  `tools/osm-poi-draft.json` and found a clean cutoff: Cascata Entrelor
+  (50m) and Cascata Biolet (180m) are the same real cluster near
+  Cogne/Valnontey, everything else is 3.2km+ away (Pila, Rutor, Mascognaz
+  - different valleys/massifs entirely). **User's decision**: hand-curated
+  allowlist of those 3, bypassing the strict boundary test for waterfalls
+  only - confirmed via `AskUserQuestion` before building, along with two
+  other scope decisions (see below).
+- **User's other two decisions** (also confirmed before building): fetch/
+  render `waterway=river` only, not the 8,369-way `waterway=stream`
+  network (performance/clutter, §10 - revisit later if more hydrographic
+  detail is wanted); custom lightweight water shader (transparent +
+  time-scrolled noise ripple + fresnel), not three.js's `Water` addon
+  (real render-to-texture reflection - a real per-instance GPU cost that
+  risks §10's fluidity principle with up to ~200 lakes potentially visible
+  at once).
+- Wrote `tools/fetch-hydrology.mjs` (Overpass -> `tools/hydrology-draft.json`,
+  same shape as `fetch-osm.mjs`) and `tools/build-hydrology.mjs`
+  (boundary filter + elevation + waterfall-ribbon marching ->
+  `public/data/water.json`) - see `docs/ARCHITECTURE.md` §4 for the full
+  pipeline description.
+- **Waterfall ribbon algorithm needed a real fix mid-build**: the first
+  version stopped marching downhill on "slope flattens for N steps," which
+  doesn't distinguish reaching the valley floor from just climbing back
+  out the other side of the gorge - caught by inspecting Cascate di
+  Lillaz's actual output (a nonsensical -4.8m net "drop"). Fixed by
+  tracking the running minimum height and trimming the ribbon to that
+  point (stop once we've climbed `WF_CLIMB_MARGIN_M` above the lowest
+  point seen, then cut any climbing tail) - now gives real, monotonic-ish
+  drops (Lillaz 15.5m, Entrelor 83.1m, Biolet 52.1m).
+- Wrote `src/water.js`: one merged draw call each for lakes/rivers/
+  glaciers (§10 instancing principle, same as `trails.js`), bespoke
+  per-waterfall ribbon + mist sprite for the small hand-curated list
+  (adapted from reference project ode-to-yosemite's waterfall technique -
+  fetched and read its actual `waterfalls.js` via GitHub's raw content API
+  to confirm the approach before adapting it). All animated materials
+  share one `{ value: 0 }` time uniform object, updated once per frame
+  from a new `THREE.Clock` in `main.js` - no per-object clocks.
+- Wired into `src/main.js`: `loadWater()` alongside `loadTrails()`/
+  `loadPOI()`, `update(t)` called in the render loop. Also fixed a latent
+  small credits-overlay duplication: POI and water are both OSM/ODbL, so
+  both now write to the same `creditLines.osm` key instead of showing the
+  same attribution line twice.
+- **The three real bugs** (all invisible to `npm run build`/Node-side
+  testing - every one only surfaced via an actual browser):
+  1. **Custom `ShaderMaterial` + `logarithmicDepthBuffer: true` (main.js's
+     renderer) is silently invisible, with zero console output.**
+     Three.js's built-in materials (terrain/trails/POI all use those) get
+     the logarithmic-depth GLSL chunks injected automatically; a
+     hand-written `ShaderMaterial` doesn't, so it writes ordinary linear
+     depth into a buffer everything else reads as logarithmic - it
+     depth-tests as "behind" the opaque terrain almost everywhere. No
+     shader compile error, no warning, nothing - the lake/river/waterfall
+     meshes were being added to the scene and built correctly (verified in
+     a Node simulation of `src/water.js`'s own logic) and just never drew
+     a pixel. Only found because the user sent an actual screenshot
+     showing terrain/trails/POI but no new water features. Fix: add
+     `#include <logdepthbuf_pars_vertex>`/`<logdepthbuf_vertex>` and the
+     `_fragment` pair to any future hand-written `ShaderMaterial` in this
+     project too, not just built-in materials.
+  2. **That fix's own `#include <logdepthbuf_vertex>` chunk calls
+     `isPerspectiveMatrix()`, which lives in the `common` chunk** - not
+     included automatically for a custom `ShaderMaterial`. This *did*
+     throw a real, visible error (`THREE.WebGLProgram: Shader Error ...
+     'isPerspectiveMatrix' : no matching overloaded function found`), but
+     only in the browser console - installed Playwright specifically to
+     see it (`npm install -D playwright`, chromium via
+     `npx playwright install chromium`, no `--with-deps` - that needs
+     sudo/a password prompt and wasn't necessary here). Fix: add
+     `#include <common>` alongside the logdepthbuf chunks.
+  3. **Lake water level (`waterLevelM` = min of sampled shoreline
+     elevation) was getting corrupted by the known DEM nodata gap** (§3 -
+     the Piemonte side has no real elevation, sampled as a fake ~292m
+     floor): a single shoreline vertex touching that gap would win the
+     `Math.min()` and sink the *entire* lake to 292m, even lakes mostly on
+     the real (VDA-side) data. Found by inspecting actual output, not by
+     inspection of the code - 131 of 198 lakes (66%!) had `waterLevelM`
+     exactly 292.2, including real named lakes (Lago Serrù, Teleccio,
+     Nero, Valsoera...). These specific lakes turned out to be genuinely
+     *entirely* within the Piemonte gap (Val Orco/Ceresole Reale, a real
+     place, just outside VDA) so no fix restores them - they're correctly
+     `dataIncomplete: true` and this is the same already-accepted
+     limitation as trails/POI, not new. But `tools/build-hydrology.mjs`'s
+     `waterLevelFor()` now computes the min over only the non-nodata
+     vertices first, falling back to the full (unreliable) min only if a
+     lake never leaves the gap at all - so lakes that merely *touch* the
+     gap edge on one side no longer get sunk to a fake floor.
+  - **Playwright is now a permanent tool, not just an ad-hoc debug aid**:
+    promoted the ad-hoc scripts into `tools/verify.mjs` - the slot
+    `docs/ARCHITECTURE.md` §4 already reserved for this
+    ("verify.mjs (optional)"). Loads a running dev/preview server,
+    reports console errors/page errors, saves a screenshot
+    (`tools/verify-screenshot.png`, gitignored). Confirmed all 4 water
+    feature types render correctly and in the right place by flying the
+    camera to specific known features (Lago Djouan, a river segment, one
+    of the 3 waterfalls incl. its mist sprite, Ghiacciaio del Tzasset) via
+    a temporary `window.__debug` hook in `main.js`, since removed.
+
+### Done: closing the Piemonte DEM gap
+- **Researched real, live sources rather than assuming** - see
+  `docs/ARCHITECTURE.md` §3 for the full writeup. Confirmed via
+  `AskUserQuestion` before building: try Regione Piemonte's own 5m LiDAR
+  DTM (WCS) first, fall back to TINITALY where it doesn't reach (the
+  highest glaciated peaks - verified by a live test query returning 0%
+  valid there); and increase the shipped heightmap's resolution rather
+  than keep today's, since the user explicitly accepts the two sides
+  ending up at different quality.
+- **A resolution reality check changed the plan mid-flight**: the
+  *shipped* heightfield was already only ~41 m/px (`MAX_DIM=2048`
+  discarding 4× of the VDA source's own real 10m/px detail) - my first
+  instinct ("~5m combined") would have meant a ~650 MB binary against a
+  ~76 MB total-asset reference point (§9). Landed on `MAX_DIM=4096`
+  (~20m/px, ~18.4 MB) instead - a real 2× improvement, sane budget.
+- Wrote 3 new scripts in `tools/dtm-source/`: `fetch-piemonte-dtm.sh`
+  (automated WCS fetch, tiled to respect the server's `MAXSIZE=2048`),
+  `fetch-tinitaly.sh` (also fully automated in the end - the download page
+  looks like a manual browser tile-picker, but its tiles turned out to be
+  plain unauthenticated files at a predictable URL, found by reading the
+  tile-index image's real UTM32N gridlines rather than guessing a naming
+  scheme), and `merge-heightmaps.sh` (priority-composites all 3 sources
+  with `gdal_merge.py`, VDA > Piemonte > TINITALY, best real value per
+  pixel).
+- **Two real bugs caught mid-build, neither from just re-reading the
+  script**:
+  1. Used the wrong `-srcnodata` (`-99`, the WCS's raw sentinel) when
+     realigning the Piemonte GeoTIFF - it had already been normalized to
+     `-9999` by the fetch step, so bilinear resampling blended real
+     elevations with the *unrecognized* `-9999` literal near coverage
+     edges, producing nonsense like -9838m. Caught by inspecting output
+     stats (`STATISTICS_MINIMUM=-9808`), not by re-reading the script.
+  2. The merge's own safety check (fail if real nodata remains) fired at
+     "only 87.83% valid" - looked like a failure, but investigating *where*
+     (a small Node script sampling the raster against the real park
+     boundary polygon, not the oversized bbox) found only **0.007%** of
+     the actual park still gap-affected; the rest is the bbox's western
+     margin toward France, which no Italian source can or should fill.
+     Promoted that investigation into `tools/dtm-source/
+     check-park-coverage.mjs` - it's now the merge script's real hard
+     gate, replacing a naive whole-bbox percentage check that would have
+     failed forever on an unfixable, irrelevant number.
+- **Re-running the downstream pipeline needed more than the obvious
+  step**: `tools/build-poi.mjs` alone left POI's `dataIncomplete` count
+  completely unchanged (still 197/370) after the heightfield swap -
+  because it only filters an already-computed draft; the actual elevation
+  sampling happens in `tools/fetch-osm.mjs` (same split for
+  `tools/fetch-hydrology.mjs`/`build-hydrology.mjs`). Re-ran both fetch
+  scripts first, *then* the build scripts - real before/after counts in
+  the top summary above.
+- Verified visually too (`tools/verify.mjs` + the `window.__debug`
+  fly-to technique, same as phase 3): Lago Serrù now renders as a real,
+  correctly-shaped lake at a real elevation (was flat fake plain);
+  Ghiacciaio del Tzasset's real terrain relief is visible behind it.
+- Wired the one source with a confirmed attribution (TINITALY, CC BY 4.0)
+  into the `#credits` overlay (`src/main.js`) - VDA's and Piemonte's exact
+  license strings are still unverified TODOs (see Open questions), so
+  showing a placeholder to real users would be worse than omitting them
+  for now; `loadTerrain()`'s credits logic filters on `source.attribution`
+  being present, so this fills in automatically once verified.
+
+### Open questions (non-blocking)
+1. **Basemap/orthophoto source** for later imagery draping (phase 6/7) —
+   not needed until then.
+2. **DEM coverage gap for the Piemonte side - RESOLVED 2026-07-30**, see
+   "Done: closing the Piemonte DEM gap" above and `docs/ARCHITECTURE.md`
+   §3. A tiny residual (0.007% of the real park, 3/47 glaciers still
+   `dataIncomplete`) remains at the very highest peaks where even
+   TINITALY has no data - not worth chasing further absent a 4th source.
+2b. **VDA's and Piemonte's exact DTM licenses are still unverified TODOs**
+   (TINITALY's is confirmed, CC BY 4.0, already in the credits overlay).
+   Piemonte's WCS capabilities say "fees NONE / accessConstraints NONE"
+   but the precise required attribution string needs checking against the
+   geoportale.piemonte.it metadata record before shipping publicly - check
+   before deploy (§9's "TODO" list already flagged this for VDA).
+3. **`waterway=stream` and `natural=glacier` multipolygon relations are
+   not fetched at all** (phase 3 scope cut, see Done above) - revisit if
+   more hydrographic/glacier detail is wanted later. Not a bug, a
+   deliberate v1 boundary.
+4. **Waterfall ribbons are a build-time visual approximation** (terrain-
+   driven marching from the brink point via `tools/build-hydrology.mjs`),
+   not a hydrological simulation - fine for this project's goals, but
+   don't mistake `dropM`/the ribbon shape for surveyed waterfall data.
+5. Deferred `docs/ARCHITECTURE_SUGGESTIONS.md` items - see the
+   2026-07-28 section below, still applies unchanged.
+
+### Next steps (not yet started)
+1. **Frame rate while flying across the whole map with water added**
+   (§10's real bar) - rendering correctness is confirmed (see Done
+   above), but nobody has specifically watched frame rate with all ~250
+   new water features live at once yet.
+2. Phase 4 (environment: time-of-day slider, weather states) per
+   `docs/ARCHITECTURE.md` §7, or finishing phase 1's actual deploy -
+   neither started, pick whichever the user wants next.
+
+### How to resume
+Read `docs/ARCHITECTURE.md` for the full plan and rationale, then this
+file for exact status. `npm run dev` renders terrain + trails + POI (see
+the 2026-07-28 section below) plus the new water layer (`src/water.js`):
+lakes/rivers/glaciers/waterfalls with shader-animated ripple/flow/mist -
+confirmed rendering correctly in a real browser (see "the three real
+bugs" above). `node tools/verify.mjs` (needs a running dev/preview
+server) is now a standing way to catch console errors and grab a
+screenshot without a manual round-trip through the user.
+
+## Status as of 2026-07-28 (historical)
 
 **Phase: 2 — fully complete (trails + POI, both scoped to the real park
 boundary).** Real GPU-displaced terrain (phase 1) renders correctly; an

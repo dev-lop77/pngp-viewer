@@ -16,7 +16,7 @@
 // fine to require gdal-bin), this is the regular repo-local build pipeline
 // and should run on a fresh clone with nothing beyond `npm install`.
 //
-// Usage: node tools/process-heightmap.mjs [--max-dim=2048]
+// Usage: node tools/process-heightmap.mjs [--max-dim=4096]
 
 import { readFileSync, writeFileSync, readdirSync, unlinkSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -27,7 +27,7 @@ const SRC_META = 'DEM/pngp_heightmap_meta.json';
 const OUT_DIR = 'public/data';
 
 const maxDimArg = process.argv.find((a) => a.startsWith('--max-dim='));
-const MAX_DIM = maxDimArg ? Number(maxDimArg.split('=')[1]) : 2048;
+const MAX_DIM = maxDimArg ? Number(maxDimArg.split('=')[1]) : 4096;
 
 // Pixel-is-area convention (matches GDAL's -te/-tr semantics, which is how
 // the source PNG itself was produced): pixel (i,j)'s value represents the
@@ -157,13 +157,22 @@ const manifest = {
     noData: null,
   },
   file: { name: fileName, bytes: buffer.byteLength, sha256Prefix: sha256 },
+  // meta.sources (docs/ARCHITECTURE.md §3, "Closing the Piemonte gap"):
+  // a 3-source priority mosaic (VDA/Piemonte WCS/TINITALY), not a single
+  // dataset - written by tools/dtm-source/merge-heightmaps.sh. Falls back
+  // to the old single-source shape if meta predates that (shouldn't
+  // happen on a fresh extraction, but avoids a hard crash on stale data).
   source: {
-    dataset: "DTM0508_002_UNICO (Regione Autonoma Valle d'Aosta digital terrain model)",
-    extractedVia: 'tools/dtm-source/extract-heightmap.sh',
+    sources: meta.sources ?? [
+      {
+        name: "DTM0508_002_UNICO (Regione Autonoma Valle d'Aosta digital terrain model)",
+        fetchedVia: 'tools/dtm-source/extract-heightmap.sh',
+        license: 'not yet verified for the DTM itself - TODO, see docs/PROGRESS.md',
+      },
+    ],
     nativeHeightmap: SRC_PNG,
     nativeDimensions: { width: srcW, height: srcH },
     nativeResolutionMPerPx: nativeResM,
-    license: 'not yet verified for the DTM itself - TODO, see docs/PROGRESS.md',
   },
   generatedBy: 'tools/process-heightmap.mjs',
   generatedAt: new Date().toISOString(),

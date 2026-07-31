@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadTerrain } from './terrain.js';
 import { loadTrails } from './trails.js';
 import { loadPOI, poiInfoHTML } from './poi.js';
+import { loadWater } from './water.js';
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9fc9e8);
@@ -32,14 +33,24 @@ const sun = new THREE.DirectionalLight(0xffffff, 1.5);
 sun.position.set(-30000, 40000, 20000);
 scene.add(sun);
 
-loadTerrain().then(({ mesh }) => {
-  scene.add(mesh);
-});
-
 const creditLines = {};
 function renderCredits() {
   document.getElementById('credits').innerHTML = Object.values(creditLines).join('<br>');
 }
+
+loadTerrain().then(({ mesh, manifest }) => {
+  scene.add(mesh);
+  // DEM is a multi-source mosaic (docs/ARCHITECTURE.md §3) - only show
+  // credits for sources with a confirmed attribution (VDA/Piemonte's own
+  // licenses are still an unverified TODO, see docs/PROGRESS.md; showing
+  // that literal placeholder text to real users would be worse than
+  // omitting it for now).
+  const attributed = manifest.source.sources.filter((s) => s.attribution);
+  if (attributed.length) {
+    creditLines.dem = attributed.map((s) => s.attribution).join(' · ');
+    renderCredits();
+  }
+});
 
 loadTrails().then(({ group, manifest }) => {
   scene.add(group);
@@ -56,9 +67,21 @@ loadPOI().then((index) => {
   poiIndex = index;
   scene.add(index.group);
   // ODbL requires attribution wherever OSM data is shown - docs/ARCHITECTURE.md §9.
-  creditLines.poi =
+  // Shared 'osm' key with loadWater() below (same dataset/license) so the
+  // credits overlay doesn't show the same ODbL line twice.
+  creditLines.osm =
     `${index.manifest.source.attribution} ` +
     `<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">${index.manifest.source.license}</a>`;
+  renderCredits();
+});
+
+let waterUpdate = null;
+loadWater().then(({ group, manifest, update }) => {
+  scene.add(group);
+  waterUpdate = update;
+  creditLines.osm =
+    `${manifest.source.attribution} ` +
+    `<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">${manifest.source.license}</a>`;
   renderCredits();
 });
 
@@ -103,7 +126,11 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+const timer = new THREE.Timer();
+
 renderer.setAnimationLoop(() => {
+  timer.update();
+  waterUpdate?.(timer.getElapsed());
   if (flying) {
     flying.t = Math.min(1, flying.t + 0.02);
     const e = 1 - (1 - flying.t) ** 3; // ease-out cubic

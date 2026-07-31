@@ -1,9 +1,31 @@
 {
-  "source_file": "../DEM/DTM0508_002_UNICO.ASC",
   "crs": "EPSG:23032",
   "bbox_utm32n": { "xmin": 329116, "ymin": 5036775, "xmax": 413000, "ymax": 5085000 },
   "resolution_m_per_px": { "x": 10, "y": 10 },
   "image_size_px": { "width": 8388, "height": 4823 },
-  "elevation_m": { "min": 292.2356262207, "max": 4809.8129882812 },
-  "note": "Aspect ratio matches the real bbox exactly - no square-canvas resampling, unlike the original UE5 export (DEM/heightmap_pngp_4033.png)."
+  "elevation_m": { "min": 238.51132202148, "max": 4809.8129882812 },
+  "note": "Priority mosaic of 3 sources (best real value per pixel, not a single dataset) - closes the Piemonte-side nodata gap present in the VDA-only heightmap. See docs/ARCHITECTURE.md §3.",
+  "sources": [
+    {
+      "name": "DTM0508_002_UNICO (Regione Autonoma Valle d'Aosta)",
+      "priority": 1,
+      "coverage": "Valle d'Aosta side of the park - highest quality, native ~10m",
+      "license": "not yet verified for the DTM itself - TODO, see docs/PROGRESS.md"
+    },
+    {
+      "name": "RIPRESA AEREA ICE 2009-2011 - DTM 5 (Regione Piemonte)",
+      "priority": 2,
+      "coverage": "Most of the Piemonte side (lower/mid elevations) - native 5m, does not reach the highest glaciated peaks",
+      "fetchedVia": "tools/dtm-source/fetch-piemonte-dtm.sh (WCS)",
+      "license": "open data, fees NONE / accessConstraints NONE per WCS capabilities - exact attribution string TODO, verify via the geoportale.piemonte.it metadata record before shipping publicly"
+    },
+    {
+      "name": "TINITALY 1.1 (INGV)",
+      "priority": 3,
+      "coverage": "Whatever the first two sources miss (mainly the highest peaks) - national 10m mosaic",
+      "fetchedVia": "tools/dtm-source/fetch-tinitaly.sh",
+      "license": "CC BY 4.0",
+      "attribution": "Tarquini S., I. Isola, M. Favalli, A. Battistini, G. Dotta, (2023). TINITALY, a digital elevation model of Italy with a 10 meters cell size (Version 1.1). Istituto Nazionale di Geofisica e Vulcanologia (INGV). https://doi.org/10.13127/tinitaly/1.1 - CC BY 4.0"
+    }
+  ]
 }

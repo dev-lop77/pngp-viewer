@@ -15,17 +15,17 @@
   },
   "axes": "+X = East, +Y = Up (elevation, meters), +Z = South - right-handed, matches Three.js Y-up (East x Up = South in real-world ENU).",
   "dimensions": {
-    "width": 2048,
-    "height": 1178
+    "width": 4096,
+    "height": 2355
   },
   "resolutionMPerPx": {
-    "x": 40.958984375,
-    "y": 40.93803056027165
+    "x": 20.4794921875,
+    "y": 20.477707006369428
   },
   "pixelConvention": "area (cell-center), not point-sample: pixel (i,j) center = (xmin + (i+0.5)*resX, ymax - (j+0.5)*resY). Matches GDAL -te/-tr semantics used to produce the source PNG.",
   "rowOrientation": "row 0 = north edge (ymax); row N-1 = south edge (ymin)",
   "elevationRangeM": {
-    "min": 292.2356262207,
+    "min": 238.51132202148,
     "max": 4809.8129882812,
     "units": "meters"
   },
@@ -37,13 +37,34 @@
     "noData": null
   },
   "file": {
-    "name": "heightfield.7ac118fb.bin",
-    "bytes": 4825088,
-    "sha256Prefix": "7ac118fb"
+    "name": "heightfield.bbbe8ef5.bin",
+    "bytes": 19292160,
+    "sha256Prefix": "bbbe8ef5"
   },
   "source": {
-    "dataset": "DTM0508_002_UNICO (Regione Autonoma Valle d'Aosta digital terrain model)",
-    "extractedVia": "tools/dtm-source/extract-heightmap.sh",
+    "sources": [
+      {
+        "name": "DTM0508_002_UNICO (Regione Autonoma Valle d'Aosta)",
+        "priority": 1,
+        "coverage": "Valle d'Aosta side of the park - highest quality, native ~10m",
+        "license": "not yet verified for the DTM itself - TODO, see docs/PROGRESS.md"
+      },
+      {
+        "name": "RIPRESA AEREA ICE 2009-2011 - DTM 5 (Regione Piemonte)",
+        "priority": 2,
+        "coverage": "Most of the Piemonte side (lower/mid elevations) - native 5m, does not reach the highest glaciated peaks",
+        "fetchedVia": "tools/dtm-source/fetch-piemonte-dtm.sh (WCS)",
+        "license": "open data, fees NONE / accessConstraints NONE per WCS capabilities - exact attribution string TODO, verify via the geoportale.piemonte.it metadata record before shipping publicly"
+      },
+      {
+        "name": "TINITALY 1.1 (INGV)",
+        "priority": 3,
+        "coverage": "Whatever the first two sources miss (mainly the highest peaks) - national 10m mosaic",
+        "fetchedVia": "tools/dtm-source/fetch-tinitaly.sh",
+        "license": "CC BY 4.0",
+        "attribution": "Tarquini S., I. Isola, M. Favalli, A. Battistini, G. Dotta, (2023). TINITALY, a digital elevation model of Italy with a 10 meters cell size (Version 1.1). Istituto Nazionale di Geofisica e Vulcanologia (INGV). https://doi.org/10.13127/tinitaly/1.1 - CC BY 4.0"
+      }
+    ],
     "nativeHeightmap": "DEM/pngp_heightmap.png",
     "nativeDimensions": {
       "width": 8388,
@@ -52,9 +73,8 @@
     "nativeResolutionMPerPx": {
       "x": 10.000476871721506,
       "y": 9.998963300850093
-    },
-    "license": "not yet verified for the DTM itself - TODO, see docs/PROGRESS.md"
+    }
   },
   "generatedBy": "tools/process-heightmap.mjs",
-  "generatedAt": "2026-07-28T11:01:06.550Z"
+  "generatedAt": "2026-07-30T12:33:38.610Z"
 }
