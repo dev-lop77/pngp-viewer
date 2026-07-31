@@ -103,13 +103,14 @@ shader-integration risk as phase 3's logarithmicDepthBuffer landmine).
   nor raising rayleigh reliably pulled it back below clipping in a way
   that stayed visually distinct from "golden hour." Settled for a lower
   midday sun elevation (25° instead of a realistic ~40°+) that stays in a
-  well-behaved range - **not fully verified**: this could plausibly be a
-  SwiftShader (headless/software GL) precision artifact in a shader this
-  full of `exp()`/`pow()` chains rather than a true rendering result, since
-  every other preset (and all of phase 1-3's rendering) has only ever been
-  confirmed correct via a *real* browser, never headless. **Ask the user to
-  specifically check the midday slider position in their real browser**
-  before trusting this is actually fixed and not just headless-plausible.
+  well-behaved range. **Confirmed 2026-07-31 in the user's real browser:
+  midday sky reads as blue, correctly** - the flat-white result really was
+  a SwiftShader (headless/software GL) precision artifact in a shader this
+  full of `exp()`/`pow()` chains, not a true rendering result. Worth
+  remembering for any future shader-heavy work in this project: headless
+  Playwright/SwiftShader has now been wrong twice (this, and phase 3's
+  ~5fps-vs-real-30fps frame rate number) - trust it for console-error/
+  crash detection, not for judging actual visual brightness or performance.
 - Added a small DOM control panel (`#env-controls`, bottom-left of
   `index.html`): a range slider (`#env-time`) for time-of-day, a `<select>`
   (`#env-weather`) for weather mode. Wired in `main.js`.
@@ -122,21 +123,16 @@ shader-integration risk as phase 3's logarithmicDepthBuffer landmine).
   `input`/`change` events, not by adding anything permanent to the app.
 
 ### Open questions (non-blocking)
-1. **Midday preset's sky brightness - not yet confirmed on real hardware**
-   (see above). If it still looks washed out for real, worth trying:
-   Firefox/Chrome comparison, or abandoning the Sky addon's Preetham model
-   for high-sun angles in favor of a simpler hand-authored gradient.
+1. **Midday preset's sky brightness - RESOLVED 2026-07-31**, confirmed
+   correct (blue sky) in the user's real browser - see above, was a
+   headless/SwiftShader-only artifact.
 2. Previously-open items (Piemonte DTM/VDA license verification, basemap/
    orthophoto source, `waterway=stream`/glacier relations not fetched,
    waterfall ribbons being a visual approximation) all still stand
    unchanged - see the 2026-07-30 section below.
 
 ### Next steps (not yet started)
-1. **Get the user's real-browser confirmation on phase 4**, especially the
-   midday sky (see Open questions #1) - the standing "verify in a real
-   browser, not just headless" rule applies here more than usual given the
-   SwiftShader-precision suspicion.
-2. Phase 5 (navigation aids: compass HUD, live position readout) or
+1. Phase 5 (navigation aids: compass HUD, live position readout) or
    finishing phase 1's deploy - neither started, whichever the user wants
    next.
 
