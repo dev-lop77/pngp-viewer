@@ -342,6 +342,22 @@ Mouse-look and click-to-lock worked; five concrete fixes came back.
    terrain-LOD item above) are the stretch/refinement goals beyond that,
    per the roadmap.
 
+### How to resume
+Everything in this file is committed (`0dad93e` is HEAD as of this
+writing - `git log --oneline -8` shows the full run of today's commits,
+02d707a through 0dad93e). `npm run dev`/`tools/dev/start-preview.sh` +
+port-forwarding is the standing way to check it in a real browser
+(`tools/dev/README.md`). **Do not assume the walk/fly follow-up fixes
+above actually work** - they're verified headlessly only (screenshots,
+`tools/verify.mjs`, simulated search/label-click via Playwright); the
+user said "ricontrollo al prossimo giro" (2026-07-31) and hasn't
+re-tested in a real browser yet. Start the next session by asking for
+that read before building anything further on top of walk/fly - if
+something's still off, it's likely one of: the near-clip fix not being
+enough, the connector-line/label-click/search interactions feeling
+wrong in practice, or the coarse terrain mesh (Open question #4) making
+itself known in some new way now that the camera is at ground level.
+
 ## Status as of 2026-07-30 (historical)
 
 **Phase 3 (water & animation) done, confirmed in a real browser.** Lakes
