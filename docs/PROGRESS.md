@@ -122,19 +122,70 @@ shader-integration risk as phase 3's logarithmicDepthBuffer landmine).
   DOM slider/select via Playwright's `page.evaluate()` + dispatching
   `input`/`change` events, not by adding anything permanent to the app.
 
+**Same day, phase 5 (navigation aids) built right after.** Compass HUD +
+live lat/lon/elevation + nearest-named-place readout, all in a new
+`#nav-hud` panel (top-center, `index.html`).
+
+### Done: phase 5 (navigation aids)
+- **Confirmed via `AskUserQuestion` before building**: "nearest place name"
+  reuses the existing 370-POI dataset (`public/data/poi.json` - peaks,
+  huts, passes, lakes, waterfalls) rather than fetching real settlement
+  names (villages/hamlets) from OSM - the user's call, zero new data
+  pipeline needed. Real town/hamlet names (e.g. "Cogne") are NOT covered
+  by this - tracked below as a possible future OSM fetch, not a bug.
+- **`proj4` promoted from a devDependency to a real one** - anticipated
+  back in phase 2 (docs/ARCHITECTURE.md §3/§12) for exactly this moment.
+  Same `EPSG:23032` definition as `tools/fetch-osm.mjs` (already verified
+  twice against the Mont Blanc summit control point), now also in
+  `src/geo.js` as `localToWGS84()`. Real, noticeable bundle-size cost:
+  client JS grew from 605 KB to 736 KB (gzip 155 KB -> 199 KB) - accepted,
+  a live lat/lon readout can't work without some real-world-CRS math
+  client-side and proj4 is the same well-tested library already trusted
+  for this exact conversion, not a new risk.
+- **New `src/nav.js`** (pure logic, no DOM - same split as poi.js/
+  lighting.js): `headingDegrees(camera)` (bearing 0-360 from the camera's
+  view direction, using the already-established axis convention +X=East/
+  +Z=South from `docs/ARCHITECTURE.md` §6 - North is -Z), `compassLabel()`
+  (8-point N/NE/E/.../NW), `nearestPOI(x, z, pois)` (linear scan over
+  ~370 points, cheap enough to call every HUD tick, no spatial index
+  needed at this N per §10).
+- **One real bug caught immediately by `tools/verify.mjs`**: the HUD's
+  0.25s-throttled update tick called `localToWGS84()` (needs
+  `geo.js`'s local origin) before `loadTerrain()` had resolved and set it -
+  a real `pageerror` (`setLocalOrigin() must be called before
+  localToWorld()`) on the very first frames. Fixed with an `originReady`
+  flag set once `loadTerrain()` resolves, same pattern already used for
+  `poiIndex`/`weather` being null until their own async loads finish.
+- **Verified the compass math two ways, not just "it renders"**: cross-
+  checked the on-screen "NW 323°" reading against manual vector math from
+  the actual initial camera position/target (camera->target direction has
+  negative X and negative Z components, landing in the 270-360° NW
+  quadrant, and the exact number - atan2(-0.6, 0.8) -> 323.13° - matched
+  the rendered HUD precisely) - not just eyeballing that a needle moved.
+- Verified with `tools/verify.mjs` (zero console/page errors after the fix
+  above) and a screenshot showing sane output: a real Alpine lat/lon
+  (45.33°N, 7.74°E, within the project's bbox), the camera's actual
+  altitude, and a plausible nearest POI with distance.
+
 ### Open questions (non-blocking)
 1. **Midday preset's sky brightness - RESOLVED 2026-07-31**, confirmed
    correct (blue sky) in the user's real browser - see above, was a
    headless/SwiftShader-only artifact.
-2. Previously-open items (Piemonte DTM/VDA license verification, basemap/
+2. **"Nearest place name" only covers POI categories, not real
+   settlements** (see phase 5 Done above) - a deliberate scope choice, not
+   a bug; revisit with a new OSM `place=*` fetch if real town/hamlet names
+   (e.g. "Cogne", "Valnontey") are wanted later.
+3. Previously-open items (Piemonte DTM/VDA license verification, basemap/
    orthophoto source, `waterway=stream`/glacier relations not fetched,
    waterfall ribbons being a visual approximation) all still stand
    unchanged - see the 2026-07-30 section below.
 
 ### Next steps (not yet started)
-1. Phase 5 (navigation aids: compass HUD, live position readout) or
-   finishing phase 1's deploy - neither started, whichever the user wants
-   next.
+1. Finishing phase 1's deploy (GitHub Pages or self-managed Apache,
+   `docs/ARCHITECTURE.md` §9) - the only phase left not started. Phases
+   1-5 are all functionally complete; phase 6 (wildlife/audio/OSM
+   huts/vegetation) and phase 7 (polish) are the stretch/refinement goals
+   beyond that, per the roadmap.
 
 ## Status as of 2026-07-30 (historical)
 

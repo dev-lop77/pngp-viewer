@@ -450,7 +450,7 @@ user's stated priorities; can reshuffle as we learn more.
 | 2 — Points of interest | Curated POI dataset (peaks, rifugi, lakes, valleys), map markers + info panel, fly-to-POI navigation. **Numbered/graded trails from the VDA dataset (§3) also land here** — moved up from the old OSM-only phase-6 scope, decided 2026-07-28 |
 | 3 — Water & animation | **Done, 2026-07-30.** Rivers (main watercourses only, not minor streams — logged scope cut), lakes (≥20m across), waterfalls (hand-curated allowlist incl. Cascate di Lillaz) with shader animation + mist, glaciers as a distinct draped surface. See §4's fetch-hydrology.mjs/build-hydrology.mjs entries and docs/PROGRESS.md for the sizing/decisions behind the scope |
 | 4 — Environment | **Done, 2026-07-31.** Time-of-day slider driving sun position/sky/fog/exposure; weather states (clear → clouds → rain → snow). See §8's lighting.js/atmosphere.js/weather.js entries and docs/PROGRESS.md |
-| 5 — Navigation aids | Compass HUD, live position readout (lat/lon, elevation, nearest place name) |
+| 5 — Navigation aids | **Done, 2026-07-31.** Compass HUD, live position readout (lat/lon, elevation, nearest place name). See §8's nav.js entry and docs/PROGRESS.md |
 | 6 — Life & atmosphere (stretch) | Wildlife (Alpine ibex, chamois, marmots — the park's founding species), procedural ambient audio, huts/hydrology from OSM, treeline vegetation |
 | 7 — Polish | Tune/extend the LOD-tiled terrain from phase 1 if draw distance needs more than one tile (§10: LOD itself is a standing principle from phase 1 on, not deferred - phase 7 is refinement, not the first attempt), mobile pass, optional automated screenshot QA |
 
@@ -473,7 +473,11 @@ pngp-viewer/
 ├── src/
 │   ├── main.js             entry point, scene setup, render loop
 │   ├── geo.js              world (EPSG:23032) <-> local scene-meter conversion, the one
-│                              place this math lives (§6)
+│                              place this math lives (§6). Also EPSG:23032->WGS84
+│                              (`localToWGS84()`, phase 5, 2026-07-31) - `proj4` promoted
+│                              from a devDependency to a real one now that a runtime HUD
+│                              needs it client-side, not just tools/fetch-osm.mjs at build
+│                              time (anticipated in docs/PROGRESS.md since phase 2)
 │   ├── heightfield.js      pure height-sampling math (no THREE/fetch/DOM) - shared by
 │                              terrain.js AND tools/build-trails.mjs (Node), one
 │                              implementation of "raw sample -> real elevation" (§4)
@@ -507,14 +511,26 @@ pngp-viewer/
 │                              call per category (§10); click -> info panel + fly-to
 │                              camera lives in main.js (raycasts against poi.js's meshes)
 │   ├── controls.js         camera navigation
+│   ├── nav.js              Done, 2026-07-31 (phase 5). Pure logic, no DOM: compass
+│                              bearing from the camera's view direction, 8-point compass
+│                              label, nearest-POI lookup (linear scan over the ~370-POI
+│                              list already loaded by poi.js - reusing that dataset for
+│                              "nearest place name" instead of a new OSM settlement
+│                              fetch was the user's explicit call, confirmed via
+│                              AskUserQuestion). main.js reads camera state each HUD tick,
+│                              calls into nav.js + geo.js's localToWGS84(), writes the
+│                              `#nav-hud` DOM (compass rose + lat/lon/elevation + nearest
+│                              POI, index.html) - same "logic in the module, DOM writes in
+│                              main.js" split as poi.js/lighting.js
 │   ├── wildlife.js         (phase 6) ibex/chamois/marmots
-│   └── ui/                 Not created yet - phase 4's two controls (time-of-day slider,
-│                              weather select) turned out small enough to wire directly in
-│                              index.html/main.js. Revisit a dedicated ui/ module once
-│                              phase 5 (compass, live position readout) adds real HUD
-│                              complexity. `#credits` (index.html) already covers CC BY
-│                              attribution for trails - a fuller about/credits panel
-│                              belongs here once there's more than one attributed source.
+│   └── ui/                 Still not created - phase 4's and phase 5's HUD controls
+│                              (time-of-day slider, weather select, compass/position
+│                              readout) all turned out small enough to wire directly in
+│                              index.html/main.js, plus one small dedicated module
+│                              (nav.js) for the non-trivial logic. `#credits` (index.html)
+│                              already covers CC BY attribution for trails - a fuller
+│                              about/credits panel belongs here once there's more than
+│                              one attributed source.
 ├── index.html
 ├── package.json
 ├── vite.config.js

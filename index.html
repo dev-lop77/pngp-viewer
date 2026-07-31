@@ -79,12 +79,73 @@
       #env-time {
         width: 160px;
       }
+      #nav-hud {
+        position: fixed;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 14px;
+        background: rgba(10, 14, 20, 0.55);
+        border-radius: 8px;
+        color: #fff;
+        font: 12px/1.4 -apple-system, system-ui, sans-serif;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+      #compass {
+        position: relative;
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.45);
+        flex-shrink: 0;
+      }
+      .compass-label {
+        position: absolute;
+        font-size: 9px;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.8);
+      }
+      .compass-label.n { top: 1px; left: 50%; transform: translateX(-50%); }
+      .compass-label.e { right: 2px; top: 50%; transform: translateY(-50%); }
+      .compass-label.s { bottom: 1px; left: 50%; transform: translateX(-50%); }
+      .compass-label.w { left: 2px; top: 50%; transform: translateY(-50%); }
+      #compass-needle {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 2px;
+        height: 16px;
+        background: #e5473a;
+        transform-origin: 50% 100%;
+        transform: translate(-50%, -100%) rotate(0deg);
+      }
+      #nav-text div {
+        margin: 1px 0;
+      }
     </style>
   </head>
   <body>
     <div id="credits"></div>
     <div id="poi-info"></div>
     <div id="fps"></div>
+    <div id="nav-hud">
+      <div id="compass">
+        <div class="compass-label n">N</div>
+        <div class="compass-label e">E</div>
+        <div class="compass-label s">S</div>
+        <div class="compass-label w">W</div>
+        <div id="compass-needle"></div>
+      </div>
+      <div id="nav-text">
+        <div id="nav-heading"></div>
+        <div id="nav-position"></div>
+        <div id="nav-nearest"></div>
+      </div>
+    </div>
     <div id="env-controls">
       <label>Time of day: <span id="env-time-label"></span><br /><input id="env-time" type="range" min="0" max="1" step="0.001" value="0.15" /></label>
       <label>Weather:

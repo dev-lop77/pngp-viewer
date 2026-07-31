@@ -8,6 +8,8 @@ import { loadWater } from './water.js';
 import { installAtmosphere } from './atmosphere.js';
 import { Lighting } from './lighting.js';
 import { Weather } from './weather.js';
+import { localToWGS84 } from './geo.js';
+import { headingDegrees, compassLabel, nearestPOI } from './nav.js';
 
 installAtmosphere(); // patch the fog chunks before any material compiles (phase 4, docs/ARCHITECTURE.md §7)
 
@@ -55,8 +57,10 @@ function renderCredits() {
   document.getElementById('credits').innerHTML = Object.values(creditLines).join('<br>');
 }
 
+let originReady = false; // geo.js's setLocalOrigin() runs inside loadTerrain() - localToWGS84() throws before that
 loadTerrain().then(({ mesh, manifest }) => {
   scene.add(mesh);
+  originReady = true;
   // DEM is a multi-source mosaic (docs/ARCHITECTURE.md §3) - only show
   // credits for sources with a confirmed attribution (VDA/Piemonte's own
   // licenses are still an unverified TODO, see docs/PROGRESS.md; showing
@@ -166,6 +170,21 @@ const fpsEl = document.getElementById('fps');
 let fpsFrames = 0;
 let fpsAccum = 0;
 
+// Phase 5 nav HUD (docs/ARCHITECTURE.md §7): heading compass, live lat/lon +
+// elevation, nearest named POI. Throttled like the fps counter - a compass/
+// position readout doesn't need per-frame precision.
+const compassNeedle = document.getElementById('compass-needle');
+const navHeadingEl = document.getElementById('nav-heading');
+const navPositionEl = document.getElementById('nav-position');
+const navNearestEl = document.getElementById('nav-nearest');
+let navAccum = 0;
+
+function formatLatLon(lat, lon) {
+  const ns = lat >= 0 ? 'N' : 'S';
+  const ew = lon >= 0 ? 'E' : 'W';
+  return `${Math.abs(lat).toFixed(4)}°${ns}, ${Math.abs(lon).toFixed(4)}°${ew}`;
+}
+
 renderer.setAnimationLoop(() => {
   timer.update();
   waterUpdate?.(timer.getElapsed());
@@ -179,6 +198,23 @@ renderer.setAnimationLoop(() => {
     fpsFrames = 0;
     fpsAccum = 0;
   }
+
+  navAccum += timer.getDelta();
+  if (navAccum >= 0.25) {
+    navAccum = 0;
+    const heading = headingDegrees(camera);
+    compassNeedle.style.transform = `translate(-50%, -100%) rotate(${heading}deg)`;
+    navHeadingEl.textContent = `${compassLabel(heading)} ${Math.round(heading)}°`;
+
+    if (originReady) {
+      const { lat, lon } = localToWGS84(camera.position.x, camera.position.z);
+      navPositionEl.textContent = `${formatLatLon(lat, lon)} · ${Math.round(camera.position.y)} m`;
+    }
+
+    const nearest = poiIndex && nearestPOI(camera.position.x, camera.position.z, poiIndex.manifest.pois);
+    navNearestEl.textContent = nearest ? `Near ${nearest.poi.name} (${(nearest.distanceM / 1000).toFixed(1)} km)` : '';
+  }
+
   if (flying) {
     flying.t = Math.min(1, flying.t + 0.02);
     const e = 1 - (1 - flying.t) ** 3; // ease-out cubic
