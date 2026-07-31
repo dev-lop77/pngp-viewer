@@ -450,7 +450,7 @@ user's stated priorities; can reshuffle as we learn more.
 | 2 — Points of interest | Curated POI dataset (peaks, rifugi, lakes, valleys), map markers + info panel, fly-to-POI navigation. **Numbered/graded trails from the VDA dataset (§3) also land here** — moved up from the old OSM-only phase-6 scope, decided 2026-07-28 |
 | 3 — Water & animation | **Done, 2026-07-30.** Rivers (main watercourses only, not minor streams — logged scope cut), lakes (≥20m across), waterfalls (hand-curated allowlist incl. Cascate di Lillaz) with shader animation + mist, glaciers as a distinct draped surface. See §4's fetch-hydrology.mjs/build-hydrology.mjs entries and docs/PROGRESS.md for the sizing/decisions behind the scope |
 | 4 — Environment | **Done, 2026-07-31.** Time-of-day slider driving sun position/sky/fog/exposure; weather states (clear → clouds → rain → snow). See §8's lighting.js/atmosphere.js/weather.js entries and docs/PROGRESS.md |
-| 5 — Navigation aids | **Done, 2026-07-31.** Compass HUD, live position readout (lat/lon, elevation, nearest place name). See §8's nav.js entry and docs/PROGRESS.md |
+| 5 — Navigation aids | **Done, 2026-07-31.** Compass HUD, live position readout (lat/lon, elevation, nearest place name). See §8's nav.js entry and docs/PROGRESS.md. **Follow-up the same day**: testing this in a real browser led the user to ask for a bigger change - walk/fly navigation (WASD + pointer-lock mouselook) replacing OrbitControls as the default, since a ground-level "elevation" readout only makes sense once you're actually standing at ground level. See §8's controls.js/poi.js entries |
 | 6 — Life & atmosphere (stretch) | Wildlife (Alpine ibex, chamois, marmots — the park's founding species), procedural ambient audio, huts/hydrology from OSM, treeline vegetation |
 | 7 — Polish | Tune/extend the LOD-tiled terrain from phase 1 if draw distance needs more than one tile (§10: LOD itself is a standing principle from phase 1 on, not deferred - phase 7 is refinement, not the first attempt), mobile pass, optional automated screenshot QA |
 
@@ -508,9 +508,25 @@ pngp-viewer/
 │                              particle system that's rain or snow depending on mode: see §7
 │   ├── water.js            rivers, lakes, waterfalls
 │   ├── poi.js              loads public/data/poi.json, one merged InstancedMesh draw
-│                              call per category (§10); click -> info panel + fly-to
-│                              camera lives in main.js (raycasts against poi.js's meshes)
-│   ├── controls.js         camera navigation
+│                              call per category (§10) for small pickable marker dots, plus
+│                              one CSS2DObject text label per POI (real DOM, not WebGL - crisp
+│                              at any zoom, no per-name texture) - reworked 2026-07-31 after
+│                              walk-mode testing revealed the original 180-220m-radius
+│                              spheres (sized for a 26km-high overview) were "disturbing
+│                              balloons" at human scale, and once literally engulfed the
+│                              camera near a dense POI cluster (see §7). Labels are
+│                              distance-culled (hidden beyond 1500m) for the same reason;
+│                              click -> info panel + fly-to camera lives in main.js
+│                              (raycasts against poi.js's marker meshes, from screen center
+│                              while pointer-locked - see controls.js)
+│   ├── controls.js         Done, 2026-07-31. Walk/fly navigation replacing OrbitControls
+│                              as the primary way to move (user's explicit request after
+│                              testing phase 5) - walk mode is the default (ground-clamped
+│                              via terrain.js's sampleHeight + eye height, no vertical
+│                              input), 'F' toggles a faster free-fly mode, no scroll/zoom in
+│                              either. Built on three's own PointerLockControls addon (not
+│                              hand-rolled mouselook) - see §7 for why and the real bug this
+│                              exposed in the old POI marker sizing
 │   ├── nav.js              Done, 2026-07-31 (phase 5). Pure logic, no DOM: compass
 │                              bearing from the camera's view direction, 8-point compass
 │                              label, nearest-POI lookup (linear scan over the ~370-POI

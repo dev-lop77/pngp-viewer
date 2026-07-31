@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Sky } from 'three/addons/objects/Sky.js';
+import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { loadTerrain } from './terrain.js';
 import { loadTrails } from './trails.js';
 import { loadPOI, poiInfoHTML } from './poi.js';
@@ -10,6 +10,7 @@ import { Lighting } from './lighting.js';
 import { Weather } from './weather.js';
 import { localToWGS84 } from './geo.js';
 import { headingDegrees, compassLabel, nearestPOI } from './nav.js';
+import { WalkFlyControls, EYE_HEIGHT_M } from './controls.js';
 
 installAtmosphere(); // patch the fog chunks before any material compiles (phase 4, docs/ARCHITECTURE.md §7)
 
@@ -22,7 +23,7 @@ const camera = new THREE.PerspectiveCamera(
   10,
   200000,
 );
-camera.position.set(30000, 26000, 40000);
+camera.position.set(0, 3000, 0); // placeholder - real spawn set once terrain+POI load, below
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -30,11 +31,20 @@ renderer.setPixelRatio(window.devicePixelRatio);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 document.body.appendChild(renderer.domElement);
 
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 2200, 0);
-controls.enableDamping = true;
-controls.minDistance = 500;
-controls.maxDistance = 120000;
+// POI name labels (docs/PROGRESS.md 2026-07-31) are real DOM elements
+// (CSS2DObject) layered over the WebGL canvas, not WebGL geometry -
+// crisp text at any zoom, no per-name texture to generate/manage.
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(window.innerWidth, window.innerHeight);
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0';
+labelRenderer.domElement.style.pointerEvents = 'none'; // selection is via the reticle+click, not the labels themselves
+document.body.appendChild(labelRenderer.domElement);
+
+// Walk/fly navigation (docs/PROGRESS.md 2026-07-31) replaces OrbitControls -
+// default is walking at eye height, 'F' toggles a faster free-fly mode, no
+// scroll/zoom in either (see src/controls.js).
+const controls = new WalkFlyControls(camera, renderer.domElement);
 
 // Real lights, moved/recolored per time-of-day preset by lighting.js below -
 // unlike the reference project's unlit/baked-tint terrain, ours uses a real
@@ -46,7 +56,7 @@ const sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
 scene.add(sunLight);
 
 const sky = new Sky();
-sky.scale.setScalar(400000); // comfortably beyond controls.maxDistance + the terrain bbox
+sky.scale.setScalar(400000); // comfortably beyond fly mode's reach + the terrain bbox
 scene.add(sky);
 
 const lighting = new Lighting({ renderer, scene, sky, sunLight, ambientLight });
@@ -58,9 +68,11 @@ function renderCredits() {
 }
 
 let originReady = false; // geo.js's setLocalOrigin() runs inside loadTerrain() - localToWGS84() throws before that
-loadTerrain().then(({ mesh, manifest }) => {
+const terrainPromise = loadTerrain().then((result) => {
+  const { mesh, manifest, sampleHeight } = result;
   scene.add(mesh);
   originReady = true;
+  controls.getGroundHeight = sampleHeight;
   // DEM is a multi-source mosaic (docs/ARCHITECTURE.md §3) - only show
   // credits for sources with a confirmed attribution (VDA/Piemonte's own
   // licenses are still an unverified TODO, see docs/PROGRESS.md; showing
@@ -75,6 +87,7 @@ loadTerrain().then(({ mesh, manifest }) => {
   const { xmin, ymin, xmax, ymax } = manifest.bboxCrsUnits;
   weather = new Weather(scene, { worldWidth: xmax - xmin, worldDepth: ymax - ymin });
   lighting.weather = weather;
+  return result;
 });
 
 loadTrails().then(({ group, manifest }) => {
@@ -88,7 +101,7 @@ loadTrails().then(({ group, manifest }) => {
 });
 
 let poiIndex = null;
-loadPOI().then((index) => {
+const poiPromise = loadPOI().then((index) => {
   poiIndex = index;
   scene.add(index.group);
   // ODbL requires attribution wherever OSM data is shown - docs/ARCHITECTURE.md §9.
@@ -98,6 +111,21 @@ loadPOI().then((index) => {
     `${index.manifest.source.attribution} ` +
     `<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">${index.manifest.source.license}</a>`;
   renderCredits();
+  return index;
+});
+
+// Spawn once both terrain (for ground height) and POI (for a real landmark
+// to start near) are ready - avoids an intermediate wrong-looking position.
+// Gran Paradiso itself if present, else any peak, else just the first POI.
+Promise.all([terrainPromise, poiPromise]).then(([{ sampleHeight }, index]) => {
+  const pois = index.manifest.pois;
+  const landmark = pois.find((p) => p.name === 'Gran Paradiso') ?? pois.find((p) => p.category === 'peak') ?? pois[0];
+  if (!landmark) return;
+  const standoffM = 400;
+  const sx = landmark.local.x;
+  const sz = landmark.local.z + standoffM; // stand south of it (docs/ARCHITECTURE.md §6: +Z = South)
+  camera.position.set(sx, sampleHeight(sx, sz) + EYE_HEIGHT_M, sz);
+  camera.lookAt(landmark.local.x, landmark.elevationM, landmark.local.z);
 });
 
 let waterUpdate = null;
@@ -111,28 +139,31 @@ loadWater().then(({ group, manifest, update }) => {
 });
 
 // Click a POI marker: show its info panel and fly the camera toward it.
+// The very first click on the canvas only engages pointer lock (see
+// controls.js) - there's no visible cursor to click a specific point at
+// while the mouse is captured for looking around, so once locked, clicks
+// aim from screen center (a HUD reticle marks this, index.html).
 const raycaster = new THREE.Raycaster();
-const pointer = new THREE.Vector2();
+const SCREEN_CENTER = new THREE.Vector2(0, 0);
+const FLY_TO_STANDOFF_M = 250; // walking-scale viewing distance, not the old overview-scale 2500m
 let flying = null;
 
 function flyTo(poi) {
-  const endTarget = new THREE.Vector3(poi.local.x, poi.elevationM + 50, poi.local.z);
-  const viewDir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
-  const endPos = endTarget.clone().addScaledVector(viewDir, 2500);
-  flying = {
-    startPos: camera.position.clone(),
-    endPos,
-    startTarget: controls.target.clone(),
-    endTarget,
-    t: 0,
-  };
+  const target = new THREE.Vector3(poi.local.x, poi.elevationM, poi.local.z);
+  const away = camera.position.clone().sub(target);
+  away.y = 0;
+  if (away.lengthSq() < 1) away.set(0, 0, 1); // camera directly above target - pick an arbitrary side
+  away.normalize();
+  const endPos = target.clone().addScaledVector(away, FLY_TO_STANDOFF_M);
+  const ground = controls.getGroundHeight?.(endPos.x, endPos.z);
+  endPos.y = (ground ?? target.y) + EYE_HEIGHT_M;
+  flying = { startPos: camera.position.clone(), endPos, lookAt: target.clone(), t: 0 };
+  controls.enabled = false; // paused until the animation finishes, below
 }
 
-renderer.domElement.addEventListener('click', (event) => {
-  if (!poiIndex) return;
-  pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
-  pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
-  raycaster.setFromCamera(pointer, camera);
+renderer.domElement.addEventListener('click', () => {
+  if (!poiIndex || !controls.locked) return;
+  raycaster.setFromCamera(SCREEN_CENTER, camera);
 
   const poi = poiIndex.pick(raycaster);
   const panel = document.getElementById('poi-info');
@@ -149,6 +180,7 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  labelRenderer.setSize(window.innerWidth, window.innerHeight);
 });
 
 const envTime = document.getElementById('env-time');
@@ -208,20 +240,27 @@ renderer.setAnimationLoop(() => {
 
     if (originReady) {
       const { lat, lon } = localToWGS84(camera.position.x, camera.position.z);
-      navPositionEl.textContent = `${formatLatLon(lat, lon)} · ${Math.round(camera.position.y)} m`;
+      navPositionEl.textContent = `${formatLatLon(lat, lon)} · alt ${Math.round(camera.position.y)} m`;
     }
 
     const nearest = poiIndex && nearestPOI(camera.position.x, camera.position.z, poiIndex.manifest.pois);
     navNearestEl.textContent = nearest ? `Near ${nearest.poi.name} (${(nearest.distanceM / 1000).toFixed(1)} km)` : '';
+
+    poiIndex?.updateLabelVisibility(camera);
   }
 
   if (flying) {
     flying.t = Math.min(1, flying.t + 0.02);
     const e = 1 - (1 - flying.t) ** 3; // ease-out cubic
     camera.position.lerpVectors(flying.startPos, flying.endPos, e);
-    controls.target.lerpVectors(flying.startTarget, flying.endTarget, e);
-    if (flying.t >= 1) flying = null;
+    camera.lookAt(flying.lookAt);
+    if (flying.t >= 1) {
+      flying = null;
+      controls.enabled = true; // PointerLockControls re-derives yaw/pitch from the
+      // camera's current quaternion on the next mousemove, no resync needed (src/controls.js)
+    }
   }
-  controls.update();
+  controls.update(timer.getDelta());
   renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
 });

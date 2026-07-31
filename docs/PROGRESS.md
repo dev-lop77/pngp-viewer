@@ -167,6 +167,92 @@ live lat/lon/elevation + nearest-named-place readout, all in a new
   (45.33°N, 7.74°E, within the project's bbox), the camera's actual
   altitude, and a plausible nearest POI with distance.
 
+**Same day, right after: walk/fly navigation replaces OrbitControls.**
+Testing phase 5 in a real browser, the user said the elevation readout
+was confusing (camera altitude while orbiting an overview doesn't mean
+much) and asked for full keyboard navigation - a proper walk/fly control
+scheme, defaulting to walking at eye height, with the existing click-a-
+POI-to-fly-there behavior kept as an event on top rather than the primary
+way to move.
+
+### Done: walk/fly navigation
+- **Scoped via `AskUserQuestion` before building** (a real architecture
+  change, same bar as other foundational decisions on this project): (1)
+  walking is now the *default* mode, not a toggle off of an orbit-overview
+  - the user's answer directly replaced OrbitControls rather than adding
+  walking alongside it; (2) 'F' toggles a faster fly mode for covering the
+  ~84x48km park; (3) no scroll/zoom at all in either mode; (4) mouse-look
+  via pointer lock, captured by default (first click locks) rather than a
+  reference-style "click to start" overlay.
+- **New `src/controls.js`** (`WalkFlyControls`), built on three's own
+  `PointerLockControls` addon rather than hand-rolled mouselook - same
+  "prefer a well-tested library" instinct as OrbitControls/proj4/turf/Sky
+  elsewhere in this project. Confirmed by reading its source (not assumed)
+  that it re-derives yaw/pitch from the camera's *current* quaternion on
+  every mousemove rather than caching stale state - the same insight
+  already on file for `OrbitControls.update()` from phase 2 - so
+  `main.js`'s `flyTo()` animation (still triggered by clicking a POI) can
+  freely move the camera and hand control back with no manual resync.
+  Walk mode: `moveForward()`/`moveRight()` (XZ-plane only) + ground
+  clamping via `terrain.js`'s `sampleHeight()` + 1.7m eye height. Fly mode:
+  moves along the full 3D look direction (so looking up flies you upward),
+  Space/C for pure vertical, no ground clamp. Shift boosts speed in both.
+- **A real bug this surfaced, not a new one**: at the chosen spawn point
+  (400m from the Gran Paradiso summit, oriented to look at it), the whole
+  screen filled with a flat magenta triangle - initially suspected a
+  terrain-mesh-resolution problem (the phase-1 terrain mesh is only 256
+  segments across the whole bbox, ~328m/quad, an open item in
+  `docs/ARCHITECTURE.md` §12 since phase 1) or another SwiftShader
+  artifact. Diagnosed properly instead of guessing: repositioned the
+  camera to a flatter area via a temporary debug hook - terrain rendered
+  fine there, ruling out a general mesh/renderer bug - then checked the
+  actual POI data near the spawn point and found a `pass` POI ("Finestra
+  del Roc") only 190m away with a 180m-radius sphere marker (purple, this
+  category's color matches the artifact exactly) - at walking scale the
+  camera was standing almost inside it. This is exactly the "disturbing
+  balloons" the user flagged when asking for keyboard navigation, just
+  proven to be an active, screen-filling bug rather than only an
+  aesthetic complaint.
+- **Reworked `src/poi.js` POI markers**: shrank the pickable sphere
+  markers from 180-220m radius down to a uniform 4m dot (invisible from a
+  26km overview, confirmed by screenshot - no more balloons cluttering the
+  wide view either), and added a `CSS2DObject` text label per POI (real
+  DOM text over the WebGL canvas, not a WebGL sprite - crisp at any zoom,
+  no per-name texture to generate). Labels are hidden beyond 1500m from
+  the camera - real decluttering now that walking puts the camera at
+  ground level among ~370 POIs, computed in the same throttled tick as
+  the nav HUD's nearest-POI lookup (`nav.js`'s scan is reused, not
+  duplicated).
+- **Picking moved from mouse position to screen center**: pointer lock
+  hides the cursor, so there's no mouse position to raycast from once
+  locked - `main.js`'s click handler now raycasts from a fixed
+  screen-center point (a small HUD reticle marks this, `index.html`) and
+  only acts once `controls.locked` is true, which also naturally
+  distinguishes "this click just engaged pointer lock" (first click,
+  `locked` is still false at click time) from "this click should try to
+  select whatever's under the reticle" (any click after) - no extra
+  bookkeeping needed.
+- **Spawn point**: waits for both terrain (for ground height) and POI
+  data (for a real landmark) via `Promise.all()` before positioning the
+  camera, avoiding a visible intermediate wrong spot. Looks for a POI
+  named exactly "Gran Paradiso" (falls back to any peak, then the first
+  POI) and stands 400m south of it at eye height, facing it.
+- Added a small always-visible controls hint (`index.html`) - "click to
+  look around · WASD move · Shift run · F toggle walk/fly · Space/C
+  up/down while flying" - since this is a big, easily-missed behavior
+  change from the old orbit-drag navigation.
+- Verified with `tools/verify.mjs` (zero console/page errors) and
+  screenshots at multiple camera positions (the Gran Paradiso spawn,
+  after the marker fix; a flat area at eye level; the old 26km overview
+  angle) - **not yet tested for real**: pointer lock, WASD movement feel,
+  and mouse sensitivity fundamentally need a real human at the keyboard,
+  headless Playwright can't meaningfully evaluate "does this feel good to
+  walk around in."
+- Also relabeled the phase 5 nav HUD's elevation reading from a bare
+  number to `alt NNNN m` while here, addressing the "I don't understand
+  what this refers to" confusion directly (it'll read naturally as "your
+  elevation" now that walking puts the camera at real ground+eye height).
+
 ### Open questions (non-blocking)
 1. **Midday preset's sky brightness - RESOLVED 2026-07-31**, confirmed
    correct (blue sky) in the user's real browser - see above, was a
@@ -175,17 +261,38 @@ live lat/lon/elevation + nearest-named-place readout, all in a new
    settlements** (see phase 5 Done above) - a deliberate scope choice, not
    a bug; revisit with a new OSM `place=*` fetch if real town/hamlet names
    (e.g. "Cogne", "Valnontey") are wanted later.
-3. Previously-open items (Piemonte DTM/VDA license verification, basemap/
+3. **Walk/fly navigation - not yet confirmed on real hardware** (see
+   above) - ask the user to actually walk/fly around before considering
+   this done; pointer lock behavior in particular can vary by browser.
+4. **The 256-segment terrain mesh (~328m/quad) is coarse for close-up
+   walking**, not just for the POI-marker bug it was initially (wrongly)
+   suspected of causing - confirmed by screenshot that walking right next
+   to a steep slope shows large flat facets, not smooth terrain. Not
+   fixed now (out of scope for this round, and the reference-diagnosis
+   above shows it wasn't the cause of the actual bug found) - a real
+   candidate for phase 7 polish (`docs/ARCHITECTURE.md` §12's tile/LOD
+   item), now with a concrete walking-context reason to prioritize it
+   sooner rather than later if ground-level exploration becomes a bigger
+   focus.
+5. **Pointer lock + WASD has no mobile equivalent** - touch devices can't
+   do either. Not a new conflict (`docs/ARCHITECTURE.md` §11 already
+   scopes mobile to "phase 7 at earliest, desktop-first"), but a mobile
+   pass will now need a real alternative control scheme (virtual
+   joystick + drag-to-look, most likely), not just responsive layout.
+6. Previously-open items (Piemonte DTM/VDA license verification, basemap/
    orthophoto source, `waterway=stream`/glacier relations not fetched,
    waterfall ribbons being a visual approximation) all still stand
    unchanged - see the 2026-07-30 section below.
 
 ### Next steps (not yet started)
-1. Finishing phase 1's deploy (GitHub Pages or self-managed Apache,
-   `docs/ARCHITECTURE.md` §9) - the only phase left not started. Phases
-   1-5 are all functionally complete; phase 6 (wildlife/audio/OSM
-   huts/vegetation) and phase 7 (polish) are the stretch/refinement goals
-   beyond that, per the roadmap.
+1. **Get the user's real-browser read on walk/fly navigation** (Open
+   questions #3) - movement feel, mouse sensitivity, pointer lock
+   behavior, whether the Gran Paradiso spawn point is a good default.
+2. Finishing phase 1's deploy (GitHub Pages or self-managed Apache,
+   `docs/ARCHITECTURE.md` §9) - the only phase left not started. Phase 6
+   (wildlife/audio/OSM huts/vegetation) and phase 7 (polish, incl. the
+   terrain-LOD item above) are the stretch/refinement goals beyond that,
+   per the roadmap.
 
 ## Status as of 2026-07-30 (historical)
 
