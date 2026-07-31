@@ -3,7 +3,7 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { loadTerrain } from './terrain.js';
 import { loadTrails } from './trails.js';
-import { loadPOI, poiInfoHTML } from './poi.js';
+import { loadPOI, poiInfoHTML, LINE_RAYCAST_THRESHOLD_M } from './poi.js';
 import { loadWater } from './water.js';
 import { installAtmosphere } from './atmosphere.js';
 import { Lighting } from './lighting.js';
@@ -20,7 +20,10 @@ scene.fog = new THREE.Fog(0x9fc9e8, 20000, 140000);
 const camera = new THREE.PerspectiveCamera(
   60,
   window.innerWidth / window.innerHeight,
-  10,
+  0.1, // was 10 - fine for the old 26km overview camera, but clipped away anything
+  // closer than 10m once walking put the camera at 1.7m eye height (the "floating"/
+  // see-through feel reported after testing - logarithmicDepthBuffer is already on,
+  // so precision holds fine at this near/far ratio)
   200000,
 );
 camera.position.set(0, 3000, 0); // placeholder - real spawn set once terrain+POI load, below
@@ -100,8 +103,33 @@ loadTrails().then(({ group, manifest }) => {
   renderCredits();
 });
 
+// Select a POI: show its info panel and fly the camera toward it - shared
+// by both selection paths below (label click, and reticle+click while
+// walking/flying).
+const FLY_TO_STANDOFF_M = 250; // walking-scale viewing distance, not the old overview-scale 2500m
+let flying = null;
+
+function flyTo(poi) {
+  const target = new THREE.Vector3(poi.local.x, poi.elevationM, poi.local.z);
+  const away = camera.position.clone().sub(target);
+  away.y = 0;
+  if (away.lengthSq() < 1) away.set(0, 0, 1); // camera directly above target - pick an arbitrary side
+  away.normalize();
+  const endPos = target.clone().addScaledVector(away, FLY_TO_STANDOFF_M);
+  const ground = controls.getGroundHeight?.(endPos.x, endPos.z);
+  endPos.y = (ground ?? target.y) + EYE_HEIGHT_M;
+  flying = { startPos: camera.position.clone(), endPos, lookAt: target.clone(), t: 0 };
+  controls.enabled = false; // paused until the animation finishes, below
+}
+
+function selectPoi(poi) {
+  document.getElementById('poi-info').innerHTML = poiInfoHTML(poi);
+  document.getElementById('poi-info').style.display = 'block';
+  flyTo(poi);
+}
+
 let poiIndex = null;
-const poiPromise = loadPOI().then((index) => {
+const poiPromise = loadPOI(undefined, { onSelect: selectPoi }).then((index) => {
   poiIndex = index;
   scene.add(index.group);
   // ODbL requires attribution wherever OSM data is shown - docs/ARCHITECTURE.md §9.
@@ -111,6 +139,30 @@ const poiPromise = loadPOI().then((index) => {
     `${index.manifest.source.attribution} ` +
     `<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">${index.manifest.source.license}</a>`;
   renderCredits();
+
+  // Searchable POI list (native <datalist> - no custom dropdown code needed
+  // at this scale, ~370 entries). Labels include the category since plain
+  // names aren't guaranteed unique across that many POIs.
+  const searchByLabel = new Map(index.searchEntries.map((e) => [e.label, e.poi]));
+  const datalist = document.getElementById('poi-search-list');
+  for (const { label } of index.searchEntries) {
+    const option = document.createElement('option');
+    option.value = label;
+    datalist.appendChild(option);
+  }
+  const searchInput = document.getElementById('poi-search-input');
+  searchInput.addEventListener('focus', () => {
+    if (document.pointerLockElement) document.exitPointerLock(); // typing shouldn't also spin the camera
+  });
+  searchInput.addEventListener('input', () => {
+    const poi = searchByLabel.get(searchInput.value);
+    if (poi) {
+      selectPoi(poi);
+      searchInput.value = '';
+      searchInput.blur();
+    }
+  });
+
   return index;
 });
 
@@ -138,41 +190,24 @@ loadWater().then(({ group, manifest, update }) => {
   renderCredits();
 });
 
-// Click a POI marker: show its info panel and fly the camera toward it.
-// The very first click on the canvas only engages pointer lock (see
-// controls.js) - there's no visible cursor to click a specific point at
-// while the mouse is captured for looking around, so once locked, clicks
-// aim from screen center (a HUD reticle marks this, index.html).
+// Aim-select a POI: the very first click on the canvas only engages
+// pointer lock (see controls.js) - there's no visible cursor to click a
+// specific point at while the mouse is captured for looking around, so
+// once locked, clicks aim from screen center (a HUD reticle marks this,
+// index.html) instead of the actual mouse position.
 const raycaster = new THREE.Raycaster();
+raycaster.params.Line.threshold = LINE_RAYCAST_THRESHOLD_M; // poi.js's marker lines are thin - need real tolerance to aim at
 const SCREEN_CENTER = new THREE.Vector2(0, 0);
-const FLY_TO_STANDOFF_M = 250; // walking-scale viewing distance, not the old overview-scale 2500m
-let flying = null;
-
-function flyTo(poi) {
-  const target = new THREE.Vector3(poi.local.x, poi.elevationM, poi.local.z);
-  const away = camera.position.clone().sub(target);
-  away.y = 0;
-  if (away.lengthSq() < 1) away.set(0, 0, 1); // camera directly above target - pick an arbitrary side
-  away.normalize();
-  const endPos = target.clone().addScaledVector(away, FLY_TO_STANDOFF_M);
-  const ground = controls.getGroundHeight?.(endPos.x, endPos.z);
-  endPos.y = (ground ?? target.y) + EYE_HEIGHT_M;
-  flying = { startPos: camera.position.clone(), endPos, lookAt: target.clone(), t: 0 };
-  controls.enabled = false; // paused until the animation finishes, below
-}
 
 renderer.domElement.addEventListener('click', () => {
   if (!poiIndex || !controls.locked) return;
   raycaster.setFromCamera(SCREEN_CENTER, camera);
 
   const poi = poiIndex.pick(raycaster);
-  const panel = document.getElementById('poi-info');
   if (poi) {
-    panel.innerHTML = poiInfoHTML(poi);
-    panel.style.display = 'block';
-    flyTo(poi);
+    selectPoi(poi);
   } else {
-    panel.style.display = 'none';
+    document.getElementById('poi-info').style.display = 'none';
   }
 });
 
@@ -240,7 +275,12 @@ renderer.setAnimationLoop(() => {
 
     if (originReady) {
       const { lat, lon } = localToWGS84(camera.position.x, camera.position.z);
-      navPositionEl.textContent = `${formatLatLon(lat, lon)} · alt ${Math.round(camera.position.y)} m`;
+      const ground = controls.getGroundHeight?.(camera.position.x, camera.position.z);
+      // Ground elevation below, not just the camera's own altitude - matters
+      // most in fly mode, where alt alone doesn't say how high above the
+      // terrain you actually are (user asked for this explicitly).
+      const groundText = ground != null ? ` · ground ${Math.round(ground)} m` : '';
+      navPositionEl.textContent = `${formatLatLon(lat, lon)} · alt ${Math.round(camera.position.y)} m${groundText}`;
     }
 
     const nearest = poiIndex && nearestPOI(camera.position.x, camera.position.z, poiIndex.manifest.pois);

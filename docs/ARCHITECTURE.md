@@ -507,18 +507,30 @@ pngp-viewer/
 │                              deck plane sized to our real bbox + one GPU-driven
 │                              particle system that's rain or snow depending on mode: see §7
 │   ├── water.js            rivers, lakes, waterfalls
-│   ├── poi.js              loads public/data/poi.json, one merged InstancedMesh draw
-│                              call per category (§10) for small pickable marker dots, plus
-│                              one CSS2DObject text label per POI (real DOM, not WebGL - crisp
-│                              at any zoom, no per-name texture) - reworked 2026-07-31 after
-│                              walk-mode testing revealed the original 180-220m-radius
-│                              spheres (sized for a 26km-high overview) were "disturbing
-│                              balloons" at human scale, and once literally engulfed the
-│                              camera near a dense POI cluster (see §7). Labels are
-│                              distance-culled (hidden beyond 1500m) for the same reason;
-│                              click -> info panel + fly-to camera lives in main.js
-│                              (raycasts against poi.js's marker meshes, from screen center
-│                              while pointer-locked - see controls.js)
+│   ├── poi.js              loads public/data/poi.json, one merged pickable `LineSegments`
+│                              draw call per category (§10) - a thin vertical line from the
+│                              ground to each label, not a marker dot - plus one CSS2DObject
+│                              text label per POI (real DOM, not WebGL - crisp at any zoom,
+│                              no per-name texture). Reworked twice on 2026-07-31 after
+│                              walk-mode testing: first the original 180-220m-radius spheres
+│                              (sized for a 26km-high overview) turned out to be "disturbing
+│                              balloons" at human scale, once literally engulfing the camera
+│                              near a dense POI cluster (§7); shrinking those to small dots
+│                              then revealed the dots visibly floating/sinking relative to
+│                              the real ground (elevationM vs. the coarse terrain mesh's
+│                              actual rendered surface, §12) - a thin connector line (the
+│                              user's own fix idea) reads as a marker post regardless of that
+│                              mismatch, instead of a glaringly wrong detached shape. Labels
+│                              are distance-culled (hidden beyond 1500m) for the same
+│                              decluttering reason, and each carries its own click listener
+│                              (an `onSelect` callback from main.js) so a POI can be selected
+│                              either by clicking its label directly (cursor visible, pointer
+│                              lock released) or via main.js's screen-center reticle raycast
+│                              while walking/flying (`Raycaster.params.Line.threshold` gives
+│                              the thin line real tolerance to aim at). Also exposes
+│                              `searchEntries` for index.html's searchable POI list
+│                              (`<input list=datalist>`, "Name · Category" labels since plain
+│                              names aren't guaranteed unique across ~370 POIs)
 │   ├── controls.js         Done, 2026-07-31. Walk/fly navigation replacing OrbitControls
 │                              as the primary way to move (user's explicit request after
 │                              testing phase 5) - walk mode is the default (ground-clamped

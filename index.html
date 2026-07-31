@@ -28,11 +28,29 @@
         color: inherit;
         pointer-events: auto;
       }
-      #poi-info {
+      #top-left {
         position: fixed;
         top: 12px;
         left: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
         max-width: 20em;
+      }
+      #poi-search input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 6px 10px;
+        border: none;
+        border-radius: 6px;
+        background: rgba(10, 14, 20, 0.75);
+        color: #fff;
+        font: 13px/1.4 -apple-system, system-ui, sans-serif;
+      }
+      #poi-search input::placeholder {
+        color: rgba(255, 255, 255, 0.55);
+      }
+      #poi-info {
         padding: 10px 14px;
         background: rgba(10, 14, 20, 0.75);
         border-radius: 6px;
@@ -147,6 +165,12 @@
         font: 11px/1.3 -apple-system, system-ui, sans-serif;
         text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
         white-space: nowrap;
+        cursor: pointer;
+        /* The CSS2DRenderer container is pointer-events:none (main.js) so
+           clicks reach the canvas everywhere except an actual label - only
+           meaningful once pointer lock is released and the cursor is
+           visible again (docs/PROGRESS.md). */
+        pointer-events: auto;
       }
       #controls-hint {
         position: fixed;
@@ -165,7 +189,13 @@
   </head>
   <body>
     <div id="credits"></div>
-    <div id="poi-info"></div>
+    <div id="top-left">
+      <div id="poi-search">
+        <input type="text" id="poi-search-input" list="poi-search-list" placeholder="Cerca un luogo..." autocomplete="off" />
+        <datalist id="poi-search-list"></datalist>
+      </div>
+      <div id="poi-info"></div>
+    </div>
     <div id="fps"></div>
     <div id="reticle"></div>
     <div id="controls-hint">Click to look around · WASD move · Shift run · F toggle walk/fly · Space/C up/down while flying</div>

@@ -253,6 +253,52 @@ way to move.
   what this refers to" confusion directly (it'll read naturally as "your
   elevation" now that walking puts the camera at real ground+eye height).
 
+**Same day, after the user's first real-browser pass on walk/fly.**
+Mouse-look and click-to-lock worked; five concrete fixes came back.
+
+### Done: walk/fly follow-up fixes
+- **Camera near-clip plane was 10m** - fine for the old 26km overview
+  camera, but clipped away anything closer than 10m once walking put the
+  camera at 1.7m eye height, which the user correctly read as "floating"/
+  see-through geometry. Reduced to 0.1m; `logarithmicDepthBuffer: true`
+  (already on since phase 1, for the scene's huge dynamic range) holds
+  precision fine at this near/far ratio, confirmed by testing, not just
+  assumed.
+- **POI markers reworked again**: even after phase-5-follow-up's first
+  fix (180-220m spheres -> small 4m dots), the user found the dots
+  visibly floated above/sank below the real ground - `elevationM`
+  (computed at data-build time from the heightfield) doesn't perfectly
+  match what the coarse 256-segment terrain mesh actually renders at
+  that exact point (the same discrepancy behind Open question #4 below).
+  Replaced the dots with a thin vertical line from the ground up to each
+  label (merged per-category `LineSegments`, same §10 instancing
+  principle as the dots/trails.js) - the user's own suggested fix, and a
+  better one: a line reads as a marker post regardless of a small height
+  mismatch, instead of a glaringly "wrong" detached ball.
+  `Raycaster.params.Line.threshold` (5m) gives the reticle real tolerance
+  to aim at a thin line; hit-index/2 maps back to the right POI (verified
+  against three.js's own `Line.raycast()` source, not assumed).
+- **Two new POI selection paths added**: (1) click a label directly -
+  each label div gets its own click listener (`poi.js`'s new `onSelect`
+  callback), meaningful once pointer lock is released (Esc) and the
+  cursor is visible again; (2) a searchable `<input list=datalist>` (370
+  entries, native browser autocomplete - no custom dropdown code needed
+  at this scale) in a new top-left `#poi-search` box, labeled "Name ·
+  Category" since plain names aren't guaranteed unique across ~370 POIs.
+  Focusing the search box releases pointer lock first (typing shouldn't
+  also spin the camera around). Both paths call the same `selectPoi()`
+  main.js already had for the reticle path - no duplicated fly-to/panel
+  logic. Verified end-to-end headlessly: selecting a far-away peak by
+  name actually moved the camera there (checked the nearest-POI readout
+  changed to a different, correct nearby POI, not just that the panel
+  text updated).
+- **Nav HUD now shows ground elevation below the camera, not just the
+  camera's own altitude** - the user specifically asked for this (matches
+  something considered and dropped for simplicity while first building
+  phase 5); most useful in fly mode, where altitude alone doesn't say how
+  high above the terrain you actually are. Both numbers together also
+  make a good sanity check in walk mode (should always sit ~1.7m apart).
+
 ### Open questions (non-blocking)
 1. **Midday preset's sky brightness - RESOLVED 2026-07-31**, confirmed
    correct (blue sky) in the user's real browser - see above, was a
@@ -261,19 +307,20 @@ way to move.
    settlements** (see phase 5 Done above) - a deliberate scope choice, not
    a bug; revisit with a new OSM `place=*` fetch if real town/hamlet names
    (e.g. "Cogne", "Valnontey") are wanted later.
-3. **Walk/fly navigation - not yet confirmed on real hardware** (see
-   above) - ask the user to actually walk/fly around before considering
-   this done; pointer lock behavior in particular can vary by browser.
+3. **Walk/fly navigation - fixes applied but not yet re-confirmed on real
+   hardware** (near-clip plane, marker lines, label click, POI search,
+   dual elevation readout - see Done above) - all verified headlessly
+   only; ask the user to re-test before considering this done.
 4. **The 256-segment terrain mesh (~328m/quad) is coarse for close-up
-   walking**, not just for the POI-marker bug it was initially (wrongly)
-   suspected of causing - confirmed by screenshot that walking right next
-   to a steep slope shows large flat facets, not smooth terrain. Not
-   fixed now (out of scope for this round, and the reference-diagnosis
-   above shows it wasn't the cause of the actual bug found) - a real
-   candidate for phase 7 polish (`docs/ARCHITECTURE.md` §12's tile/LOD
-   item), now with a concrete walking-context reason to prioritize it
-   sooner rather than later if ground-level exploration becomes a bigger
-   focus.
+   walking** - confirmed by screenshot that walking right next to a steep
+   slope shows large flat facets, not smooth terrain. Not fixed now (out
+   of scope for this round) - a real candidate for phase 7 polish
+   (`docs/ARCHITECTURE.md` §12's tile/LOD item), now with a concrete
+   walking-context reason to prioritize it sooner if ground-level
+   exploration becomes a bigger focus. Likely also the deeper cause of
+   the POI-marker floating problem (elevationM vs. the coarse mesh's
+   actual rendered surface) - fixed there via the connector-line
+   workaround rather than by addressing the mesh resolution itself.
 5. **Pointer lock + WASD has no mobile equivalent** - touch devices can't
    do either. Not a new conflict (`docs/ARCHITECTURE.md` §11 already
    scopes mobile to "phase 7 at earliest, desktop-first"), but a mobile
@@ -285,9 +332,10 @@ way to move.
    unchanged - see the 2026-07-30 section below.
 
 ### Next steps (not yet started)
-1. **Get the user's real-browser read on walk/fly navigation** (Open
-   questions #3) - movement feel, mouse sensitivity, pointer lock
-   behavior, whether the Gran Paradiso spawn point is a good default.
+1. **Get the user's real-browser read on the walk/fly follow-up fixes**
+   (Open questions #3) - ground-clamping feel, whether the connector
+   lines read well, label-click + search usability, the dual
+   altitude/ground readout.
 2. Finishing phase 1's deploy (GitHub Pages or self-managed Apache,
    `docs/ARCHITECTURE.md` §9) - the only phase left not started. Phase 6
    (wildlife/audio/OSM huts/vegetation) and phase 7 (polish, incl. the
