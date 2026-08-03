@@ -16,8 +16,13 @@
       }
       #credits {
         position: fixed;
-        bottom: 8px;
+        /* Clears #controls-hint, which sits centred at bottom: 8px. The credits
+           block grew to four lines once all three DEM attributions and the CC BY
+           "data was modified" statement shipped, and at that height it ran
+           straight through the hint. */
+        bottom: 34px;
         right: 10px;
+        text-align: right;
         max-width: 40em;
         font: 11px/1.4 -apple-system, system-ui, sans-serif;
         color: rgba(255, 255, 255, 0.75);

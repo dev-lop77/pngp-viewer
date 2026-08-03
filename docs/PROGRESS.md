@@ -321,6 +321,50 @@ also recording `licenseVerifiedVia` with the URL the answer came from. Credits
 render in a fixed order now, too - the keys were filled in by whichever fetch
 finished first, so the overlay used to reshuffle between loads.
 
+### Phase 1's deploy is DONE — the viewer is live
+**https://dev-lop77.github.io/pngp-viewer/** — the last numbered-phase item that
+had never been started.
+
+Shape, per the user's decision: **only the built site is published.** A
+`gh-pages` orphan branch holds `dist/` plus `.nojekyll` (8 files, 21 MB);
+sources, docs, tools and the 43.5 MB intermediate heightmap stay local. The
+branch is deliberately orphan - the main history is 123 MB and a static host
+needs none of it. `.nojekyll` matters: without it Pages runs the output through
+Jekyll, which skips files and directories beginning with an underscore.
+
+`vite.config.js`'s `base: './'` paid off exactly as intended - `index.html`
+references `./assets/…` and the sub-path deploy worked with no changes, which
+is the payoff for the local sub-path test done back in phase 1.
+
+Three things worth knowing for the next deploy:
+- **Redeploying is a small loop**: `npm run build`, copy `dist/.` into the
+  worktree, commit, push. The JS hash only changes when the JS does, so a
+  CSS/HTML-only change ships as one small file.
+- Adding the remote set `origin` on the main repo too. `main` has no upstream,
+  so a bare `git push` from it won't publish sources by accident, but be aware
+  the remote is now reachable from the source branch.
+- The repo's **default branch is `gh-pages`** (GitHub set it when that was the
+  first branch pushed to an empty repo), so the repo landing page shows the
+  built site. Worth changing if sources are ever published to `main`.
+
+**Verified live, not just "Pages says built"**: fetched the real URL, confirmed
+every asset is served with the right content type, then ran the app against the
+public site headlessly - HUD reads a real position (45.5142°N 7.2673°E, alt
+3918 / ground 3916), 426 search entries, WebGL2 context healthy, **zero failed
+requests and zero console errors**. The screenshot then caught a defect the
+licensing work had introduced: the credits block had grown to four lines and
+was running through the centred controls hint. Fixed and redeployed.
+
+Two access hurdles worth recording, both about the token rather than the code:
+`gh` had a stale token for a *different* account (`lop-smart`, not
+`dev-lop77`), and the fine-grained PAT initially lacked `Contents: write`,
+which fails as a 403 `Write access to repository not granted` at push time.
+Misleading detail: `GET /repos/…` reports `"push": true, "admin": true` even
+then, because that field describes the *account's* role, not the token's
+granted permissions. Enabling Pages via the API also 403s without
+`Pages: write` - but it turned out not to matter, since GitHub auto-enables
+Pages when it receives a branch named `gh-pages`.
+
 ### Open questions
 1. ~~Frame rate with LOD unmeasured~~ - **CLOSED 2026-08-03: the user
    confirmed frame rate is OK in their real browser** with the LOD terrain

@@ -39,3 +39,29 @@ Both start scripts:
   `import.meta.env.BASE_URL` sub-path bug, see `docs/PROGRESS.md`.
 - `stop.sh [port ...]` — stops whatever's listening on the given ports
   (default: 5173 and 4173, i.e. both of the above).
+- `deploy.sh` — builds and publishes to GitHub Pages
+  (<https://dev-lop77.github.io/pngp-viewer/>).
+
+## Deploying
+
+`tools/dev/deploy.sh` is the whole thing: build, sync `dist/` into an orphan
+`gh-pages` worktree, commit, push. Safe to re-run — it reuses a stale
+worktree, and says "nothing changed" instead of pushing an empty commit.
+
+Only the built site is published (decided 2026-08-03): no sources, docs or
+tools, and none of the main history. The script *refuses to push* if it finds
+`.mjs`/`.sh`/`.md`/`.png` in the payload, so that decision can't be undone by
+accident later.
+
+Pages needs no setup — GitHub enables it automatically for a branch named
+`gh-pages`. Two things that cost time the first time round:
+
+- A **fine-grained** PAT needs `Contents: Read and write`, or the push fails
+  with `403 Write access to repository not granted`. Confusingly,
+  `GET /repos/…` still reports `"push": true` — that field is the *account's*
+  role, not the token's permissions. Changing a fine-grained token's
+  permissions takes effect immediately, with no need to re-run `gh auth login`.
+- Pages on a **private** repo needs a paid plan; this repo is public.
+
+After deploying, don't stop at Pages reporting `built` — check the live site:
+`node tools/verify.mjs https://dev-lop77.github.io/pngp-viewer/`.

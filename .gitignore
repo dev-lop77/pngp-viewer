@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.deploy-worktree/
 .DS_Store
 *.log
 *.aux.xml
