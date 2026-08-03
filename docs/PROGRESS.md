@@ -4,11 +4,24 @@ Read this first at the start of each session. Update it before ending one.
 
 ## Status as of 2026-08-03
 
-**The walk/fly follow-up fixes were finally re-tested by the user in a real
-browser (Firefox), and that test cascaded into the biggest single piece of work
-on the project so far: the terrain now has quadtree LOD, plus two significant
-bugs dating back to phase 1 were found and fixed along the way.** Nothing is
-committed yet as of this writing - the working tree holds all of it.
+**Session ended with a clean working tree and every test passing. Start at
+"Next steps" and "How to resume" near the end of this section** - those two are
+current as of the close of the day, whereas everything between here and them is
+chronological narrative.
+
+Headline: phases 0-5 are done and deployed, and **phase 6 is now underway**,
+opened with the vegetation at the user's choice. The terrain is no longer white
+(§5's altitude bands finally drive its colour) and trees come from a real OSM
+canopy mask; both were confirmed good in the user's Firefox, brightness and frame
+rate included. Phase 6 still needs wildlife and ambient audio. The
+satellite/orthophoto question was explicitly deferred.
+
+The rest of this section is the day in order, and it was a long one.
+
+**It began with the walk/fly follow-up fixes finally being re-tested by the user
+in a real browser (Firefox), and that test cascaded into the biggest single piece
+of work on the project so far: the terrain gained quadtree LOD, plus two
+significant bugs dating back to phase 1 were found and fixed along the way.**
 
 ### The user's real-browser results (2026-08-03, Firefox)
 Point by point, against the checklist they were given:
@@ -448,11 +461,13 @@ the search box - `tools/verify.mjs` only ever shoots the 3918 m spawn point, up
 in the rock band, which is useless for looking at anything that happens at
 treeline altitude.
 
-### Not yet checked, and headless can't tell us
-**Overall brightness.** The Cogne view reads correctly as a forested valley with
-bare rock on the steep faces and lighter rocky summits behind, but headless is
-SwiftShader and has been wrong or useless on brightness four times now. Needs a
-real-browser look, at more than one time of day.
+### Brightness: was the open question, now CLOSED
+The Cogne view read correctly as a forested valley with bare rock on the steep
+faces and lighter rocky summits behind, but headless is SwiftShader and has been
+wrong or useless on brightness four times, so it needed a real-browser look.
+**The user confirmed it in Firefox: brightness is good.** The solve-backwards
+approach to albedo therefore lands where intended - see the verdict section
+below, which closes frame rate with it.
 
 ### Step 2, done: trees from a real OSM canopy mask
 The user chose the OSM mask over a procedural altitude/slope rule, having been
@@ -595,6 +610,12 @@ from outside; Vite strips it from a production build. The alternative was
 rebuilding the scene inside the test, which stops testing the real one.
 
 ### Open questions
+0. **Whether the 45 ms mouse-look smoothing feels laggy** - the one thing from
+   the mouse-look fix that only the user can judge. `LOOK_SMOOTHING_S` at the top
+   of `src/controls.js` is the dial; `0` restores raw per-event behaviour. Also
+   still unconfirmed by them: whether the jumps are actually gone, or whether a
+   residue remains (which would be OS pointer acceleration, cause 3, and not
+   fixable from the page).
 1. ~~Frame rate with LOD unmeasured~~ - **CLOSED 2026-08-03: the user
    confirmed frame rate is OK in their real browser** with the LOD terrain
    live, so the ~300 extra draw calls are affordable at the shipped settings
@@ -629,34 +650,76 @@ rebuilding the scene inside the test, which stops testing the real one.
    should now sit *better* on the drawn terrain than before (the old mesh was
    29 m off on average) - but this hasn't been checked deliberately.
 
-### Next steps
-1. **Get the user's real-browser read on the LOD terrain, frame rate first.**
-   Everything else in this session is verified as far as headless can go.
-2. Decide the rifugi/trailhead policy, then implement: widen
-   `tools/fetch-osm.mjs` to `node|way` × `alpine_hut|wilderness_hut|shelter
-   [shelter_type=basic_hut]` with node/way dedupe within ~150 m, dropping
-   `shelter_type` values `public_transport`/`picnic_shelter`/`gazebo`/
-   `rock_shelter` (100% noise), and add the trailhead allowlist.
-3. Correct `docs/ARCHITECTURE.md` §4's wrong OSM-gap note, and update §12 (the
-   tile/LOD item is now done) and §3/§8 for the shader findings.
-4. Still not started: phase 1's actual deploy (GitHub Pages or Apache).
+### Next steps (session ended here, 2026-08-03)
+Nothing is half-finished: the working tree is clean and every test passes. Pick
+up with whichever of these the user wants.
+
+1. **Confirm the mouse-look fix in a real browser** (open question 0). One
+   question only: do the vertical jumps still happen, and does the 45 ms
+   smoothing feel laggy? This is the only outstanding item from work already
+   done, so it belongs first - but it needs the user, not more code.
+2. **Finish phase 6.** Two pieces left, both unstarted:
+   - **Wildlife** - Alpine ibex above all, the species the park exists for, plus
+     chamois and marmots. `src/wildlife.js` is the slot reserved in
+     `docs/ARCHITECTURE.md` §8. Worth knowing before starting: the canopy mask
+     (`src/forest.js`) is already loaded and is exactly the signal needed to keep
+     animals plausible - ibex above the treeline, chamois at its edge, marmots in
+     the open meadow - so habitat comes almost free. The vertex-shader placement
+     pattern in `src/vegetation.js` does **not** transfer, though: animals move
+     independently and need real per-instance state.
+   - **Ambient audio** - procedural, no asset licensing to resolve. Note it needs
+     a user gesture to start (browser autoplay policy), and the viewer already
+     has a natural one: the click that grabs pointer lock.
+3. **Phase 7 polish**, when phase 6 is done: LOD popping/geomorphing (open
+   question 3), one-texel normals at any depth (4), the >500 kB bundle, and the
+   mobile pass - pointer lock + WASD has no touch equivalent at all.
+4. **Republish when wanted** - the live site is now four commits behind `main`.
+   `tools/dev/deploy.sh` does the whole thing; the user considers the deploy test
+   finished for now, so this is not urgent.
+5. Deferred by the user, do not re-raise unprompted: the satellite/orthophoto
+   basemap. It has never been scheduled into a phase. §5's altitude bands were
+   the deliberate alternative and they are now implemented.
 
 ### How to resume
-Everything from 2026-08-03 is committed, in three commits on `main`:
-`f9ae25e` (standalone keyboard navigation), `5189fd4` (terrain LOD + both
-phase-1 shader bugs + the marker/label/trail round), `fb9cb47` (these docs).
-The middle one is large because `src/main.js` and `src/poi.js` carry hunks for
-every feature in the round - splitting it at file granularity would have
-produced commits that don't build, which is worse than one honest commit.
-`tools/dev/start-preview.sh` +
-port-forwarding is the standing way to look at it in a real browser
-(`tools/dev/README.md`). Run `node tools/test-rendered-height.mjs` after any
-change to terrain geometry or the height sampling - it will catch a drift
-between the drawn surface and the analytic model, which four separate features
-now depend on. **Before touching any shader in this project, read the
-`onBeforeCompile` finding above**: patch the `#include` directive, and don't
-trust a replacement that produces no error, because a silently-unmatched
-replace is exactly how the RG8 bug survived from phase 1.
+Everything from 2026-08-03 is committed on `main`. This session's own commits, in
+order: `dbfcd5a` (credits toggle), `ca5b836` (vegetation bands),
+`ecfdf54` (trees from the OSM canopy mask), `964d0b4` (frame-paced mouse look).
+Earlier the same day: `f9ae25e`, `5189fd4`, `fb9cb47` and the deploy work.
+
+`tools/dev/start-preview.sh` + port-forwarding is the standing way to look at it
+in a real browser (`tools/dev/README.md`), and `tools/dev/shoot.mjs "<place>"
+[--climb=m]` is the fast way to see a specific place headlessly without hunting
+for it by hand.
+
+**The test tools now cover the fragile parts - run them, they are quick:**
+- `node tools/test-rendered-height.mjs` after any change to terrain geometry or
+  height sampling. Four separate features depend on the analytic model matching
+  the drawn surface.
+- `node tools/test-terrain-albedo.mjs` after touching terrain colours or the
+  canopy mask. It pins the band colours numerically *and* the mask's geographic
+  alignment.
+- `node tools/test-vegetation.mjs` after touching trees or the mask.
+- `node tools/test-mouselook.mjs` after touching `src/controls.js`.
+- The last three need a **dev** server (`start-dev.sh`), not preview: they import
+  `/src/*.js` directly and read `window.__pngp`, which only exists under
+  `import.meta.env.DEV`.
+
+**Three landmines that have each cost real time - read before editing:**
+1. **`onBeforeCompile` gets unresolved `#include` directives.** Patch the
+   directive, never the inlined chunk body, and never trust a replacement that
+   produces no error. `patch()` in `terrain.js`/`vegetation.js` now throws on an
+   unmatched marker, which is the guard that was missing when the RG8 bug
+   survived from phase 1.
+2. **Albedo is not appearance.** Lambert divides by PI, so a natural-looking
+   colour renders near-black under this lighting. Solve it backwards with
+   `tools/dev/solve-albedo.mjs`; the washed-out hexes in the code are correct.
+   And `new THREE.Color(hex)` **already** converts sRGB to linear - never also
+   call `convertSRGBToLinear()`.
+3. **Headless is SwiftShader.** Trust it for geometry, colour, layout and
+   console errors; never for brightness, frame rate or input feel. It has been
+   wrong or useless on those five times now, and it also made
+   `test-mouselook.mjs` report a false failure until the test stopped depending
+   on real frame timing.
 
 ## Status as of 2026-07-31
 
