@@ -41,6 +41,19 @@ Both start scripts:
   (default: 5173 and 4173, i.e. both of the above).
 - `deploy.sh` — builds and publishes to GitHub Pages
   (<https://dev-lop77.github.io/pngp-viewer/>).
+- `shoot.mjs "<place>" [out.png] [--climb=m] [--pitch=deg] [--look=deg]` —
+  screenshots the viewer standing at a named place, by driving the search
+  box. `tools/verify.mjs` only ever shoots the 3918 m spawn point, up in
+  the rock band, which is useless for anything happening at treeline
+  altitude. `--climb` rises in fly mode (polling the HUD altitude, since
+  fly speed is `controls.js`'s business) and pitches down, which is the
+  only way to judge what reads at landscape scale — forest cover, LOD,
+  band transitions.
+- `solve-albedo.mjs [hex ...]` — inverts BRDF → lights → exposure → ACES
+  to turn "what this should look like on screen" into the albedo hex to
+  put in the code. Needed because the two are far apart here: Lambert
+  divides by π, so a natural-looking forest green renders nearly black.
+  See `docs/ARCHITECTURE.md` §5.
 
 ## Deploying
 

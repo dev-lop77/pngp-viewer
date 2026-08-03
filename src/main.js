@@ -297,6 +297,15 @@ renderer.domElement.addEventListener('click', () => {
   document.getElementById('poi-info').style.display = 'none';
 });
 
+// Dev-only handle for the test tools. Nothing in the app reads this, and Vite
+// strips the branch from a production build. Added 2026-08-03 after repeatedly
+// needing to measure camera state from outside (the mouse-look smoothness
+// investigation being the case that finally justified it): the alternative is
+// re-deriving the whole scene in a test page, which stops testing the real one.
+if (import.meta.env.DEV) {
+  window.__pngp = { camera, controls, scene, renderer, lighting, getPoiIndex: () => poiIndex };
+}
+
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();

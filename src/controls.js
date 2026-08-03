@@ -32,6 +32,33 @@ const BOOST_MULTIPLIER = 2.5;
 // look-around.
 const TURN_SPEED_RAD = Math.PI / 3;
 
+// Mouse look is applied here rather than inside PointerLockControls, which
+// rotates the camera immediately in its own mousemove handler. The user reported
+// (2026-08-03) that moving the view up or down came in jumps instead of at a
+// constant rate. A probe (tools/dev/probe-mouselook.mjs) ruled our maths out:
+// twelve identical synthetic 5 px events each moved pitch by exactly 0.572958
+// deg, with zero roll and no yaw cross-talk. So the unevenness is on the input
+// side, and there were three real causes, none of them the angle code:
+//
+//  1. mousemove and frames are independent. Applying rotation the instant an
+//     event arrives means a frame that happened to receive two events rotates
+//     twice as far as one that received one - visible stepping from perfectly
+//     steady hand movement, and worse the further frame rate and mouse polling
+//     rate drift apart. Accumulating deltas and spending them per frame with a
+//     short time constant evens that out.
+//  2. we never asked for unadjusted movement, so the OS acceleration curve was
+//     being applied to the deltas (see the pointer-lock request below).
+//  3. PointerLockControls clamps pitch to exactly +/-90 deg, which is precisely
+//     where YXZ euler extraction goes degenerate: at the pole, roll is forced to
+//     0 and yaw is re-derived from a different matrix branch, so pushing into the
+//     limit snaps the view sideways. Clamping just inside avoids that entirely.
+const MOUSE_SENSITIVITY = 0.002; // rad/px, three's own value - keeps the established feel
+// Time constant, not a per-frame fraction, so behaviour is identical at any
+// frame rate. ~45 ms is enough to bridge a gap between a 60 Hz mouse and a
+// faster display without the lag being perceptible; set to 0 to apply raw.
+const LOOK_SMOOTHING_S = 0.045;
+const MAX_PITCH_RAD = Math.PI / 2 - 0.002; // just inside the pole - see cause 3 above
+
 const MOVE_KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'Space', 'KeyC', 'ShiftLeft', 'ShiftRight',
 ]);
@@ -48,11 +75,39 @@ export class WalkFlyControls {
     this.getGroundHeight = null; // (x, z) => elevation meters, set once terrain loads
 
     this.plc = new PointerLockControls(camera, domElement);
+    // Still used for its lock-state tracking and its movement helpers
+    // (getDirection/moveForward/moveRight), but NOT for looking: zero
+    // pointerSpeed neutralises its mousemove rotation so update() can apply a
+    // frame-paced version instead. Its handler then only round-trips the
+    // quaternion through an euler, which is harmless.
+    this.plc.pointerSpeed = 0;
     this._keys = new Set();
     this._dir = new THREE.Vector3();
+    this._euler = new THREE.Euler(0, 0, 0, 'YXZ');
+    this._pendingYaw = 0;
+    this._pendingPitch = 0;
 
     domElement.addEventListener('click', () => {
       if (document.pointerLockElement !== domElement) domElement.requestPointerLock();
+    });
+    // Deliberately a plain request. requestPointerLock({ unadjustedMovement:
+    // true }) asks for raw deltas with no OS pointer acceleration, which would
+    // be the proper fix for cause 2 above - but it was tried and backed out
+    // (2026-08-03): on Linux it rejects with "NotSupportedError: The options
+    // asked for in this request are not supported on this platform", and the
+    // whole request fails, so the lock never engages until a fallback retries.
+    // That retry path also fires pointerlockerror, which PointerLockControls
+    // logs as a console error on every single click. So on this platform the OS
+    // acceleration curve cannot be bypassed from the page at all, and the
+    // frame-pacing in _applyLook() is the part that is actually ours to fix.
+
+    // Accumulate only; update() spends it. Guarded on lock and enabled for the
+    // same reason PointerLockControls guards its own handler: stray movement
+    // must not fight main.js's flyTo() animation.
+    domElement.ownerDocument.addEventListener('mousemove', (e) => {
+      if (!this._enabled || !this.plc.isLocked) return;
+      this._pendingYaw -= e.movementX * MOUSE_SENSITIVITY;
+      this._pendingPitch -= e.movementY * MOUSE_SENSITIVITY;
     });
 
     window.addEventListener('keydown', (e) => {
@@ -83,6 +138,32 @@ export class WalkFlyControls {
   set enabled(value) {
     this._enabled = value;
     this.plc.enabled = value;
+    // Drop anything unspent, or a flyTo would end with the camera jerking
+    // through mouse movement made before it started.
+    this._pendingYaw = 0;
+    this._pendingPitch = 0;
+  }
+
+  // Spend the accumulated mouse movement. Derived from the camera's CURRENT
+  // quaternion every time, exactly as PointerLockControls does, so an external
+  // camera move (main.js's flyTo() calls lookAt) is picked up with no resync.
+  _applyLook(dt) {
+    if (this._pendingYaw === 0 && this._pendingPitch === 0) return;
+    const k = LOOK_SMOOTHING_S > 0 ? 1 - Math.exp(-dt / LOOK_SMOOTHING_S) : 1;
+    const yaw = this._pendingYaw * k;
+    const pitch = this._pendingPitch * k;
+    this._pendingYaw -= yaw;
+    this._pendingPitch -= pitch;
+
+    this._euler.setFromQuaternion(this.camera.quaternion);
+    this._euler.y += yaw;
+    this._euler.x = Math.max(-MAX_PITCH_RAD, Math.min(MAX_PITCH_RAD, this._euler.x + pitch));
+    this.camera.quaternion.setFromEuler(this._euler);
+
+    // Below a fraction of a pixel's worth of angle the remainder is invisible;
+    // zero it so the smoothing can't leave the camera creeping forever.
+    if (Math.abs(this._pendingYaw) < 1e-5) this._pendingYaw = 0;
+    if (Math.abs(this._pendingPitch) < 1e-5) this._pendingPitch = 0;
   }
 
   update(dt) {
@@ -93,6 +174,9 @@ export class WalkFlyControls {
     // with the screen-centre reticle removed, releasing the lock to click a
     // label or the search box is now the normal way to select a POI.
     if (!this.enabled) return;
+
+    // Before movement, so travelling this frame uses the direction just aimed.
+    this._applyLook(dt);
 
     const boost = this._keys.has('ShiftLeft') || this._keys.has('ShiftRight') ? BOOST_MULTIPLIER : 1;
     const speed = (this.mode === 'walk' ? WALK_SPEED_MPS : FLY_SPEED_MPS) * boost;

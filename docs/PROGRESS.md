@@ -537,13 +537,62 @@ noticed. It requires the neighbouring mask pixels to match too - the GPU
 bilinear-filters the mask, and a saturated point next to a lighter texel
 measured 0.0067 off, close enough to tolerance to flake later.
 
-### Still not checked, and headless cannot tell us
-1. **Frame rate with ~195k extra triangles and 27,889 instances.** SwiftShader
-   reports 1-2 fps regardless, so this number means nothing until the user
-   looks. `SPACING_M` / `VISIBLE_M` are the levers if it costs too much.
-2. **Brightness**, still - now for the canopy as well as the bands. The forested
-   hillsides read close to silhouettes headlessly.
-3. Trees stay green under the snow weather state. Noted, not addressed.
+### The user's real-browser verdict on the vegetation (Firefox)
+**Brightness and frame rate are both good** - so the ~195k extra triangles and
+27,889 instances are affordable at the shipped settings, and the solved-backwards
+albedo lands where it should. Both open questions from this round are closed.
+`SPACING_M` / `VISIBLE_M` in `src/vegetation.js` remain the levers if a later
+phase eats the headroom.
+
+Still open: trees stay green under the snow weather state. Noted, not addressed.
+
+### Mouse look was jumpy vertically - fixed, and the cause was not the maths
+The user reported that moving the view up or down came in jumps rather than at a
+constant rate. **The first thing measured was the angle code, and it was
+blameless**: twelve identical synthetic 5 px events each moved pitch by exactly
+0.572958 deg, with zero roll and no yaw cross-talk, vertical identical to
+horizontal. Worth recording, because "the pitch maths is wrong" was the obvious
+guess and it would have been wasted work.
+
+Three real causes on the input side, two of them ours:
+
+1. **Rotation was applied the instant a mousemove arrived** (inside
+   `PointerLockControls`), so a frame that happened to receive two events turned
+   twice as far as one that received one - visible stepping from a perfectly
+   steady hand, and worse the further frame rate and mouse polling rate drift
+   apart. `src/controls.js` now accumulates deltas and spends them in
+   `update(dt)` with a 45 ms **time constant** (`LOOK_SMOOTHING_S`), so the
+   behaviour is identical at any frame rate. `plc.pointerSpeed = 0` neutralises
+   the addon's own rotation while keeping its lock tracking and movement helpers.
+2. **Pitch was clamped at exactly +/-90 deg, which is the YXZ euler
+   singularity** - at the pole, roll is forced to zero and yaw is re-derived from
+   a different matrix branch, so pushing into the limit snapped the view
+   sideways. Now clamped just inside (`MAX_PITCH_RAD`).
+3. **OS pointer acceleration, which cannot be fixed from the page on Linux.**
+   `requestPointerLock({ unadjustedMovement: true })` is the proper answer and it
+   was tried and **backed out**: on Linux it rejects with `NotSupportedError:
+   The options asked for in this request are not supported on this platform` and
+   the whole request fails, so the lock never engages until a fallback retries -
+   and that retry fires `pointerlockerror`, which `PointerLockControls` logs as a
+   console error on *every click*. Verified directly against Chromium here. So
+   raw mouse input is simply unavailable to a web page on this platform; if the
+   response still feels non-constant, the remaining variable is the user's own
+   system mouse-acceleration setting.
+
+`tools/test-mouselook.mjs` (new) guards all of it: a 20 px burst spreads over 10
+frames with the largest single frame carrying 0.71 deg instead of the full 2.29,
+the total lands within 0.02% of what the input asked for (nothing lost or
+amplified), and pushing hard into the pitch limit in both directions produces
+**0.0000 deg of yaw drift and zero roll**. It drives `controls.update()` at a
+fixed 1/60 s rather than real frames, because at SwiftShader's 1-2 fps spending
+the whole pending movement in one frame is the *correct* behaviour for a time
+constant - testing against real frames would have measured the software renderer
+instead of the code, and did exactly that on the first run.
+
+`src/main.js` now exposes `window.__pngp` **under `import.meta.env.DEV` only**
+(camera/controls/scene/renderer/lighting), which is what made this measurable
+from outside; Vite strips it from a production build. The alternative was
+rebuilding the scene inside the test, which stops testing the real one.
 
 ### Open questions
 1. ~~Frame rate with LOD unmeasured~~ - **CLOSED 2026-08-03: the user
