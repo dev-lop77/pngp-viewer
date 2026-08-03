@@ -68,6 +68,29 @@ scene.add(sky);
 const lighting = new Lighting({ renderer, scene, sky, sunLight, ambientLight });
 let weather = null; // created once loadTerrain() gives us the real bbox to size the cloud deck (below)
 
+// Attribution lives behind a toggle (index.html explains why that's compatible
+// with CC BY / ODbL). The panel is built the same way either way - collapsing
+// is purely presentational, so nothing here depends on it being open.
+const creditsToggle = document.getElementById('credits-toggle');
+const creditsPanel = document.getElementById('credits');
+function setCreditsOpen(open) {
+  creditsPanel.hidden = !open;
+  creditsToggle.setAttribute('aria-expanded', String(open));
+}
+creditsToggle.addEventListener('click', (event) => {
+  event.stopPropagation(); // don't let it reach the canvas' re-lock/dismiss handler
+  setCreditsOpen(creditsPanel.hidden);
+  // Give focus back: controls.js preventDefaults the movement keys on window,
+  // so Space would be swallowed by a still-focused button instead of flying up.
+  creditsToggle.blur();
+});
+document.addEventListener('click', (event) => {
+  if (!creditsPanel.hidden && !event.target.closest('#credits-box')) setCreditsOpen(false);
+});
+window.addEventListener('keydown', (event) => {
+  if (event.code === 'Escape') setCreditsOpen(false);
+});
+
 const creditLines = {};
 // Fixed order rather than Object.values(): the keys are filled in by whichever
 // fetch finishes first, so the overlay used to reshuffle between loads.

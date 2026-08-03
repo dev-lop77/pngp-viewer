@@ -365,6 +365,24 @@ granted permissions. Enabling Pages via the API also 403s without
 `Pages: write` - but it turned out not to matter, since GitHub auto-enables
 Pages when it receives a branch named `gh-pages`.
 
+### Credits collapsed behind a toggle (user request)
+Four lines of attribution across the bottom of the view was too much furniture,
+so `#credits` now opens from a small always-visible "credits…" button.
+Compatible with the licences: CC BY 4.0 and ODbL ask for attribution
+"reasonable to the medium", not permanently expanded, and a labelled visible
+control is what Leaflet/Mapbox do. The affordance stays on screen deliberately -
+collapsing is fine, burying it in a menu would not be.
+Two interactions this app made non-obvious, both handled: the toggle must
+`stopPropagation` so it doesn't reach the canvas' pointer-lock handler, and it
+must `blur()` itself afterwards, because `controls.js` preventDefaults the
+movement keys on `window` and Space would otherwise activate the focused button
+instead of flying upward. Verified: collapsed by default, opens to 4 lines,
+Escape closes, pointer lock not grabbed, and WASD still moves after clicking it.
+
+**Note the live site is one commit behind `main` from here on** - the user
+considers the deploy test finished for now and will revisit it when the project
+is further along. `tools/dev/deploy.sh` republishes whenever wanted.
+
 ### Open questions
 1. ~~Frame rate with LOD unmeasured~~ - **CLOSED 2026-08-03: the user
    confirmed frame rate is OK in their real browser** with the LOD terrain

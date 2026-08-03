@@ -14,20 +14,53 @@
       canvas {
         display: block;
       }
-      #credits {
+      /* Attribution is collapsed behind a labelled toggle rather than always
+         expanded: with all three DEM sources, the trail network, OSM and the
+         CC BY "data was modified" statement it ran to four lines across the
+         bottom of the view. CC BY 4.0 and ODbL both ask for attribution
+         "reasonable to the medium" rather than permanently expanded, and a
+         visible, clearly-labelled control is the standard mapping-app pattern
+         (Leaflet and Mapbox collapse theirs the same way). The affordance
+         itself stays on screen at all times - the credits are one click away,
+         not buried. */
+      #credits-box {
         position: fixed;
-        /* Clears #controls-hint, which sits centred at bottom: 8px. The credits
-           block grew to four lines once all three DEM attributions and the CC BY
-           "data was modified" statement shipped, and at that height it ran
-           straight through the hint. */
-        bottom: 34px;
+        bottom: 8px;
         right: 10px;
-        text-align: right;
-        max-width: 40em;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
         font: 11px/1.4 -apple-system, system-ui, sans-serif;
-        color: rgba(255, 255, 255, 0.75);
-        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
-        pointer-events: none;
+      }
+      #credits-toggle {
+        padding: 3px 8px;
+        border: 0;
+        border-radius: 6px;
+        background: rgba(10, 14, 20, 0.55);
+        color: rgba(255, 255, 255, 0.8);
+        font: inherit;
+        cursor: pointer;
+      }
+      #credits-toggle:hover,
+      #credits-toggle:focus-visible {
+        background: rgba(10, 14, 20, 0.8);
+        color: #fff;
+      }
+      #credits {
+        /* Grows upward from the button, so it never reaches #controls-hint. */
+        order: -1;
+        max-width: min(40em, 90vw);
+        max-height: 40vh;
+        overflow-y: auto;
+        padding: 6px 9px;
+        border-radius: 6px;
+        background: rgba(10, 14, 20, 0.72);
+        color: rgba(255, 255, 255, 0.85);
+        text-align: right;
+      }
+      #credits a {
+        color: #9fd0ff;
       }
       #credits a {
         color: inherit;
@@ -182,7 +215,10 @@
     </style>
   </head>
   <body>
-    <div id="credits"></div>
+    <div id="credits-box">
+      <button id="credits-toggle" type="button" aria-expanded="false" aria-controls="credits">credits…</button>
+      <div id="credits" hidden></div>
+    </div>
     <div id="top-left">
       <div id="poi-search">
         <input type="text" id="poi-search-input" list="poi-search-list" placeholder="Cerca un luogo..." autocomplete="off" />
