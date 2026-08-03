@@ -21,8 +21,21 @@ const EYE_HEIGHT_M = 1.7;
 const WALK_SPEED_MPS = 4;
 const FLY_SPEED_MPS = 60;
 const BOOST_MULTIPLIER = 2.5;
+// A/D turn rather than strafe - the user's call while walking around for real
+// (2026-08-03): sidestepping is not what you do on a mountain path, and since
+// movement now works without pointer lock, turning on the keyboard is the only
+// way to change direction with the mouse released. Strafing moved to Q/E
+// rather than being dropped.
+// 60 deg/s - 90 read as slightly too fast in real use (2026-08-03). Shift
+// deliberately does NOT speed this up the way it does travel: a predictable
+// turn rate is easier to aim with, and the mouse is still there for a fast
+// look-around.
+const TURN_SPEED_RAD = Math.PI / 3;
 
-const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'KeyC', 'ShiftLeft', 'ShiftRight']);
+const MOVE_KEYS = new Set([
+  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'Space', 'KeyC', 'ShiftLeft', 'ShiftRight',
+]);
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
 export { EYE_HEIGHT_M };
 
@@ -45,7 +58,13 @@ export class WalkFlyControls {
     window.addEventListener('keydown', (e) => {
       if (isTypingTarget(document.activeElement)) return;
       if (e.code === 'KeyF') { this.mode = this.mode === 'walk' ? 'fly' : 'walk'; return; }
-      if (MOVE_KEYS.has(e.code)) this._keys.add(e.code);
+      if (MOVE_KEYS.has(e.code)) {
+        // Space scrolls the page by default, and movement now works without
+        // pointer lock (see update()), so the browser's own handling is no
+        // longer suppressed for us by the lock.
+        e.preventDefault();
+        this._keys.add(e.code);
+      }
     });
     window.addEventListener('keyup', (e) => this._keys.delete(e.code));
   }
@@ -67,13 +86,26 @@ export class WalkFlyControls {
   }
 
   update(dt) {
-    if (!this.enabled || !this.locked) return;
+    // Deliberately NOT gated on this.locked: keyboard movement works with or
+    // without pointer lock, only mouse-look needs the lock. Requiring it
+    // meant pressing Esc to click a POI label also froze movement, which the
+    // user reported as broken navigation (docs/PROGRESS.md 2026-08-03) - and
+    // with the screen-centre reticle removed, releasing the lock to click a
+    // label or the search box is now the normal way to select a POI.
+    if (!this.enabled) return;
 
     const boost = this._keys.has('ShiftLeft') || this._keys.has('ShiftRight') ? BOOST_MULTIPLIER : 1;
     const speed = (this.mode === 'walk' ? WALK_SPEED_MPS : FLY_SPEED_MPS) * boost;
     const move = speed * dt;
 
-    let dx = (this._keys.has('KeyD') ? 1 : 0) - (this._keys.has('KeyA') ? 1 : 0);
+    // Yaw about the WORLD up axis, so looking up or down doesn't roll the
+    // horizon. Rotating the camera directly is safe: PointerLockControls
+    // re-derives yaw/pitch from the camera's current quaternion on every
+    // mousemove rather than caching them (confirmed by reading its source).
+    const turn = (this._keys.has('KeyA') ? 1 : 0) - (this._keys.has('KeyD') ? 1 : 0);
+    if (turn !== 0) this.camera.rotateOnWorldAxis(WORLD_UP, turn * TURN_SPEED_RAD * dt);
+
+    let dx = (this._keys.has('KeyE') ? 1 : 0) - (this._keys.has('KeyQ') ? 1 : 0);
     let dz = (this._keys.has('KeyW') ? 1 : 0) - (this._keys.has('KeyS') ? 1 : 0);
     const len = Math.hypot(dx, dz) || 1;
     dx /= len;
