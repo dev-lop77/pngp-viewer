@@ -9,7 +9,14 @@ const TRAIL_COLOR = 0xb3261e;
 const STYLE_BY_DIFFICULTY = { T: 'solid', E: 'dashed', EE: 'dotted', EEA: 'ferrata' };
 const DEFAULT_STYLE = 'solid'; // difficulty null/unrecognized (~7 of 1130 trails)
 
-const HEIGHT_OFFSET_M = 3; // see below
+// Just enough to keep the line off the surface it lies on, no more. This was
+// 3 m, chosen when the terrain mesh was ~29 m from the true heightfield
+// anyway, so a 3 m lift was invisible; with the LOD terrain accurate to well
+// under a metre the user could see trails floating "qualche metro" up
+// (2026-08-03). The other half of that fix is alignToGround() below - the
+// build-time elevations in trails.json are true heightfield values, which is
+// not quite the surface actually drawn.
+const HEIGHT_OFFSET_M = 1.5;
 const FERRATA_TICK_SPACING_M = 40;
 const FERRATA_TICK_HALF_SIZE_M = 7;
 
@@ -107,5 +114,30 @@ export async function loadTrails(dataUrl = `${import.meta.env.BASE_URL}data`) {
     group.add(buildLineSegments(ferrataTicks, material, 'trails-ferrata-ticks'));
   }
 
-  return { group, manifest: data };
+  // Re-seat every trail vertex on the surface the terrain actually draws.
+  //
+  // trails.json stores true heightfield elevations (sampled at build time by
+  // tools/build-trails.mjs), which is not the same as the drawn surface
+  // wherever the tile grid is coarser than the 20.5 m data - so a trail could
+  // sit visibly off the path it follows. Same treatment as poi.js's markers,
+  // and for the same reason. Cheap enough as a one-off pass over the merged
+  // buffers, and it keeps the build output independent of the renderer's
+  // current LOD settings (§10) rather than baking them into the data.
+  //
+  // Dashed styles need computeLineDistances() re-run: it measures real 3D
+  // segment lengths, so moving vertices changes where the dashes fall.
+  function alignToGround(heightAt) {
+    for (const child of group.children) {
+      const attr = child.geometry.getAttribute('position');
+      const a = attr.array;
+      for (let i = 0; i < a.length; i += 3) {
+        a[i + 1] = heightAt(a[i], a[i + 2]) + HEIGHT_OFFSET_M;
+      }
+      attr.needsUpdate = true;
+      child.geometry.computeBoundingSphere(); // moved vertices would otherwise cull against a stale bound
+      if (child.material.isLineDashedMaterial) child.computeLineDistances();
+    }
+  }
+
+  return { group, manifest: data, alignToGround };
 }

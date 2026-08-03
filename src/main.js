@@ -3,7 +3,7 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { loadTerrain } from './terrain.js';
 import { loadTrails } from './trails.js';
-import { loadPOI, poiInfoHTML, LINE_RAYCAST_THRESHOLD_M } from './poi.js';
+import { loadPOI, poiInfoHTML } from './poi.js';
 import { loadWater } from './water.js';
 import { installAtmosphere } from './atmosphere.js';
 import { Lighting } from './lighting.js';
@@ -41,7 +41,10 @@ const labelRenderer = new CSS2DRenderer();
 labelRenderer.setSize(window.innerWidth, window.innerHeight);
 labelRenderer.domElement.style.position = 'absolute';
 labelRenderer.domElement.style.top = '0';
-labelRenderer.domElement.style.pointerEvents = 'none'; // selection is via the reticle+click, not the labels themselves
+// none on the container, auto on each label (index.html) - so clicks reach
+// the canvas everywhere except an actual label, which is now the primary way
+// to select a POI (the reticle path was removed, see below).
+labelRenderer.domElement.style.pointerEvents = 'none';
 document.body.appendChild(labelRenderer.domElement);
 
 // Walk/fly navigation (docs/PROGRESS.md 2026-07-31) replaces OrbitControls -
@@ -71,11 +74,18 @@ function renderCredits() {
 }
 
 let originReady = false; // geo.js's setLocalOrigin() runs inside loadTerrain() - localToWGS84() throws before that
+let terrainUpdate = null; // quadtree LOD needs the camera every frame (src/terrain.js)
 const terrainPromise = loadTerrain().then((result) => {
-  const { mesh, manifest, sampleHeight } = result;
-  scene.add(mesh);
+  const { object, manifest, sampleRenderedHeight, update } = result;
+  scene.add(object);
+  terrainUpdate = update;
+  terrainUpdate(camera); // pick the first tile set before the opening frame, not after it
   originReady = true;
-  controls.getGroundHeight = sampleHeight;
+  // sampleRenderedHeight, not sampleHeight: anything that has to touch the
+  // visible surface (standing on it, planting a marker on it, landing a
+  // fly-to on it) must use the height the mesh actually draws, or it ends up
+  // under the ground or floating above it - see terrain.js for why they differ.
+  controls.getGroundHeight = sampleRenderedHeight;
   // DEM is a multi-source mosaic (docs/ARCHITECTURE.md §3) - only show
   // credits for sources with a confirmed attribution (VDA/Piemonte's own
   // licenses are still an unverified TODO, see docs/PROGRESS.md; showing
@@ -93,24 +103,34 @@ const terrainPromise = loadTerrain().then((result) => {
   return result;
 });
 
-loadTrails().then(({ group, manifest }) => {
-  scene.add(group);
+const trailsPromise = loadTrails().then((result) => {
+  scene.add(result.group);
   // CC BY 4.0 requires this attribution wherever the data (or a render of
   // it) is shown - docs/ARCHITECTURE.md §9, tools/trails-source/README.md.
   creditLines.trails =
-    `${manifest.source.attribution} ` +
-    `<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">${manifest.source.license}</a>`;
+    `${result.manifest.source.attribution} ` +
+    `<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">${result.manifest.source.license}</a>`;
   renderCredits();
+  return result;
 });
 
-// Select a POI: show its info panel and fly the camera toward it - shared
-// by both selection paths below (label click, and reticle+click while
-// walking/flying).
-const FLY_TO_STANDOFF_M = 250; // walking-scale viewing distance, not the old overview-scale 2500m
+// Select a POI: show its info panel and fly the camera toward it - shared by
+// both selection paths (clicking a label, and the search box).
+// Where a fly-to puts you relative to the POI. Was 2500 m for the old
+// overview camera, then 250 m for walking - still too far in practice: after
+// searching for a col the user had to walk the remaining distance to reach it
+// (2026-08-03). 60 m arrives at the place while keeping the marker and its
+// surroundings in view.
+const FLY_TO_STANDOFF_M = 60;
+const FLY_TO_DURATION_S = 1.2;
 let flying = null;
 
 function flyTo(poi) {
-  const target = new THREE.Vector3(poi.local.x, poi.elevationM, poi.local.z);
+  // Aim at the marker's own base height, not poi.elevationM - on a summit the
+  // drawn mesh can sit tens of metres below the real altitude, and looking at
+  // the real one would point the camera above the marker you just picked.
+  const targetY = controls.getGroundHeight?.(poi.local.x, poi.local.z) ?? poi.elevationM;
+  const target = new THREE.Vector3(poi.local.x, targetY, poi.local.z);
   const away = camera.position.clone().sub(target);
   away.y = 0;
   if (away.lengthSq() < 1) away.set(0, 0, 1); // camera directly above target - pick an arbitrary side
@@ -169,15 +189,26 @@ const poiPromise = loadPOI(undefined, { onSelect: selectPoi }).then((index) => {
 // Spawn once both terrain (for ground height) and POI (for a real landmark
 // to start near) are ready - avoids an intermediate wrong-looking position.
 // Gran Paradiso itself if present, else any peak, else just the first POI.
-Promise.all([terrainPromise, poiPromise]).then(([{ sampleHeight }, index]) => {
+Promise.all([terrainPromise, poiPromise, trailsPromise]).then(([{ sampleRenderedHeight }, index, trails]) => {
+  // Both were built from true heightfield elevations, which is not quite the
+  // surface the terrain draws - re-seat them on it (see each module's
+  // alignToGround) so markers plant in the ground and trails lie on the path.
+  index.alignToGround(sampleRenderedHeight);
+  trails.alignToGround(sampleRenderedHeight);
+
   const pois = index.manifest.pois;
   const landmark = pois.find((p) => p.name === 'Gran Paradiso') ?? pois.find((p) => p.category === 'peak') ?? pois[0];
   if (!landmark) return;
+  // Measured against the LOD terrain: from here the ground is 3916 m and the
+  // summit rises a real 130 m at 18 deg with a clear line of sight. (Briefly
+  // moved out to 1200 m while the old 328 m mesh drew this summit 130 m too
+  // low and blocked every sight line from any distance - not needed now that
+  // the drawn summit is within 2 m of the data.)
   const standoffM = 400;
   const sx = landmark.local.x;
   const sz = landmark.local.z + standoffM; // stand south of it (docs/ARCHITECTURE.md §6: +Z = South)
-  camera.position.set(sx, sampleHeight(sx, sz) + EYE_HEIGHT_M, sz);
-  camera.lookAt(landmark.local.x, landmark.elevationM, landmark.local.z);
+  camera.position.set(sx, sampleRenderedHeight(sx, sz) + EYE_HEIGHT_M, sz);
+  camera.lookAt(landmark.local.x, sampleRenderedHeight(landmark.local.x, landmark.local.z), landmark.local.z);
 });
 
 let waterUpdate = null;
@@ -190,25 +221,14 @@ loadWater().then(({ group, manifest, update }) => {
   renderCredits();
 });
 
-// Aim-select a POI: the very first click on the canvas only engages
-// pointer lock (see controls.js) - there's no visible cursor to click a
-// specific point at while the mouse is captured for looking around, so
-// once locked, clicks aim from screen center (a HUD reticle marks this,
-// index.html) instead of the actual mouse position.
-const raycaster = new THREE.Raycaster();
-raycaster.params.Line.threshold = LINE_RAYCAST_THRESHOLD_M; // poi.js's marker lines are thin - need real tolerance to aim at
-const SCREEN_CENTER = new THREE.Vector2(0, 0);
-
+// POI selection is by label click or the search box - there is deliberately
+// no screen-centre reticle+raycast path any more. It aimed at the foot of a
+// marker line rather than the name being read, which the user found
+// unintuitive and, once Esc stopped freezing movement (controls.js), also
+// redundant. Clicking the canvas just dismisses the info panel, on the way to
+// re-engaging pointer lock.
 renderer.domElement.addEventListener('click', () => {
-  if (!poiIndex || !controls.locked) return;
-  raycaster.setFromCamera(SCREEN_CENTER, camera);
-
-  const poi = poiIndex.pick(raycaster);
-  if (poi) {
-    selectPoi(poi);
-  } else {
-    document.getElementById('poi-info').style.display = 'none';
-  }
+  document.getElementById('poi-info').style.display = 'none';
 });
 
 window.addEventListener('resize', () => {
@@ -284,13 +304,23 @@ renderer.setAnimationLoop(() => {
     }
 
     const nearest = poiIndex && nearestPOI(camera.position.x, camera.position.z, poiIndex.manifest.pois);
-    navNearestEl.textContent = nearest ? `Near ${nearest.poi.name} (${(nearest.distanceM / 1000).toFixed(1)} km)` : '';
+    // Metres below 1 km: at walking scale a one-decimal km reading has useless
+    // resolution - everything under 150 m showed as "0.1 km" and standing 40 m
+    // from a col read "0.0 km".
+    const nearDist = nearest && (nearest.distanceM < 1000
+      ? `${Math.round(nearest.distanceM)} m`
+      : `${(nearest.distanceM / 1000).toFixed(1)} km`);
+    navNearestEl.textContent = nearest ? `Near ${nearest.poi.name} (${nearDist})` : '';
 
-    poiIndex?.updateLabelVisibility(camera);
+    poiIndex?.updateMarkers(camera);
   }
 
   if (flying) {
-    flying.t = Math.min(1, flying.t + 0.02);
+    // Time-based, not a fixed increment per frame: at a fixed 0.02/frame the
+    // same flight took ~1s at 50fps but ~10s on a slow machine (measured
+    // headlessly at 5fps), which is a real difference in how the app feels,
+    // not just a test artifact.
+    flying.t = Math.min(1, flying.t + timer.getDelta() / FLY_TO_DURATION_S);
     const e = 1 - (1 - flying.t) ** 3; // ease-out cubic
     camera.position.lerpVectors(flying.startPos, flying.endPos, e);
     camera.lookAt(flying.lookAt);
@@ -301,6 +331,9 @@ renderer.setAnimationLoop(() => {
     }
   }
   controls.update(timer.getDelta());
+  // After controls, before render: the tile set must match where the camera
+  // actually ended up this frame, or a fast move shows a hole at its edge.
+  terrainUpdate?.(camera);
   renderer.render(scene, camera);
   labelRenderer.render(scene, camera);
 });

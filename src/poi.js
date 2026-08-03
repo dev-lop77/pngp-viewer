@@ -28,17 +28,46 @@ const CATEGORY_LABELS = {
 // tile/LOD item). A thin vertical line from the ground up to the label
 // reads as a marker post/flagpole regardless of that small mismatch,
 // instead of a glaringly "wrong" detached ball - the user's own fix idea.
-const LABEL_HEIGHT_OFFSET_M = 12; // label floats this far above elevationM
+// The label's float above the ground scales with camera distance instead of
+// being fixed at 12 m: far away it needs the height to clear the terrain, up
+// close a name hovering 12 m overhead reads as detached from the place it
+// names (user request, 2026-08-03). Reaches the maximum at 600 m.
+const LABEL_MAX_OFFSET_M = 12;
+const LABEL_MIN_OFFSET_M = 1.5; // roughly eye height - the name lands where you'd read a signpost
+const LABEL_OFFSET_PER_M = 0.02;
 const LABEL_MAX_DIST_M = 1500; // beyond this, hidden - decluttering at ground level (§10)
-const LINE_RAYCAST_THRESHOLD_M = 5; // Raycaster.params.Line.threshold, set once by main.js
+
+// Labels are DOM (CSS2DObject), so unlike the WebGL marker lines they are not
+// depth-tested and would otherwise show straight through a mountain - the user
+// confirmed that reads as annoying (docs/PROGRESS.md 2026-08-03). Fixed by
+// walking the line of sight and asking whether the drawn terrain rises above
+// it, which is only possible because sampleRenderedHeightfield() reconstructs
+// that surface analytically - a Raycaster can't do this here (it sees the
+// undisplaced CPU plane, docs/PROGRESS.md) and a depth-buffer readback would
+// stall the pipeline every frame.
+// Sized to the drawn surface's own worst-case error, not picked by eye: with
+// the LOD terrain it deviates from the true heightfield by a measured max of
+// 7.73 m (mean 0.38 m - tools/test-rendered-height.mjs), so 10 m is just past
+// where a deviation can be geometry error rather than a real ridge. This was
+// briefly 30 m, when the old 328 m mesh was 29.2 m off on average and drew
+// summits 130 m low; the LOD work removed the need for that slack.
+const OCCLUSION_MARGIN_M = 10;
+const OCCLUSION_STEP_M = 40; // ~1/8 of a 328 m terrain quad - fine enough to catch a ridge crest
+const OCCLUSION_MAX_STEPS = 40;
+// Sink each marker line's base slightly below the ground so it reads as
+// planted in the surface - a line ending exactly at the drawn height can
+// still show a hairline gap depending on the viewing angle.
+const BASE_SINK_M = 2;
 
 // One merged LineSegments draw call per category (5 total) instead of one
 // line per POI - §10's instancing principle, same as trails.js/the old
 // per-category InstancedMesh. One CSS2DObject label per POI (nothing to
-// instance - each is separate DOM), with its own click handler so a POI
-// can be selected either by aiming the reticle at its line (main.js, while
-// walking/flying) or by clicking its label directly (only meaningful once
-// pointer lock is released and the cursor is visible again).
+// instance - each is separate DOM), with its own click handler: clicking a
+// label (or using index.html's search box) is now the only way to select a
+// POI, after the screen-centre reticle+raycast path was removed - it aimed
+// at the marker line's foot rather than the name you were reading, which
+// the user found unintuitive and redundant once releasing pointer lock
+// stopped freezing movement (docs/PROGRESS.md 2026-08-03).
 export async function loadPOI(dataUrl = `${import.meta.env.BASE_URL}data`, { onSelect } = {}) {
   const data = await fetch(`${dataUrl}/poi.json`).then((r) => r.json());
 
@@ -51,25 +80,26 @@ export async function loadPOI(dataUrl = `${import.meta.env.BASE_URL}data`, { onS
 
   const group = new THREE.Group();
   group.name = 'poi';
-  const pickables = []; // { line, pois } - intersection.index / 2 indexes into pois
-  const labels = []; // { object, position } - for distance culling
+  const geometries = []; // per category, flagged dirty together after a marker update
+  // One flat list so a single pass per tick can do visibility, label height and
+  // the line's own top vertex - they all depend on the same camera distance.
+  const markers = []; // { poi, object, attr, index, groundY }
 
   for (const [category, pois] of byCategory) {
     const style = CATEGORY_STYLE[category] ?? { color: 0xffffff };
 
     const positions = new Float32Array(pois.length * 6); // 2 points * 3 comps
-    pois.forEach((poi, i) => {
-      positions.set([poi.local.x, poi.elevationM, poi.local.z, poi.local.x, poi.elevationM + LABEL_HEIGHT_OFFSET_M, poi.local.z], i * 6);
-    });
+    pois.forEach((poi, i) => writeMarker(positions, i, poi.local.x, poi.local.z, poi.elevationM, LABEL_MAX_OFFSET_M));
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const attr = new THREE.BufferAttribute(positions, 3);
+    geometry.setAttribute('position', attr);
     const material = attachAtmo(new THREE.LineBasicMaterial({ color: style.color, transparent: true, opacity: 0.75 }));
     const line = new THREE.LineSegments(geometry, material);
     line.name = `poi-${category}`;
     group.add(line);
-    pickables.push({ line, pois });
+    geometries.push(geometry);
 
-    for (const poi of pois) {
+    pois.forEach((poi, i) => {
       const el = document.createElement('div');
       el.className = 'poi-label';
       el.style.setProperty('--poi-color', `#${style.color.toString(16).padStart(6, '0')}`);
@@ -80,36 +110,88 @@ export async function loadPOI(dataUrl = `${import.meta.env.BASE_URL}data`, { onS
       });
       const object = new CSS2DObject(el);
       object.center.set(0.5, 1); // anchor at the label's bottom-center, floating above the line
-      object.position.set(poi.local.x, poi.elevationM + LABEL_HEIGHT_OFFSET_M, poi.local.z);
+      object.position.set(poi.local.x, poi.elevationM + LABEL_MAX_OFFSET_M, poi.local.z);
       group.add(object);
-      labels.push({ object, position: object.position });
-    }
+      markers.push({ poi, object, attr, index: i, groundY: poi.elevationM });
+    });
   }
 
-  // Hide labels beyond LABEL_MAX_DIST_M from the camera - real decluttering
-  // now that walking puts the camera at ground level (a handful of nearby
-  // labels read fine; all ~370 shown at once from up close would be the
-  // same "disturbing" clutter the balloon markers were).
-  function updateLabelVisibility(camera) {
-    for (const { object, position } of labels) {
-      object.visible = position.distanceTo(camera.position) <= LABEL_MAX_DIST_M;
+  // Re-seat every marker on the surface the terrain mesh actually draws.
+  //
+  // Markers are first built at poi.elevationM (the build-time heightfield
+  // value) because POI data loads in parallel with the terrain - keeping
+  // that parallelism matters for startup (§10), so the fix is a cheap
+  // rewrite afterwards rather than serializing the two fetches. ~370 POIs x
+  // 6 floats is nothing.
+  //
+  // elevationM is the POI's real altitude and stays what the info panel
+  // reports; it is deliberately NOT what the geometry uses, because the
+  // coarse mesh draws its surface tens of metres away from it on steep
+  // ground (see terrain.js's sampleRenderedHeight).
+  let groundHeightAt = null; // set by alignToGround(); until then occlusion is skipped, not guessed
+
+  function alignToGround(heightAt) {
+    groundHeightAt = heightAt;
+    for (const marker of markers) {
+      marker.groundY = heightAt(marker.poi.local.x, marker.poi.local.z);
     }
+    updateMarkers(null); // seat geometry now; the per-tick pass then tracks camera distance
   }
 
-  // Returns the POI under the ray, or null - picks the closest hit across
-  // all category lines, not just the first one that happens to hit.
-  // Caller must set raycaster.params.Line.threshold (main.js does this
-  // once, LINE_RAYCAST_THRESHOLD_M below) - a thin line needs a real
-  // tolerance to be aimable at all.
-  function pick(raycaster) {
-    let closest = null;
-    for (const { line, pois } of pickables) {
-      const hits = raycaster.intersectObject(line);
-      if (hits.length && (!closest || hits[0].distance < closest.distance)) {
-        closest = { distance: hits[0].distance, poi: pois[Math.floor(hits[0].index / 2)] };
-      }
+  // Is the drawn terrain between the camera and this label? Only the XZ path
+  // is stepped - the sight line's own height is interpolated linearly, which
+  // is exact for a straight ray.
+  function isHiddenByTerrain(camera, target) {
+    if (!groundHeightAt) return false;
+    const { x: cx, y: cy, z: cz } = camera.position;
+    const dx = target.x - cx;
+    const dy = target.y - cy;
+    const dz = target.z - cz;
+    const steps = Math.min(OCCLUSION_MAX_STEPS, Math.max(4, Math.round(Math.hypot(dx, dz) / OCCLUSION_STEP_M)));
+    // Skips t=0 and t=1: at the camera end the ground is right under our feet
+    // and at the label end it sits above the ground by construction, so both
+    // ends would only ever produce false positives.
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      if (groundHeightAt(cx + dx * t, cz + dz * t) > cy + dy * t + OCCLUSION_MARGIN_M) return true;
     }
-    return closest?.poi ?? null;
+    return false;
+  }
+
+  // One pass per HUD tick over every marker: how high its label floats, where
+  // its line's top vertex goes, and whether the label is shown at all - all
+  // three follow from the same camera distance.
+  //
+  // The label descends toward the ground as you approach (user request,
+  // 2026-08-03): a fixed 12 m float reads fine from a distance, where it lifts
+  // the name clear of the terrain, but standing next to a col it left the name
+  // hovering well overhead. The line's top follows it, so the marker stays a
+  // post rather than detaching from its label.
+  //
+  // Visibility: beyond LABEL_MAX_DIST_M labels are hidden outright - real
+  // decluttering now that walking puts the camera at ground level (all ~370 at
+  // once from up close would be the same "disturbing" clutter the old balloon
+  // markers were) - and nearer ones are hidden when terrain stands in front of
+  // them (isHiddenByTerrain). Distance is tested first, so the ray march only
+  // runs for the handful of candidates rather than all ~370 (§10).
+  function updateMarkers(camera) {
+    for (const marker of markers) {
+      const { poi, object, attr, index, groundY } = marker;
+      const dist = camera
+        ? Math.hypot(poi.local.x - camera.position.x, groundY - camera.position.y, poi.local.z - camera.position.z)
+        : Infinity;
+      const offset = Math.min(LABEL_MAX_OFFSET_M, Math.max(LABEL_MIN_OFFSET_M, dist * LABEL_OFFSET_PER_M));
+
+      writeMarker(attr.array, index, poi.local.x, poi.local.z, groundY, offset);
+      object.position.set(poi.local.x, groundY + offset, poi.local.z);
+      object.visible = camera
+        ? dist <= LABEL_MAX_DIST_M && !isHiddenByTerrain(camera, object.position)
+        : false;
+    }
+    for (const geometry of geometries) {
+      geometry.getAttribute('position').needsUpdate = true;
+      geometry.computeBoundingSphere(); // moved vertices would otherwise cull against a stale bound
+    }
   }
 
   // For the searchable POI list (index.html's #poi-search): "Name ·
@@ -120,10 +202,18 @@ export async function loadPOI(dataUrl = `${import.meta.env.BASE_URL}data`, { onS
     poi,
   }));
 
-  return { group, manifest: data, pick, updateLabelVisibility, searchEntries };
+  return { group, manifest: data, alignToGround, updateMarkers, searchEntries };
 }
 
-export { LINE_RAYCAST_THRESHOLD_M };
+// One marker = one line segment, from just below the ground up to its label.
+function writeMarker(positions, i, x, z, groundY, offset) {
+  positions[i * 6] = x;
+  positions[i * 6 + 1] = groundY - BASE_SINK_M;
+  positions[i * 6 + 2] = z;
+  positions[i * 6 + 3] = x;
+  positions[i * 6 + 4] = groundY + offset;
+  positions[i * 6 + 5] = z;
+}
 
 export function poiInfoHTML(poi) {
   const label = CATEGORY_LABELS[poi.category] ?? poi.category;

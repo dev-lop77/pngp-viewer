@@ -144,18 +144,6 @@
       #nav-text div {
         margin: 1px 0;
       }
-      #reticle {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        width: 8px;
-        height: 8px;
-        transform: translate(-50%, -50%);
-        border: 1px solid rgba(255, 255, 255, 0.85);
-        border-radius: 50%;
-        box-shadow: 0 0 2px rgba(0, 0, 0, 0.9);
-        pointer-events: none;
-      }
       .poi-label {
         padding: 2px 6px;
         background: rgba(10, 14, 20, 0.6);
@@ -167,9 +155,10 @@
         white-space: nowrap;
         cursor: pointer;
         /* The CSS2DRenderer container is pointer-events:none (main.js) so
-           clicks reach the canvas everywhere except an actual label - only
-           meaningful once pointer lock is released and the cursor is
-           visible again (docs/PROGRESS.md). */
+           clicks reach the canvas everywhere except an actual label. Needs
+           the cursor visible, i.e. pointer lock released with Esc - which no
+           longer stops you walking (src/controls.js), so this is now the
+           primary way to select a POI (docs/PROGRESS.md). */
         pointer-events: auto;
       }
       #controls-hint {
@@ -197,8 +186,7 @@
       <div id="poi-info"></div>
     </div>
     <div id="fps"></div>
-    <div id="reticle"></div>
-    <div id="controls-hint">Click to look around · WASD move · Shift run · F toggle walk/fly · Space/C up/down while flying</div>
+    <div id="controls-hint">Click to look around · Esc to release · W/S walk · A/D turn · Q/E sidestep · Shift run · F toggle walk/fly · Space/C up/down while flying · click a name to go there</div>
     <div id="nav-hud">
       <div id="compass">
         <div class="compass-label n">N</div>
