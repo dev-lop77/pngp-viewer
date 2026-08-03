@@ -5,6 +5,8 @@ import { loadTerrain } from './terrain.js';
 import { loadTrails } from './trails.js';
 import { loadPOI, poiInfoHTML } from './poi.js';
 import { loadWater } from './water.js';
+import { loadForest } from './forest.js';
+import { createVegetation } from './vegetation.js';
 import { installAtmosphere } from './atmosphere.js';
 import { Lighting } from './lighting.js';
 import { Weather } from './weather.js';
@@ -144,6 +146,26 @@ const terrainPromise = loadTerrain().then((result) => {
   weather = new Weather(scene, { worldWidth: xmax - xmin, worldDepth: ymax - ymin });
   lighting.weather = weather;
   return result;
+});
+
+// The canopy mask is independent of everything else: terrain.js and
+// vegetation.js both bind the shared FOREST_MASK holder at compile time, so this
+// can land whenever it lands - the terrain simply starts un-tinted and the trees
+// start absent. Its ODbL credit is the shared 'osm' line, already set by the POI
+// and water loaders from the same dataset and licence.
+const forestPromise = loadForest().catch((err) => {
+  // Not fatal: no mask means no trees and no forest tint, which is worse-looking
+  // but entirely functional. Losing the whole viewer to it would not be.
+  console.warn('Forest mask unavailable - continuing without trees:', err.message);
+  return null;
+});
+
+// Trees need the terrain's height texture (they displace onto the same surface)
+// but NOT the mask, thanks to the shared holder.
+Promise.all([terrainPromise, forestPromise]).then(([terrain, forest]) => {
+  if (!forest) return;
+  const vegetation = createVegetation({ manifest: terrain.manifest, heightTexture: terrain.heightTexture });
+  scene.add(vegetation.object);
 });
 
 const trailsPromise = loadTrails().then((result) => {

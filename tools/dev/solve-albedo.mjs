@@ -71,7 +71,9 @@ function solve(targetHex) {
 }
 
 // What each band should look like on screen at midday, on a sun-facing slope.
-const TARGETS = [
+// Pass hexes as arguments to solve for something else:
+//   node tools/dev/solve-albedo.mjs 46603c 4a6440
+const DEFAULT_TARGETS = [
   ['valley', 0x7f9457],
   ['montane', 0x4e6b41],
   ['subalpine', 0x6a7f4b],
@@ -79,6 +81,10 @@ const TARGETS = [
   ['rocky', 0x8d867c],
   ['nival', 0xf4f8fd],
 ];
+const argv = process.argv.slice(2);
+const TARGETS = argv.length
+  ? argv.map((a, i) => [`arg${i + 1}`, Number.parseInt(a.replace(/^#|^0x/, ''), 16)])
+  : DEFAULT_TARGETS;
 
 console.log('band        want on screen  ->  albedo hex   (linear albedo)        clipped?');
 for (const [name, want] of TARGETS) {

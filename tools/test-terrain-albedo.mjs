@@ -38,10 +38,22 @@ await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
 const result = await page.evaluate(async () => {
   const THREE = await import('/node_modules/three/build/three.module.js');
-  const { loadTerrain, VEGETATION_BANDS, BAND_NOISE_M, ASPECT_SHIFT_M, ROCK_COLOR, SLOPE_ROCK_TO } =
-    await import('/src/terrain.js');
+  const {
+    loadTerrain,
+    VEGETATION_BANDS,
+    BAND_NOISE_M,
+    ASPECT_SHIFT_M,
+    ROCK_COLOR,
+    SLOPE_ROCK_TO,
+    FOREST_FLOOR_COLOR,
+    FOREST_FLOOR_MIX,
+  } = await import('/src/terrain.js');
+  const { loadForest, FOREST_MASK } = await import('/src/forest.js');
 
   const terrain = await loadTerrain();
+  // The mask has to be loaded before anything is rendered, or the wooded case
+  // would silently measure the 1x1 "nothing is wooded" placeholder.
+  await loadForest();
   const { min: elevMin, max: elevMax } = terrain.manifest.elevationRangeM;
 
   const scene = new THREE.Scene();
@@ -76,14 +88,38 @@ const result = await page.evaluate(async () => {
   // sample into the neighbouring band.
   const MARGIN = BAND_NOISE_M * 0.75 + ASPECT_SHIFT_M + 120;
 
+  // Read the canopy mask back on the CPU. This is the reference the forest case
+  // is measured against, which is what pins the mask's geographic alignment on
+  // the terrain: a flipped or offset V would put the tint somewhere else and the
+  // comparison would fail, where "it looks plausible" would not have noticed.
+  const maskImg = FOREST_MASK.value.image;
+  const canvas = document.createElement('canvas');
+  canvas.width = maskImg.width;
+  canvas.height = maskImg.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(maskImg, 0, 0);
+  const maskData = ctx.getImageData(0, 0, maskImg.width, maskImg.height).data;
+  const { xmin, ymin, xmax, ymax } = terrain.manifest.bboxCrsUnits;
+  const worldWidth = xmax - xmin;
+  const worldDepth = ymax - ymin;
+  const maskAt = (x, z) => {
+    const px = Math.floor(((x + worldWidth / 2) / worldWidth) * maskImg.width);
+    const py = Math.floor(((z + worldDepth / 2) / worldDepth) * maskImg.height);
+    if (px < 0 || py < 0 || px >= maskImg.width || py >= maskImg.height) return 0;
+    return maskData[(py * maskImg.width + px) * 4] / 255;
+  };
+
   const wanted = [];
   for (let i = 0; i < VEGETATION_BANDS.length; i++) {
     const lo = i === 0 ? elevMin : VEGETATION_BANDS[i - 1].top;
     const hi = VEGETATION_BANDS[i].top === Infinity ? elevMax : VEGETATION_BANDS[i].top;
     if (hi - lo < 2 * MARGIN) continue;
-    wanted.push({ band: VEGETATION_BANDS[i].name, lo: lo + MARGIN, hi: hi - MARGIN, steep: false });
+    // Bands are checked on unwooded ground so the band colour is what's measured;
+    // the forest tint gets its own case below.
+    wanted.push({ band: VEGETATION_BANDS[i].name, lo: lo + MARGIN, hi: hi - MARGIN, steep: false, wooded: false });
   }
-  wanted.push({ band: 'montane', lo: 900 + MARGIN, hi: 1600 - MARGIN, steep: true });
+  wanted.push({ band: 'montane', lo: 900 + MARGIN, hi: 1600 - MARGIN, steep: true, wooded: false });
+  wanted.push({ band: 'montane', lo: 900 + MARGIN, hi: 1600 - MARGIN, steep: false, wooded: true });
 
   const found = [];
   for (const w of wanted) {
@@ -93,8 +129,22 @@ const result = await page.evaluate(async () => {
       for (let gz = -halfD; gz <= halfD && !hit; gz += 149) {
         const h = terrain.sampleRenderedHeight(gx, gz);
         if (!(h > w.lo && h < w.hi)) continue;
+        // Fully wooded or not at all, and the same across the neighbouring mask
+        // pixels too: the GPU bilinear-filters the mask, so a point that is
+        // saturated but sits next to a lighter texel measures somewhere in
+        // between and the expected value would be wrong by a hair.
+        const wood = maskAt(gx, gz);
+        const NB = 21; // slightly over one 20.5 m mask pixel
+        const uniform = [
+          [NB, 0],
+          [-NB, 0],
+          [0, NB],
+          [0, -NB],
+        ].every(([dx, dz]) => maskAt(gx + dx, gz + dz) === wood);
+        if (!uniform) continue;
+        if (w.wooded ? wood < 1 : wood > 0) continue;
         const n = normalYAt(gx, gz);
-        if (w.steep ? n.y < SLOPE_ROCK_TO - 0.05 : n.y > 0.985) hit = { x: gx, z: gz, h, ny: n.y, nz: n.z };
+        if (w.steep ? n.y < SLOPE_ROCK_TO - 0.05 : n.y > 0.985) hit = { x: gx, z: gz, h, ny: n.y, nz: n.z, wood };
       }
     }
     if (hit) found.push({ ...w, ...hit });
@@ -126,16 +176,23 @@ const result = await page.evaluate(async () => {
     return [c.r, c.g, c.b];
   };
   const rock = new THREE.Color(ROCK_COLOR);
+  const floor = new THREE.Color(FOREST_FLOOR_COLOR);
 
   return {
     tiles: terrain.stats.tiles,
     samples: samples.map((s) => {
-      const base = bandColor(s.band);
+      let base = bandColor(s.band);
+      // Same order as the shader: forest tint first, then rock overrides it.
+      if (s.wooded) {
+        base = base.map((c, i) => c + ([floor.r, floor.g, floor.b][i] - c) * s.wood * FOREST_FLOOR_MIX);
+      }
       // The shader mixes 90% of the way to rock at full steepness.
       const expected = s.steep ? base.map((c, i) => c + ([rock.r, rock.g, rock.b][i] - c) * 0.9) : base;
       return {
         band: s.band,
         steep: s.steep,
+        wooded: s.wooded,
+        wood: Number(s.wood.toFixed(2)),
         at: [Math.round(s.x), Math.round(s.z)],
         elev: Math.round(s.h),
         normalY: Number(s.ny.toFixed(3)),
@@ -161,7 +218,8 @@ for (const s of result.samples) {
   const ok = s.maxErr <= limit;
   if (!ok) failures++;
   console.log(
-    `${ok ? 'PASS' : 'FAIL'} ${s.band}${s.steep ? ' (steep)' : ''} @ ${s.elev} m, n.y=${s.normalY}\n` +
+    `${ok ? 'PASS' : 'FAIL'} ${s.band}${s.steep ? ' (steep)' : ''}${s.wooded ? ` (wooded ${s.wood})` : ''}` +
+      ` @ ${s.elev} m, n.y=${s.normalY}\n` +
       `       got      ${s.rgb.join(', ')}\n` +
       `       expected ${s.expected.join(', ')}   maxErr ${s.maxErr.toFixed(4)} (limit ${limit})`,
   );

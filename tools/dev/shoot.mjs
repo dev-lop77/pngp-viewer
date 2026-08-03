@@ -52,13 +52,42 @@ if (place) {
   console.log(`Flew to: ${match}`);
 }
 
-// Optional look direction: A/D turn, so hold them for a computed time rather
-// than moving the mouse (pointer lock isn't engaged here).
+// Optional: rise to an elevated vantage and pitch down, which is the only way
+// to judge anything that reads at landscape scale (forest cover, LOD, band
+// transitions) rather than from inside a valley. Altitude is polled from the HUD
+// rather than timed, since fly speed is controls.js's business, not ours.
+const climb = Number(flags.get('climb') ?? NaN);
+if (!Number.isNaN(climb)) {
+  await page.mouse.click(700, 450); // pointer lock, so the keys reach the controls
+  await page.waitForTimeout(200);
+  const altOf = async () => {
+    const text = (await page.textContent('#nav-position')) ?? '';
+    return Number(text.match(/alt (-?\d+) m/)?.[1] ?? NaN);
+  };
+  const startAlt = await altOf();
+  await page.keyboard.press('KeyF'); // walk -> fly
+  await page.keyboard.down('Space');
+  const deadline = Date.now() + 30000;
+  let alt = startAlt;
+  while (alt - startAlt < climb && Date.now() < deadline) {
+    await page.waitForTimeout(250);
+    alt = await altOf();
+  }
+  await page.keyboard.up('Space');
+  console.log(`Climbed ${Math.round(alt - startAlt)} m (alt ${alt} m)`);
+  const pitch = Number(flags.get('pitch') ?? 25);
+  await page.mouse.move(700, 450 + pitch * 5); // roughly 0.2 deg per px at three's default sensitivity
+  await page.waitForTimeout(600);
+}
+
+// Optional look direction, same mouse-based turn.
 const look = Number(flags.get('look') ?? NaN);
 if (!Number.isNaN(look)) {
-  await page.mouse.click(700, 450); // engage pointer lock for mouselook
-  await page.waitForTimeout(200);
-  await page.mouse.move(700 + look * 5, 450); // roughly 0.2 deg per px at three's default sensitivity
+  if (Number.isNaN(climb)) {
+    await page.mouse.click(700, 450);
+    await page.waitForTimeout(200);
+  }
+  await page.mouse.move(700 + look * 5, 450);
   await page.waitForTimeout(500);
 }
 

@@ -389,6 +389,23 @@ tools/
                              (terrain-driven visual approximation, not a hydrological
                              simulation) so src/water.js never needs to query terrain.js at
                              runtime, same decoupling as trails.js/poi.js.
+  fetch-forest.mjs        Written 2026-08-03 (phase 6). `natural=wood` + `landuse=forest`,
+                             ways and relations, `out geom` - the outlines, not centres.
+                             ~4,160 polygons / 523k vertices / 30 MB, so the draft it caches
+                             (tools/forest-draft.json) is GITIGNORED, unlike the other
+                             drafts: it regenerates with one command and does not belong in
+                             git. Reports anything it discards rather than letting the
+                             polygon count quietly differ from what Overpass returned.
+  build-forest.mjs        Written 2026-08-03. Rasterises that draft to public/data/forest.png
+                             on EXACTLY the heightfield's grid - same dimensions, bbox and row
+                             order - so the mask needs no projection maths of its own at
+                             runtime and reuses terrainUv() unchanged. Multipolygon holes fall
+                             out of the even-odd rule for free, which also means relation
+                             member ways need no stitching into closed rings: parity over one
+                             polygon's whole segment soup gives the same answer. Stores per-
+                             pixel canopy COVERAGE (4 sub-rows, exact horizontal spans), not a
+                             bit, so margins are soft and the scatter can thin out; bakes the
+                             slope limit in, so the runtime never samples the gradient.
 ```
 
 **Missing huts — our query's fault, not OSM's (diagnosed 2026-08-03).**
@@ -556,7 +573,7 @@ user's stated priorities; can reshuffle as we learn more.
 | 3 — Water & animation | **Done, 2026-07-30.** Rivers (main watercourses only, not minor streams — logged scope cut), lakes (≥20m across), waterfalls (hand-curated allowlist incl. Cascate di Lillaz) with shader animation + mist, glaciers as a distinct draped surface. See §4's fetch-hydrology.mjs/build-hydrology.mjs entries and docs/PROGRESS.md for the sizing/decisions behind the scope |
 | 4 — Environment | **Done, 2026-07-31.** Time-of-day slider driving sun position/sky/fog/exposure; weather states (clear → clouds → rain → snow). See §8's lighting.js/atmosphere.js/weather.js entries and docs/PROGRESS.md |
 | 5 — Navigation aids | **Done, 2026-07-31.** Compass HUD, live position readout (lat/lon, elevation, nearest place name). See §8's nav.js entry and docs/PROGRESS.md. **Follow-up the same day**: testing this in a real browser led the user to ask for a bigger change - walk/fly navigation (WASD + pointer-lock mouselook) replacing OrbitControls as the default, since a ground-level "elevation" readout only makes sense once you're actually standing at ground level. See §8's controls.js/poi.js entries |
-| 6 — Life & atmosphere (stretch) | Wildlife (Alpine ibex, chamois, marmots — the park's founding species), procedural ambient audio, huts/hydrology from OSM, treeline vegetation |
+| 6 — Life & atmosphere (stretch) | Wildlife (Alpine ibex, chamois, marmots — the park's founding species), procedural ambient audio, huts/hydrology from OSM, treeline vegetation. **Started 2026-08-03, opened with the vegetation at the user's choice** (deferring the imagery question in §12): §5's altitude bands now colour the terrain, and trees are placed from a real OSM canopy mask — see §8's forest.js/vegetation.js and §4's fetch-forest.mjs/build-forest.mjs. Huts landed earlier, with the trailhead allowlist |
 | 7 — Polish | Tune/extend the LOD-tiled terrain from phase 1 if draw distance needs more than one tile (§10: LOD itself is a standing principle from phase 1 on, not deferred - phase 7 is refinement, not the first attempt), mobile pass, optional automated screenshot QA |
 
 ## 8. Module layout
@@ -673,6 +690,28 @@ pngp-viewer/
 │                              `#nav-hud` DOM (compass rose + lat/lon/elevation + nearest
 │                              POI, index.html) - same "logic in the module, DOM writes in
 │                              main.js" split as poi.js/lighting.js
+│   ├── forest.js           Done, 2026-08-03 (phase 6). Loads the OSM canopy mask
+│                              (public/data/forest.json + .png) and owns FOREST_MASK, a
+│                              shared uniform holder that terrain.js and vegetation.js both
+│                              bind at compile time. That indirection is what makes load
+│                              order irrelevant: a sampler uniform must exist when the
+│                              program links, so both shaders bind the holder and pick up
+│                              the real texture when it downloads, with no recompile. Ships
+│                              a 1x1 "nothing is wooded" placeholder until then
+│   ├── vegetation.js       Done, 2026-08-03 (phase 6). Trees, placed entirely in the
+│                              vertex shader: each instance owns a fixed jittered offset in
+│                              a WINDOW_M square and the shader shifts it to the copy of
+│                              that square nearest the camera. The shift is always an exact
+│                              multiple of WINDOW_M, so trees land on a fixed world lattice
+│                              and their position/height/tint are stable as you move -
+│                              nothing shimmers, and there is no CPU scatter to rebuild and
+│                              therefore no hitch when crossing a cell. Existence comes from
+│                              the mask compared against each slot's own hash, so margins
+│                              thin out rather than ending on a line. Slope was baked out of
+│                              the mask at build time, which is why nothing here samples the
+│                              terrain gradient. Low-poly opaque cones, deliberately: no
+│                              alpha sorting, no texture asset, and correct from above,
+│                              which billboards are not once you can fly
 │   ├── wildlife.js         (phase 6) ibex/chamois/marmots
 │   └── ui/                 Still not created - phase 4's and phase 5's HUD controls
 │                              (time-of-day slider, weather select, compass/position

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { setLocalOrigin } from './geo.js';
 import { sampleHeightfield, sampleRenderedHeightfield } from './heightfield.js';
 import { attachAtmo } from './atmosphere.js';
+import { FOREST_MASK } from './forest.js';
 
 // Quadtree-LOD terrain (docs/ARCHITECTURE.md §12's tile/LOD item, pulled
 // forward from phase 7 on 2026-08-03). It replaced a single 256x147 mesh
@@ -29,6 +30,7 @@ export { TILE_SEGMENTS, MAX_DEPTH };
 // Exported for tools/test-terrain-albedo.mjs, so the test asserts against this
 // table rather than a second copy of the numbers that could drift from it.
 export { VEGETATION_BANDS, BAND_NOISE_M, ASPECT_SHIFT_M, ROCK_COLOR, SLOPE_ROCK_TO };
+export { FOREST_FLOOR_COLOR, FOREST_FLOOR_MIX };
 
 // GLSL needs a decimal point (or an exponent) to read a literal as a float.
 function glsl(n) {
@@ -85,6 +87,16 @@ const BAND_BLEND_M = 150; // vertical softness of a boundary; real treelines are
 const BAND_NOISE_M = 75; // breaks the remaining contour banding
 const ASPECT_SHIFT_M = 50; // north-facing slopes are colder, so their treeline sits lower
 const ROCK_COLOR = 0xb3aa9f; // == the rocky band; steep ground is bare regardless of altitude
+// Ground inside the OSM canopy mask (src/forest.js). Tinting the terrain as well
+// as drawing trees is what makes forest read across the whole park: the trees
+// themselves only reach a few hundred metres, so without this the near field
+// would be wooded and the same hillside bare a kilometre away. Also solved
+// backwards from its intended on-screen colour.
+// Distinctly darker than the meadow band it usually borders: a first attempt at
+// #516b45 was so close to the subalpine green that dense forest was invisible
+// from a distance, which defeats the point of tinting at all.
+const FOREST_FLOOR_COLOR = 0x667d5e;
+const FOREST_FLOOR_MIX = 0.9;
 const SLOPE_ROCK_FROM = 0.87; // cos of slope: ~30 deg, where soil starts failing to hold
 const SLOPE_ROCK_TO = 0.6; // ~53 deg, cliff - fully bare
 
@@ -212,6 +224,7 @@ export async function loadTerrain(dataUrl = `${import.meta.env.BASE_URL}data`) {
     varying float vTerrainElev;
     varying vec3 vTerrainNormal;
     varying vec2 vTerrainXZ;
+    uniform sampler2D uForestMask;
 
     float terrainHash( vec2 p ) {
       return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453123 );
@@ -238,6 +251,15 @@ export async function loadTerrain(dataUrl = `${import.meta.env.BASE_URL}data`) {
       vec3 albedo = ${glslRgb(VEGETATION_BANDS[0].color)};
 ${bandMix}
 
+      // Real forest, from OSM. Same UV mapping as terrainUv() - the mask is on
+      // the heightfield's own grid, which is the whole point of building it that
+      // way. Slope is already baked out of the mask, so this cannot fight the
+      // rock term below.
+      vec2 fUv = vec2( ( vTerrainXZ.x + ${glsl(worldWidth / 2)} ) / ${glsl(worldWidth)},
+                       ( ${glsl(worldDepth / 2)} - vTerrainXZ.y ) / ${glsl(worldDepth)} );
+      float wood = texture2D( uForestMask, fUv ).r;
+      albedo = mix( albedo, ${glslRgb(FOREST_FLOOR_COLOR)}, wood * ${glsl(FOREST_FLOOR_MIX)} );
+
       // Steep ground is bare whatever its altitude - nothing roots on a cliff,
       // and snow doesn't sit on one either. Ascending edges only: GLSL leaves
       // smoothstep undefined when edge0 >= edge1, so this can't be written as
@@ -248,6 +270,10 @@ ${bandMix}
   `;
 
   material.onBeforeCompile = (shader) => {
+    // Shared holder, not the texture itself: the mask downloads independently of
+    // the terrain, and this way neither has to wait for the other.
+    shader.uniforms.uForestMask = FOREST_MASK;
+
     let vs = shader.vertexShader;
     vs = patch(vs, '#include <displacementmap_pars_vertex>', `#include <displacementmap_pars_vertex>\n${HELPERS}`);
     // V increases northward while world Z increases southward (§6), so hN is
@@ -372,7 +398,9 @@ ${bandMix}
     return sampleRenderedHeightfield(heights, manifest, finestSegments, finestSegments, x, z);
   }
 
-  return { object: group, manifest, heights, sampleHeight, sampleRenderedHeight, update, stats };
+  // heightTexture is exported for src/vegetation.js, which displaces trees onto
+  // the same surface in its own vertex shader.
+  return { object: group, manifest, heights, heightTexture: texture, sampleHeight, sampleRenderedHeight, update, stats };
 }
 
 // A flat grid in XZ (displaced on the GPU) plus a skirt hanging off all four

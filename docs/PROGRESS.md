@@ -454,13 +454,96 @@ bare rock on the steep faces and lighter rocky summits behind, but headless is
 SwiftShader and has been wrong or useless on brightness four times now. Needs a
 real-browser look, at more than one time of day.
 
-### Step 2, pending a decision: the trees themselves
-Evidence gathered for it: OSM has **3,650 ways + 641 relations = 4,291
-`natural=wood`/`landuse=forest` polygons** inside our bbox, so real forest
-coverage here is genuinely mapped and not sparse. That makes a real forest mask
-viable rather than hypothetical - the runtime cost is one texture tap either
-way, the difference is a build-time fetch + rasterise step. Decision belongs to
-the user.
+### Step 2, done: trees from a real OSM canopy mask
+The user chose the OSM mask over a procedural altitude/slope rule, having been
+shown that OSM's forest coverage here is genuinely mapped (a count query
+returned 3,650 ways + 641 relations) so the runtime cost is one texture tap
+either way and the difference is build-time work.
+
+**That choice immediately paid for itself.** Valprato Soana has **0% canopy
+within 300 m** - it is a cleared valley-floor village, and the first screenshot
+taken there showed no trees, correctly. A procedural elevation+slope rule would
+have planted forest right on top of the village. Canopy within 300 m of the
+named places, for reference: Pellaud 47%, Crétaz 39%, Le Thumel 31%, Pont 31%,
+Eaux Rousses 20%.
+
+Pipeline: `tools/fetch-forest.mjs` -> `tools/build-forest.mjs` ->
+`public/data/forest.json` + `forest.6b4f80e1.png` (1158 kB, 16.6% of the bbox
+wooded). The draft is 30 MB and gitignored. Decisions worth knowing:
+
+- **The mask sits on exactly the heightfield's grid** (4096x2355, 20.5 m/px,
+  same bbox and row order). It therefore needs no projection maths of its own
+  and reuses `terrainUv()` unchanged in both shaders that read it.
+- **Multipolygon holes come free from the even-odd rule**, which also means
+  relation member ways need no stitching into closed rings - parity over one
+  polygon's whole segment soup gives the same answer.
+- **Coverage, not a bit** (4 sub-rows, exact horizontal spans), so margins are
+  soft and the scatter thins out instead of ending on a straight line.
+- **Slope is baked in at build time** (full canopy to 30 deg, nothing past 45),
+  which is why the runtime never samples the terrain gradient: four extra
+  height taps per vertex per instance per frame, for something that never
+  changes.
+- **Quantised to 16 levels purely for file size.** Measured on this dataset:
+  256 levels = 1756 kB, 32 = 1307, 16 = 1158, 8 = 935, 4 = 674. The mask is
+  bilinear-filtered and drives a probability, so it needs nothing like 256
+  levels, but 4 would make margins visibly steppy across a 20 m pixel.
+
+### The trees: placement is entirely in the vertex shader
+`src/vegetation.js` has no CPU-side scatter at all, so walking or flying costs
+nothing and there is no hitch when the camera crosses a cell boundary. Each
+instance owns a fixed jittered offset inside a `WINDOW_M` square; the shader
+moves it to whichever copy of that square is nearest the camera. Because the
+shift is always an exact multiple of `WINDOW_M`, every tree lands on a fixed
+world lattice - position, height and tint are stable as you move, so nothing
+shimmers or reshuffles. A slot holds a tree when the mask coverage beats the
+slot's own hash.
+
+**Low-poly opaque cones, deliberately, not billboards**: no alpha sorting, no
+texture asset to ship, and correct from above - which matters because you can
+fly here. `flatShading: true` also means normals come from screen-space
+derivatives, which stays correct through the shader's per-instance non-uniform
+scaling for free, instead of needing an inverse-transpose fix per tree.
+
+Density needed one correction: 10 m spacing over a 520 m radius drew isolated
+trees rather than forest (one per ~210 m² where real stands run one per
+10-20 m²). Now 6 m spacing over 440 m - **27,889 instances, 7 triangles each,
+~195k triangles** - with the radius pulled in to pay for the density, since
+trees past ~400 m are a few pixels tall and the terrain's own tint carries the
+look outward from there. `SPACING_M` and `VISIBLE_M` at the top of the file are
+the two performance levers, and they trade against each other.
+
+Trees are also stunted approaching the treeline (scaled to 0.55 between 1600
+and 2200 m), which is both true and free - the elevation is already sampled.
+
+### The terrain is tinted too, and that is what makes forest read at distance
+`FOREST_FLOOR_COLOR` darkens the ground inside the mask. Without it the near
+field would be wooded and the same hillside bare a kilometre away. A first
+attempt at `#516b45` was so close to the subalpine green that dense forest was
+invisible from the air, which defeats the point - it is now distinctly darker.
+Verified from 580 m up over Crétaz: the dark forest swathes follow the valley
+flanks with pale meadow above and rocky summits behind.
+
+### How the trees were verified
+`tools/test-vegetation.mjs` (new). Since there is no CPU list of tree positions
+to inspect, it renders each view twice - vegetation mesh added and removed - and
+counts changed pixels: **36.7% of the frame at a dense-forest point, 0.0% above
+the treeline.**
+
+`tools/test-terrain-albedo.mjs` gained a wooded case, which is what pins the
+mask's *geographic* alignment: it reads the mask back on the CPU and asserts the
+rendered pixel equals `mix(band, forestFloor, wood * 0.9)` exactly. A flipped or
+offset V would fail this, where "it looks plausible from the air" would not have
+noticed. It requires the neighbouring mask pixels to match too - the GPU
+bilinear-filters the mask, and a saturated point next to a lighter texel
+measured 0.0067 off, close enough to tolerance to flake later.
+
+### Still not checked, and headless cannot tell us
+1. **Frame rate with ~195k extra triangles and 27,889 instances.** SwiftShader
+   reports 1-2 fps regardless, so this number means nothing until the user
+   looks. `SPACING_M` / `VISIBLE_M` are the levers if it costs too much.
+2. **Brightness**, still - now for the canopy as well as the bands. The forested
+   hillsides read close to silhouettes headlessly.
+3. Trees stay green under the snow weather state. Noted, not addressed.
 
 ### Open questions
 1. ~~Frame rate with LOD unmeasured~~ - **CLOSED 2026-08-03: the user
