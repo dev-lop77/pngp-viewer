@@ -287,6 +287,40 @@ new heightmap extraction, and added one from memory: **Eaux Rousses**.
   Partenza sentieri, flying to Eaux Rousses lands at 45.5664°N 7.2084°E /
   1661 m, matching the OSM node.
 
+### DEM licences verified — the deploy blocker is cleared
+The user created a GitHub repo for deployment
+(github.com/dev-lop77/pngp-viewer), which made the long-standing
+"VDA/Piemonte DTM licences unverified" TODO actually blocking: the shipped
+site is 21 MB of which 19 MB *is* the DEM, so publishing it redistributes
+that data whether or not the sources are published.
+
+**Both are CC BY 4.0**, read from primary documents rather than search
+summaries (which is not pedantry here - the VDA region uses CC0, CC BY 4.0
+**and CC BY-NC 4.0** for different products, so a portal-level answer would
+have been worthless):
+- **VDA**: `CC_BY_DTM_v2.pdf`, linked from the geoportal's DTM download page -
+  which also confirmed our file is that product, listing "DTM 2005/2008
+  aggregato" (= `DTM0508`, the 2005+2008 LIDAR flights). Granted under DGR
+  1620/2016 and DGR 899/2014, "anche commerciale". It **prescribes the credit
+  wording verbatim**: *"Dati estratti dal Modello Digitale del Terreno (DTM)
+  della Regione Autonoma Valle d'Aosta."*
+- **Piemonte**: the geonetwork metadata record - `useConstraints` = CC BY 4.0
+  deed.it, access "no limitations to public access", lineage documenting the
+  2019 upgrade from CC BY 2.5.
+
+Also caught while reading the licences: **CC BY 4.0 requires stating that
+changes were made**, not only attribution - and all four CC BY datasets here
+(both DTMs, TINITALY, VDA trails) are used heavily modified. That clause had
+been quietly missed. `main.js` now shows a static line saying so, and
+`heightfield.json` carries a `source.modifications` field.
+
+Updated in three places so a future re-run doesn't reintroduce the TODO:
+`tools/dtm-source/merge-heightmaps.sh` (the generator),
+`DEM/pngp_heightmap_meta.json` and `public/data/heightfield.json`, each now
+also recording `licenseVerifiedVia` with the URL the answer came from. Credits
+render in a fixed order now, too - the keys were filled in by whichever fetch
+finished first, so the overlay used to reshuffle between loads.
+
 ### Open questions
 1. ~~Frame rate with LOD unmeasured~~ - **CLOSED 2026-08-03: the user
    confirmed frame rate is OK in their real browser** with the LOD terrain
@@ -314,8 +348,8 @@ new heightmap extraction, and added one from memory: **Eaux Rousses**.
    terrain out, so this may not matter - worth a look if distant slopes
    shimmer.
 5. Previously-open items still stand: "nearest place name" covers POI
-   categories only; pointer lock + WASD has no mobile equivalent; Piemonte/VDA
-   DTM licences unverified before public deploy; basemap/orthophoto source;
+   categories only; pointer lock + WASD has no mobile equivalent;
+   basemap/orthophoto source;
    `waterway=stream` and glacier relations not fetched; waterfall ribbons are a
    visual approximation.
 6. Water/trail/POI data were all built against the true heightfield, so they

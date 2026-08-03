@@ -146,14 +146,33 @@ before/after: trails 6→0 of 73 `dataIncomplete`, POI 197→1 of 370, lakes
 131→0 of 198 (and their water levels are now real, e.g. Lago Serrù
 292.2m→2331.8m), rivers 4→0 of 10, glaciers 22→3 of 47.
 
-**Licenses**: Piemonte's exact attribution string is still TODO (WCS
-capabilities say "fees NONE / accessConstraints NONE" but the precise
-required credit line needs checking against the geoportale.piemonte.it
-metadata record before shipping publicly) - VDA's own DTM license is
-still the pre-existing TODO too. TINITALY is CC BY 4.0, attribution
-recorded in `DEM/pngp_heightmap_meta.json`'s `sources[]` and needs to be
-added to the shipped `#credits` overlay (`src/main.js`) alongside the
-existing trails/OSM lines - not yet wired in, see `docs/PROGRESS.md`.
+**Licenses — all three DEM sources VERIFIED CC BY 4.0, 2026-08-03**, from
+their own licence documents rather than search summaries, because the
+first real deploy made this blocking:
+
+- **VDA** (`DTM0508`): CC BY 4.0 per
+  [`CC_BY_DTM_v2.pdf`](https://metadati.partout.it/metadata_documents/CC_BY_DTM_v2.pdf),
+  linked from the [DTM download page](https://geoportale.regione.vda.it/download/dtm/) —
+  which also confirms our file *is* this product, listing it as "DTM
+  2005/2008 aggregato" (= `DTM0508`, the 2005 and 2008 LIDAR flights).
+  Granted under DGR 1620/2016 and DGR 899/2014; sharing and modification
+  are allowed "per qualsiasi fine, anche commerciale". **It prescribes the
+  credit wording verbatim** ("apponendo la seguente dicitura"): *"Dati
+  estratti dal Modello Digitale del Terreno (DTM) della Regione Autonoma
+  Valle d'Aosta."* — do not paraphrase it. This mattered: the region uses
+  CC0, CC BY 4.0 **and CC BY-NC 4.0** for different products, so the
+  licence had to be read for this dataset specifically, not for the portal.
+- **Piemonte** (DTM 5): CC BY 4.0 per the
+  [geonetwork metadata record](https://www.geoportale.piemonte.it/geonetwork/srv/api/records/r_piemon:224de2ac-023e-441c-9ae0-ea493b217a8e)
+  (`useConstraints` = CC BY 4.0 deed.it, access "no limitations to public
+  access"; lineage records the 2019-02-13 upgrade from CC BY 2.5).
+- **TINITALY**: CC BY 4.0, as already recorded.
+
+All three attributions now ship in the `#credits` overlay. Note CC BY 4.0
+also requires **stating that changes were made**, not just attribution —
+every dataset here is used modified (reprojected, merged, cropped,
+resampled), so `main.js` shows a static line saying so, and
+`heightfield.json` carries a `source.modifications` field describing it.
 
 **Legacy heightmap — removed from the repo as of 2026-07-28** (was
 `DEM/heightmap_pngp_4033.png`, still recoverable from git history if ever

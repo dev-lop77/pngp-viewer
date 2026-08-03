@@ -69,9 +69,23 @@ const lighting = new Lighting({ renderer, scene, sky, sunLight, ambientLight });
 let weather = null; // created once loadTerrain() gives us the real bbox to size the cloud deck (below)
 
 const creditLines = {};
+// Fixed order rather than Object.values(): the keys are filled in by whichever
+// fetch finishes first, so the overlay used to reshuffle between loads.
+const CREDIT_ORDER = ['dem', 'trails', 'osm', 'modified'];
 function renderCredits() {
-  document.getElementById('credits').innerHTML = Object.values(creditLines).join('<br>');
+  document.getElementById('credits').innerHTML = CREDIT_ORDER.filter((k) => creditLines[k])
+    .map((k) => creditLines[k])
+    .join('<br>');
 }
+
+// CC BY 4.0 obliges us to state that the data was modified, not just to
+// attribute it ("indicare se sono state effettuate delle modifiche" - the VDA
+// DTM licence, and the same clause in the Piemonte DTM, TINITALY and VDA trail
+// licences). Every one of those datasets is used modified here, so this line is
+// static and always shown rather than assembled per source.
+creditLines.modified =
+  'Elevation and trail data adapted from the sources above: cropped to the park area, ' +
+  'resampled, and merged from multiple datasets.';
 
 let originReady = false; // geo.js's setLocalOrigin() runs inside loadTerrain() - localToWGS84() throws before that
 let terrainUpdate = null; // quadtree LOD needs the camera every frame (src/terrain.js)
@@ -86,14 +100,20 @@ const terrainPromise = loadTerrain().then((result) => {
   // fly-to on it) must use the height the mesh actually draws, or it ends up
   // under the ground or floating above it - see terrain.js for why they differ.
   controls.getGroundHeight = sampleRenderedHeight;
-  // DEM is a multi-source mosaic (docs/ARCHITECTURE.md §3) - only show
-  // credits for sources with a confirmed attribution (VDA/Piemonte's own
-  // licenses are still an unverified TODO, see docs/PROGRESS.md; showing
-  // that literal placeholder text to real users would be worse than
-  // omitting it for now).
+  // DEM is a multi-source mosaic (docs/ARCHITECTURE.md §3). All three sources
+  // are CC BY 4.0 and all three attributions now ship - the VDA and Piemonte
+  // licences were verified from their own licence documents on 2026-08-03,
+  // which is what unblocked publishing this at all. The VDA string in
+  // particular is prescribed verbatim by its licence and must not be
+  // paraphrased.
   const attributed = manifest.source.sources.filter((s) => s.attribution);
   if (attributed.length) {
-    creditLines.dem = attributed.map((s) => s.attribution).join(' · ');
+    // TINITALY's requested citation already ends in "- CC BY 4.0"; strip that so
+    // the single licence link below doesn't read as "CC BY 4.0 CC BY 4.0".
+    const cite = (s) => s.attribution.replace(/\s*[-–]\s*CC BY 4\.0\.?$/i, '');
+    creditLines.dem =
+      `${attributed.map(cite).join(' ')} ` +
+      `<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>`;
     renderCredits();
   }
 

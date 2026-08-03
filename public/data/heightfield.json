@@ -47,14 +47,21 @@
         "name": "DTM0508_002_UNICO (Regione Autonoma Valle d'Aosta)",
         "priority": 1,
         "coverage": "Valle d'Aosta side of the park - highest quality, native ~10m",
-        "license": "not yet verified for the DTM itself - TODO, see docs/PROGRESS.md"
+        "license": "CC BY 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "licenseVerifiedVia": "https://metadati.partout.it/metadata_documents/CC_BY_DTM_v2.pdf (linked from https://geoportale.regione.vda.it/download/dtm/, which lists this product as 'DTM 2005/2008 aggregato' = DTM0508). Granted under DGR 1620 del 25/11/2016 and DGR 899 del 27/06/2014; sharing and modification allowed 'per qualsiasi fine, anche commerciale'.",
+        "attribution": "Dati estratti dal Modello Digitale del Terreno (DTM) della Regione Autonoma Valle d'Aosta.",
+        "attributionNote": "That wording is prescribed verbatim by the licence document ('apponendo la seguente dicitura') - do not paraphrase it."
       },
       {
         "name": "RIPRESA AEREA ICE 2009-2011 - DTM 5 (Regione Piemonte)",
         "priority": 2,
         "coverage": "Most of the Piemonte side (lower/mid elevations) - native 5m, does not reach the highest glaciated peaks",
         "fetchedVia": "tools/dtm-source/fetch-piemonte-dtm.sh (WCS)",
-        "license": "open data, fees NONE / accessConstraints NONE per WCS capabilities - exact attribution string TODO, verify via the geoportale.piemonte.it metadata record before shipping publicly"
+        "license": "CC BY 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/deed.it",
+        "licenseVerifiedVia": "https://www.geoportale.piemonte.it/geonetwork/srv/api/records/r_piemon:224de2ac-023e-441c-9ae0-ea493b217a8e - useConstraints = CC BY 4.0 deed.it, access 'no limitations to public access'; lineage records the 2019-02-13 upgrade from CC BY 2.5.",
+        "attribution": "Regione Piemonte - RIPRESA AEREA ICE 2009-2011, DTM 5."
       },
       {
         "name": "TINITALY 1.1 (INGV)",
@@ -73,7 +80,8 @@
     "nativeResolutionMPerPx": {
       "x": 10.000476871721506,
       "y": 9.998963300850093
-    }
+    },
+    "modifications": "Derived product, not the original data: each source was reprojected/aligned to a common EPSG:23032 grid, nodata-normalised, composited best-value-per-pixel in priority order, cropped to the park bbox, resampled, and normalised to 16-bit. CC BY 4.0 requires this to be stated alongside the attribution."
   },
   "generatedBy": "tools/process-heightmap.mjs",
   "generatedAt": "2026-07-30T12:33:38.610Z"
