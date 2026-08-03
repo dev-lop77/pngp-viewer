@@ -26,12 +26,67 @@ const SPLIT_FACTOR = 1.5; // subdivide while the camera is within tileSize * thi
 const SKIRT_DEPTH_M = 150;
 
 export { TILE_SEGMENTS, MAX_DEPTH };
+// Exported for tools/test-terrain-albedo.mjs, so the test asserts against this
+// table rather than a second copy of the numbers that could drift from it.
+export { VEGETATION_BANDS, BAND_NOISE_M, ASPECT_SHIFT_M, ROCK_COLOR, SLOPE_ROCK_TO };
 
 // GLSL needs a decimal point (or an exponent) to read a literal as a float.
 function glsl(n) {
   const s = n.toPrecision(12);
   return s.includes('.') || s.includes('e') ? s : `${s}.0`;
 }
+
+// Shader literals must be in the linear working space, and THREE.Color already
+// puts them there: with ColorManagement enabled (three's default since r152)
+// `new Color(hex)` treats the hex as sRGB and converts on assignment. Calling
+// convertSRGBToLinear() on top of that darkens everything by a second gamma -
+// 0x6d became 0.020 instead of 0.153 - so it is deliberately absent here.
+function glslRgb(hex) {
+  const c = new THREE.Color(hex);
+  return `vec3( ${glsl(c.r)}, ${glsl(c.g)}, ${glsl(c.b)} )`;
+}
+
+// A replace() whose marker silently doesn't match is exactly how the RG8
+// displacement bug survived from phase 1 unnoticed (see the comment below), so
+// every shader edit in this file goes through this instead of String.replace.
+function patch(source, marker, replacement) {
+  if (!source.includes(marker)) {
+    throw new Error(`terrain.js: shader marker not found, three.js internals may have changed: ${marker}`);
+  }
+  return source.replace(marker, replacement);
+}
+
+// Vegetation bands, phase 6. The elevations are the five Alpine zones the
+// original UE5 extraction report worked out for this exact DEM
+// (docs/ARCHITECTURE.md §5), which had been sitting unused since phase 1 -
+// until now the terrain was drawn a flat white, so the only shape cues were
+// slope shading and fog. `top` is the elevation where the band gives way to
+// the next one; colours are albedo under a real sun (the material is lit, not
+// pre-shaded), so they read lighter here than the final image.
+// These hexes look washed out as swatches, and that is correct - do not
+// "fix" them by darkening. They are ALBEDO, not appearance. three's Lambert
+// BRDF divides by PI, so with the midday preset's sun 1.8 + ambient 0.6 and
+// exposure 0.75, a plausible-looking #3f5233 forest green renders as very
+// nearly black (measured: the whole valley view came out at rgb ~20). Each hex
+// below was solved backwards from the colour the band should show on screen -
+// see tools/dev/solve-albedo.mjs, which prints the target next to the result.
+const VEGETATION_BANDS = [
+  { name: 'valley', top: 800, color: 0xa1bb75 }, // pasture/cultivated valley floor
+  { name: 'montane', top: 1600, color: 0x739165 }, // larch & fir forest
+  { name: 'subalpine', top: 2200, color: 0x8da46c }, // rhododendron/blueberry scrub
+  { name: 'meadow', top: 3000, color: 0xb8be89 }, // alpine meadow, drier and yellower
+  { name: 'rocky', top: 3800, color: 0xb3aa9f }, // bare rock and scree
+  // Snow is the one band whose target is unreachable: even albedo 1.0 only
+  // reaches rgb(195) at this exposure, so this is deliberately near-white and
+  // simply as bright as the rig allows, with a slight blue cast kept.
+  { name: 'nival', top: Infinity, color: 0xf6f9ff }, // permanent snow and ice
+];
+const BAND_BLEND_M = 150; // vertical softness of a boundary; real treelines are not contour lines
+const BAND_NOISE_M = 75; // breaks the remaining contour banding
+const ASPECT_SHIFT_M = 50; // north-facing slopes are colder, so their treeline sits lower
+const ROCK_COLOR = 0xb3aa9f; // == the rocky band; steep ground is bare regardless of altitude
+const SLOPE_ROCK_FROM = 0.87; // cos of slope: ~30 deg, where soil starts failing to hold
+const SLOPE_ROCK_TO = 0.6; // ~53 deg, cliff - fully bare
 
 // dataUrl must be resolved against import.meta.env.BASE_URL, not a
 // root-absolute path - vite.config.js sets base: './' so the build works
@@ -103,6 +158,9 @@ export async function loadTerrain(dataUrl = `${import.meta.env.BASE_URL}data`) {
   // per-texel noise, and the RG8 reconstruction this file documents had never
   // actually run. Found 2026-08-03 while adding LOD; see docs/PROGRESS.md.
   const HELPERS = /* glsl */ `
+    varying float vTerrainElev;
+    varying vec3 vTerrainNormal;
+    varying vec2 vTerrainXZ;
     vec2 terrainUv( vec2 wxz ) {
       return vec2( ( wxz.x + ${glsl(worldWidth / 2)} ) / ${glsl(worldWidth)},
                    ( ${glsl(worldDepth / 2)} - wxz.y ) / ${glsl(worldDepth)} );
@@ -130,19 +188,94 @@ export async function loadTerrain(dataUrl = `${import.meta.env.BASE_URL}data`) {
       1.0,
       ( hN - hS ) / ${glsl(2 * resY)}
     ) );
+    // Safe to hand the fragment shader as a world-space normal: every tile's
+    // modelMatrix is a pure translation (see the geometries[] comment below),
+    // so object and world orientation are the same here. Passing it as a
+    // varying rather than recomputing per-pixel costs 4 texture taps less, at
+    // the price of slope being interpolated across a quad - only visible on
+    // distant coarse tiles, which fog washes out anyway.
+    vTerrainNormal = objectNormal;
+  `;
+
+  // Elevation-banded albedo, computed per pixel. `h` is deliberately the
+  // INTERPOLATED elevation, not a fresh texture sample: it then matches the
+  // surface actually being drawn, so on a coarse distant tile the colour
+  // follows the silhouette instead of disagreeing with it.
+  const bandMix = VEGETATION_BANDS.slice(1)
+    .map((band, i) => {
+      const boundary = VEGETATION_BANDS[i].top;
+      return `      albedo = mix( albedo, ${glslRgb(band.color)}, smoothstep( ${glsl(boundary - BAND_BLEND_M)}, ${glsl(boundary + BAND_BLEND_M)}, h ) );`;
+    })
+    .join('\n');
+
+  const ALBEDO = /* glsl */ `
+    varying float vTerrainElev;
+    varying vec3 vTerrainNormal;
+    varying vec2 vTerrainXZ;
+
+    float terrainHash( vec2 p ) {
+      return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453123 );
+    }
+    float terrainNoise( vec2 p ) {
+      vec2 i = floor( p );
+      vec2 f = fract( p );
+      vec2 u = f * f * ( 3.0 - 2.0 * f );
+      return mix( mix( terrainHash( i ), terrainHash( i + vec2( 1.0, 0.0 ) ), u.x ),
+                  mix( terrainHash( i + vec2( 0.0, 1.0 ) ), terrainHash( i + vec2( 1.0, 1.0 ) ), u.x ), u.y );
+    }
+
+    vec3 terrainAlbedo() {
+      vec3 n = normalize( vTerrainNormal );
+      // Two octaves, at valley scale and at stand scale, so band boundaries
+      // wander instead of ringing the mountains as contour lines.
+      float wobble = ( terrainNoise( vTerrainXZ / 900.0 ) - 0.5 )
+                   + ( terrainNoise( vTerrainXZ / 260.0 ) - 0.5 ) * 0.5;
+      // +Z is South (§6), so n.z < 0 faces north: colder, vegetation stops
+      // lower. Subtracting shifts south-facing ground the other way, which is
+      // also right.
+      float h = vTerrainElev + wobble * ${glsl(BAND_NOISE_M)} - n.z * ${glsl(ASPECT_SHIFT_M)};
+
+      vec3 albedo = ${glslRgb(VEGETATION_BANDS[0].color)};
+${bandMix}
+
+      // Steep ground is bare whatever its altitude - nothing roots on a cliff,
+      // and snow doesn't sit on one either. Ascending edges only: GLSL leaves
+      // smoothstep undefined when edge0 >= edge1, so this can't be written as
+      // a descending smoothstep on n.y.
+      float bare = 1.0 - smoothstep( ${glsl(SLOPE_ROCK_TO)}, ${glsl(SLOPE_ROCK_FROM)}, n.y );
+      return mix( albedo, ${glslRgb(ROCK_COLOR)}, bare * 0.9 );
+    }
   `;
 
   material.onBeforeCompile = (shader) => {
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <displacementmap_pars_vertex>', `#include <displacementmap_pars_vertex>\n${HELPERS}`)
-      // V increases northward while world Z increases southward (§6), so hN is
-      // the +V sample and the z gradient is (hN - hS), matching terrainUv().
-      .replace('#include <beginnormal_vertex>', NORMALS)
-      // Purely vertical, unlike the stock chunk's displacement along the
-      // normal - which now really is the slope normal, so displacing along it
-      // would shear the terrain sideways. Keeps each tile's skirt offset
-      // (position.y = -SKIRT_DEPTH_M) intact.
-      .replace('#include <displacementmap_vertex>', 'transformed.y += terrainElevation( tUv );');
+    let vs = shader.vertexShader;
+    vs = patch(vs, '#include <displacementmap_pars_vertex>', `#include <displacementmap_pars_vertex>\n${HELPERS}`);
+    // V increases northward while world Z increases southward (§6), so hN is
+    // the +V sample and the z gradient is (hN - hS), matching terrainUv().
+    vs = patch(vs, '#include <beginnormal_vertex>', NORMALS);
+    // Purely vertical, unlike the stock chunk's displacement along the
+    // normal - which now really is the slope normal, so displacing along it
+    // would shear the terrain sideways. Keeps each tile's skirt offset
+    // (position.y = -SKIRT_DEPTH_M) intact.
+    //
+    // vTerrainElev takes the sampled height rather than transformed.y so that
+    // skirt vertices, which sit SKIRT_DEPTH_M lower, are still coloured like
+    // the edge they hang from.
+    vs = patch(
+      vs,
+      '#include <displacementmap_vertex>',
+      `float terrainH = terrainElevation( tUv );
+      transformed.y += terrainH;
+      vTerrainElev = terrainH;
+      vTerrainXZ = wTerrainXZ;`,
+    );
+    shader.vertexShader = vs;
+
+    let fs = shader.fragmentShader;
+    fs = patch(fs, '#include <common>', `#include <common>\n${ALBEDO}`);
+    // Multiplied, not assigned, so material.color stays a working global tint.
+    fs = patch(fs, '#include <map_fragment>', '#include <map_fragment>\n  diffuseColor.rgb *= terrainAlbedo();');
+    shader.fragmentShader = fs;
   };
   attachAtmo(material); // phase 4: aerial-perspective fog (docs/ARCHITECTURE.md §7)
 

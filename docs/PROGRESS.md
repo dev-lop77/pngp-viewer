@@ -383,6 +383,85 @@ Escape closes, pointer lock not grabbed, and WASD still moves after clicking it.
 considers the deploy test finished for now and will revisit it when the project
 is further along. `tools/dev/deploy.sh` republishes whenever wanted.
 
+## Phase 6 started: vegetation
+
+The user chose to open phase 6 with the vegetation, deferring the
+satellite/orthophoto question (still open question #1 in
+`docs/ARCHITECTURE.md` §12 - never scheduled into any phase, and the roadmap
+table never listed it).
+
+### Step 1, done: the terrain is no longer white
+`docs/ARCHITECTURE.md` §5's five Alpine altitude bands had been sitting unused
+since phase 1 - the terrain material was literally `color: 0xffffff`, so the
+only shape cues were slope shading and fog. They now drive a per-pixel albedo in
+`src/terrain.js`, computed from three things:
+
+- the **band table** (`VEGETATION_BANDS`), soft-blended over `BAND_BLEND_M` 150 m;
+- **slope**, which overrides everything: `bare` mixes 90% toward rock between
+  ~30 deg and ~53 deg, because nothing roots on a cliff and snow doesn't sit on
+  one either. Written as an ascending `smoothstep` on `n.y` - GLSL leaves
+  `smoothstep` **undefined when edge0 >= edge1**, so the descending form would
+  have been a portability bug rather than a style choice;
+- two octaves of value noise (`BAND_NOISE_M` 75 m) plus a `ASPECT_SHIFT_M` 50 m
+  north/south term, so treelines wander and sit lower on cold north faces
+  instead of ringing the mountains as contour lines.
+
+### Two traps, both measured rather than guessed
+**Colour management double-conversion.** `new THREE.Color(hex)` *already*
+converts sRGB to the linear working space (ColorManagement has been on by
+default since r152), so the `convertSRGBToLinear()` I first added on top of it
+darkened every band by a second gamma - 0x6d became 0.020 instead of 0.153.
+There is now a comment in `glslRgb()` saying so.
+
+**Albedo is not appearance, and the gap is enormous.** three's Lambert BRDF
+divides by PI; the midday preset lights with sun 1.8 + ambient 0.6 and exposure
+0.75. A perfectly sensible-looking `#3f5233` forest green therefore rendered as
+very nearly black - the whole Valprato Soana valley came out at about rgb(20).
+The fix was not to touch the lighting (phase 4's rig was tuned against a white
+terrain and the user approved that look) but to solve the albedo backwards from
+the intended on-screen colour: `tools/dev/solve-albedo.mjs` inverts
+BRDF -> lights -> exposure -> ACES per channel. **The band hexes consequently
+look washed out as swatches and must not be "corrected" by darkening them.**
+One band is unreachable: snow wants `#f4f8fd` but even albedo 1.0 only reaches
+rgb(195) at this exposure, so `nival` is simply as bright as the rig allows.
+
+### How it was verified
+`tools/test-terrain-albedo.mjs` (new, permanent) renders known ground in each
+band and compares the pixel to the table numerically. It gets an exact
+comparison by lighting the scene with a single `AmbientLight` of intensity PI
+and disabling tone mapping: Lambert is `albedo/PI * irradiance` and an ambient
+light's irradiance is `colour*intensity`, so the rendered pixel *is* the albedo -
+no lighting constant to calibrate, and slope stops affecting shading, which
+isolates the band function from the sun. Reading back from a `WebGLRenderTarget`
+keeps the values linear. All 7 cases (6 bands + a steep montane point checking
+the rock override) match within 0.002, i.e. 8-bit quantisation.
+
+This mattered: "no console errors" has been worthless on this project before,
+and a shader that compiles tells you nothing about what it computes.
+
+`patch()` now wraps every shader `replace()` in `terrain.js` and **throws** when
+a marker doesn't match, which is precisely how the RG8 displacement bug survived
+three phases unnoticed.
+
+`tools/dev/shoot.mjs` (new) screenshots the viewer at a named place by driving
+the search box - `tools/verify.mjs` only ever shoots the 3918 m spawn point, up
+in the rock band, which is useless for looking at anything that happens at
+treeline altitude.
+
+### Not yet checked, and headless can't tell us
+**Overall brightness.** The Cogne view reads correctly as a forested valley with
+bare rock on the steep faces and lighter rocky summits behind, but headless is
+SwiftShader and has been wrong or useless on brightness four times now. Needs a
+real-browser look, at more than one time of day.
+
+### Step 2, pending a decision: the trees themselves
+Evidence gathered for it: OSM has **3,650 ways + 641 relations = 4,291
+`natural=wood`/`landuse=forest` polygons** inside our bbox, so real forest
+coverage here is genuinely mapped and not sparse. That makes a real forest mask
+viable rather than hypothetical - the runtime cost is one texture tap either
+way, the difference is a build-time fetch + rasterise step. Decision belongs to
+the user.
+
 ### Open questions
 1. ~~Frame rate with LOD unmeasured~~ - **CLOSED 2026-08-03: the user
    confirmed frame rate is OK in their real browser** with the LOD terrain

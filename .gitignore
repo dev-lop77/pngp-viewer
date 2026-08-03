@@ -5,3 +5,5 @@ dist/
 *.log
 *.aux.xml
 tools/verify-screenshot.png
+tools/dev/logs/
+

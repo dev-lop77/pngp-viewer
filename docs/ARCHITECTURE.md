@@ -486,6 +486,28 @@ satellite imagery needed to get a plausible, park-accurate look for phase 1:
 Worth carrying forward as-is into our own height-based terrain shader;
 revisit only if/when we add real satellite/orthophoto draping (§9).
 
+**Implemented 2026-08-03** (phase 6's first step), and note it had been sitting
+unused for five phases - until then the terrain material really was
+`color: 0xffffff`. `src/terrain.js`'s `VEGETATION_BANDS` holds the table above,
+blended per pixel and then modified by three things the table alone can't
+express: slope (steep ground is bare rock at any altitude, and snow will not sit
+on a cliff), a two-octave noise wobble on the boundaries, and a north/south
+aspect shift, since a cold north face carries its treeline lower.
+
+Two things to know before editing those colours:
+
+- **They are albedo, not appearance, and the two are far apart.** Lambert
+  divides by PI, so with the midday sun/ambient/exposure in `src/lighting.js` a
+  natural-looking forest green renders nearly black. Each hex was solved
+  backwards from its intended on-screen colour with
+  `tools/dev/solve-albedo.mjs`. They look washed out as swatches on purpose.
+- **`new THREE.Color(hex)` already converts sRGB to linear** (ColorManagement is
+  on by default since r152). Converting again halves the value twice over.
+
+`tools/test-terrain-albedo.mjs` asserts the rendered pixels against the table,
+so a future edit that breaks the mapping fails loudly instead of merely looking
+different.
+
 ## 6. Coordinate system & real-world scale
 
 **Decided 2026-07-28** (was TBD): local metric frame, 1 unit = 1 meter.
