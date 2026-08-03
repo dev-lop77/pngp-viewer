@@ -308,6 +308,16 @@ tools/
                              reports console/page errors, saves a screenshot. Needs
                              `npx playwright install chromium` once (no `--with-deps` - that
                              needs sudo and isn't necessary for headless Chromium here).
+  test-rendered-height.mjs Written 2026-08-03. Correctness test, not a smoke test: checks
+                             src/heightfield.js's sampleRenderedHeightfield() against three's
+                             own Raycaster on a real max-depth LOD tile displaced on the CPU
+                             the way the vertex shader displaces it - an independent path, so
+                             agreement actually means something. Run it after any change to
+                             terrain geometry or height sampling; the camera clamp, POI marker
+                             bases, fly-to landings and label occlusion all depend on that
+                             function matching the drawn surface. Also prints how far the
+                             drawn surface sits from the true heightfield, which is the number
+                             that justified the LOD work (was 29.2 m mean, now 0.38 m).
   fetch-hydrology.mjs     Written 2026-07-30 (phase 3). Same shape as fetch-osm.mjs: queries
                              Overpass for lakes (natural=water/lake, full polygon geometry via
                              `out geom;`, not just center), rivers (waterway=river only —
@@ -333,12 +343,30 @@ tools/
                              runtime, same decoupling as trails.js/poi.js.
 ```
 
-**Known OSM data gap**: some well-known huts are missing from the `hut`
-category (e.g. Rifugio Vittorio Emanuele II, arguably the park's most
-famous rifugio, doesn't turn up under `tourism=alpine_hut` or in Nominatim
-search at all) - OSM's tagging completeness varies and this wasn't chased
-further given the user's "keep everything, don't hand-curate" instruction.
-Worth a manual add later if it matters for the shipped experience.
+**Missing huts — our query's fault, not OSM's (diagnosed 2026-08-03).**
+This section previously blamed OSM tagging completeness, claiming Rifugio
+Vittorio Emanuele II "doesn't turn up under `tourism=alpine_hut` or in
+Nominatim search at all". **That was wrong.** Live Overpass queries over
+our own bbox found 460 hut-ish elements, **35 of them strictly inside the
+park boundary**, against the 4 that reach `poi.json`. The cause is
+`tools/fetch-osm.mjs`'s query shape - `node["tourism"="alpine_hut"]`:
+
+- **nodes only.** 9 in-park huts are mapped as `way` (a building
+  footprint), including Vittorio Emanuele II, Città di Chivasso, Savoia
+  and Pontese.
+- **one tag out of three.** 4 more are `tourism=wilderness_hut`, and 19
+  are `amenity=shelter` with `shelter_type=basic_hut` - which is how
+  essentially every *bivacco* in the park is tagged.
+
+So the boundary filter was never the problem (~89% of the loss is the
+query). The fix is to widen the query to
+`node|way × alpine_hut|wilderness_hut|shelter[shelter_type=basic_hut]`,
+dedupe node-vs-way duplicates within ~150 m, and drop the noise
+`shelter_type` values (`public_transport` is bus stops, plus
+`picnic_shelter`/`gazebo`/`rock_shelter`). None of the 35 fall in a DEM
+nodata area. General lesson, consistent with §3's data-source rule: when a
+dataset looks incomplete, test the query against the live endpoint before
+concluding the data is missing.
 
 **Why the height data is a raw binary, not a PNG (decided 2026-07-28,
 resolving `docs/ARCHITECTURE_SUGGESTIONS.md` #1)**: browsers decode PNGs
@@ -480,9 +508,22 @@ pngp-viewer/
 │                              time (anticipated in docs/PROGRESS.md since phase 2)
 │   ├── heightfield.js      pure height-sampling math (no THREE/fetch/DOM) - shared by
 │                              terrain.js AND tools/build-trails.mjs (Node), one
-│                              implementation of "raw sample -> real elevation" (§4)
-│   ├── terrain.js          heightmap-driven terrain mesh + displacement shader,
-│                              plus the shared CPU-side height query (§4)
+│                              implementation of "raw sample -> real elevation" (§4).
+│                              Also sampleRenderedHeightfield() (2026-08-03): the height
+│                              of the surface actually DRAWN, as opposed to the true
+│                              bilinear value - they differ wherever the tile grid is
+│                              coarser than the data, and four features depend on the
+│                              former (camera ground clamp, POI marker bases, fly-to
+│                              landing, label occlusion). Guarded by
+│                              tools/test-rendered-height.mjs against three's own
+│                              Raycaster on real displaced geometry
+│   ├── terrain.js          quadtree-LOD terrain (§10, landed 2026-08-03) + displacement
+│                              and normal shader, plus the shared CPU-side height
+│                              queries (§4). Nothing streams - the height texture is
+│                              fully resident, so only geometry subdivides. Computes
+│                              real normals from the height texture: three does NOT
+│                              derive them from a displacementMap, so before this the
+│                              terrain had no slope shading at all
 │   ├── trails.js           loads public/data/trails.json, one merged THREE.LineSegments
 │                              draw call per line STYLE (§10) - difficulty is shown via
 │                              line pattern (solid/dashed/dotted/ferrata-ticks), not
@@ -534,9 +575,14 @@ pngp-viewer/
 │   ├── controls.js         Done, 2026-07-31. Walk/fly navigation replacing OrbitControls
 │                              as the primary way to move (user's explicit request after
 │                              testing phase 5) - walk mode is the default (ground-clamped
-│                              via terrain.js's sampleHeight + eye height, no vertical
-│                              input), 'F' toggles a faster free-fly mode, no scroll/zoom in
-│                              either. Built on three's own PointerLockControls addon (not
+│                              via terrain.js's sampleRenderedHeight + eye height, no
+│                              vertical input), 'F' toggles a faster free-fly mode, no
+│                              scroll/zoom in either. Revised 2026-08-03 after the user
+│                              walked around for real: movement is NO LONGER gated on
+│                              pointer lock (only mouse-look is - requiring it meant Esc
+│                              to click a label also froze you), and A/D turn rather
+│                              than strafe, with strafing moved to Q/E. Together those
+│                              make keyboard-only navigation complete. Built on three's own PointerLockControls addon (not
 │                              hand-rolled mouselook) - see §7 for why and the real bug this
 │                              exposed in the old POI marker sizing
 │   ├── nav.js              Done, 2026-07-31 (phase 5). Pure logic, no DOM: compass
@@ -626,6 +672,19 @@ phase-7 polish item to retrofit at the end. Concretely, this means:
   detail reduction into terrain, trees/vegetation, and any dense line/point
   data (trails, POI markers) as each is built, even if the actual tiling/
   mip-selection code lands later.
+  **Terrain LOD landed 2026-08-03** (`src/terrain.js`), pulled forward from
+  phase 7 once the single-mesh terrain was shown to be causing real defects
+  rather than only looking coarse: at ~328 m per quad it drew Gran
+  Paradiso's summit 130 m below its real 4047 m and left peaks occluded
+  from every distance. It is a quadtree of tiles at `TILE_SEGMENTS` quads
+  each, subdivided to `MAX_DEPTH` by distance, reaching the heightfield's
+  own 20.5 m resolution under the camera. Two properties are worth knowing
+  before touching it: **nothing streams** (the height texture is fully
+  resident, so only geometry is subdivided — much simpler than a typical
+  tiled terrain), and tiles derive their texture coordinates from world
+  position in the vertex shader, so all tiles share one material with one
+  geometry per depth level. Tile borders carry a downward skirt to hide
+  the T-junction cracks between differing levels.
 - **Lazy/progressive loading of data, not one big upfront JSON**: `public/
   data/*` assets (heightmap, `trails.json`, `poi.json`, future OSM layers)
   should load progressively — by visible region/bbox tile, or deferred
@@ -663,8 +722,22 @@ before assuming anything below is still unresolved.
 
 1. Exact basemap/orthophoto source for later imagery draping, once we get to
    phase 6/7 polish (§9).
-2. **DEM coverage gap for the Piemonte side of the park** (§3) — accepted
-   as a known limitation for now (2026-07-28), not blocking. Revisit by
-   sourcing a Piemonte-side or national DTM (e.g. TINITALY/Geoportale
-   Nazionale) to merge in, whenever filling in that ~25% of the map
-   becomes a priority.
+2. ~~DEM coverage gap for the Piemonte side of the park~~ — **RESOLVED
+   2026-07-30**, do not describe this as an open limitation. The heightmap
+   is now a 3-source priority mosaic (VDA > Regione Piemonte 5 m LiDAR WCS >
+   TINITALY 10 m national), see §3's "Closing the Piemonte gap". Only
+   0.007% of the real park lacks real elevation, and the residual is 3 of
+   47 glaciers at the highest peaks — not the former ~25%.
+3. **Frame rate with the quadtree-LOD terrain is unmeasured on real
+   hardware** (§10, added 2026-08-03) — the finer geometry costs a few
+   hundred extra draw calls. Headless measurement is useless for this
+   (SwiftShader; it has been misleading three times on this project), so
+   this needs a real-browser read. `TILE_SEGMENTS`/`MAX_DEPTH`/
+   `SPLIT_FACTOR` at the top of `src/terrain.js` tune it directly.
+4. **Rifugi/trailhead ingestion policy** (§4, added 2026-08-03) — the hut
+   query fix is unambiguous, but whether to add a boundary buffer for the
+   three just-outside rifugi, and how to admit valley trailheads like Le
+   Thumel (outside by 791 m) without dragging in ~100+ alpine-pasture
+   toponyms, is undecided. Note Ceresole Reale/Noasca/Locana/Rosone/Talosio
+   sit outside the DEM bbox entirely and would need a new heightmap
+   extraction (§3), not a §4 change.

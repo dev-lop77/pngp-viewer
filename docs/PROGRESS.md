@@ -2,6 +2,281 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## Status as of 2026-08-03
+
+**The walk/fly follow-up fixes were finally re-tested by the user in a real
+browser (Firefox), and that test cascaded into the biggest single piece of work
+on the project so far: the terrain now has quadtree LOD, plus two significant
+bugs dating back to phase 1 were found and fixed along the way.** Nothing is
+committed yet as of this writing - the working tree holds all of it.
+
+### The user's real-browser results (2026-08-03, Firefox)
+Point by point, against the checklist they were given:
+1. **Terrain is not flat** - confirms the RG8 packing works in Firefox, which
+   had never been explicitly verified there (the `EXT_texture_norm16` gap that
+   forced the packing is Firefox-specific).
+2. **See-through terrain still happened**, but no longer while walking - only
+   sometimes while moving the view with the mouse.
+3. **POI marker lines ended well above the terrain.**
+4. Label click OK. Reticle+click worked but aimed at the ground point, not the
+   label - "poco intuitivo e forse non utile". Search box OK, but flying to
+   e.g. Rifugio Chabod could land somewhere with "visibilità trasparente".
+5. Dual alt/ground readout OK.
+6. **Keyboard navigation didn't work with the mouse released.**
+7. FPS good across weather modes and times of day.
+Plus a feature request: map all the *rifugi* and the main trailhead areas
+(Thumel, Pont, etc.).
+Later, while testing more: **A/D strafed when turning would be more natural
+while walking.**
+
+### Root cause: 2, 3 and 4's transparency were all one bug
+There were two different notions of "where the ground is". `sampleHeight()`
+returned the true bilinear value of the 20.5 m heightfield, but the mesh drew
+328 m triangles, which cut below ridges and bridged above hollows. Measured
+consequences: the drawn surface sat a **mean 29.2 m** from the true
+heightfield, and at **44.5% of sampled points** a 1.7 m eye placed at the
+bilinear height ended up *under* the drawn surface. Concave ground → camera
+underground → see-through (and it depended on view direction, hence "only with
+the mouse"); convex ground → marker lines drawn at `elevationM` left hanging.
+- Fix: `sampleRenderedHeightfield()` in `src/heightfield.js` reconstructs the
+  drawn surface analytically (locate the quad, pick the triangle, interpolate
+  its three corners), following three's own PlaneGeometry vertex layout and
+  `(a,b,d)/(b,c,d)` triangulation. Now used by the camera clamp, the POI
+  marker bases, the fly-to landing and the label occlusion test.
+  `elevationM` remains the POI's real altitude and is still what the info
+  panel reports - deliberately not what the geometry uses.
+- **Verified independently, not just "it renders"**: `tools/test-rendered-height.mjs`
+  (new, permanent) builds the real geometry, displaces it on the CPU the way
+  the vertex shader does, and queries it with three's own `Raycaster` - a
+  genuinely separate path. Agreement to **0.0001 m**. Raycasting is valid
+  *there* only because that script displaces the CPU geometry itself; against
+  the live app it would read the undisplaced grid, which is the whole reason
+  the app needs an analytic query.
+- POI markers now sink `BASE_SINK_M` (2 m) below the ground so no viewing
+  angle shows a hairline gap.
+
+### Keyboard, selection and camera changes
+- **Movement no longer gated on pointer lock** (`src/controls.js`): only
+  mouse-look needs the lock. The old `if (!this.enabled || !this.locked)`
+  meant pressing Esc to click a label also froze movement. Proven headlessly:
+  11.1 m travelled with pointer lock never engaged. Added `preventDefault()`
+  on the movement keys, since Space scrolls the page once the lock isn't
+  absorbing it.
+- **Reticle + raycast selection removed entirely** (user's call), along with
+  `poi.js`'s `pick()` and `LINE_RAYCAST_THRESHOLD_M` and the `#reticle`
+  element. Selection is now label click or the search box; a canvas click just
+  dismisses the info panel. This is only reasonable *because* of the change
+  above - releasing the lock no longer costs you movement.
+- **A/D turn instead of strafing** (user's request while walking for real).
+  Yaw about the world up axis so pitch doesn't roll the horizon; strafing moved
+  to Q/E rather than dropped. Verified headlessly: D turns right (heading
+  0°→127°), A turns left, and position changes by 0.0 m. This also completes
+  keyboard-only navigation, which the pointer-lock change made possible.
+- **`flyTo()` is time-based now**, not `t += 0.02` per frame - that made the
+  same flight take ~1 s at 50 fps and ~10 s at 5 fps. Found because a test
+  measured the camera mid-flight.
+
+### Label occlusion (user confirmed the see-through labels were annoying)
+Labels are `CSS2DObject` DOM elements, so unlike the WebGL marker lines they
+are not depth-tested and showed straight through mountains. `poi.js`'s
+`isHiddenByTerrain()` walks the line of sight sampling the drawn surface. A
+`Raycaster` cannot do this (it sees the undisplaced grid) and a depth-buffer
+readback would stall the pipeline every frame - the analytic height function is
+what makes it possible. Distance filtering runs first so the ray march only
+touches the handful of candidate labels, not all ~370 (§10).
+
+### Terrain LOD - decided mid-session, on evidence
+The user first chose "exact fix now, LOD later", reasonably, since faceting
+looked cosmetic. Then the occlusion work produced hard numbers that changed the
+picture, and they chose to pull LOD forward:
+- With a 2 m tolerance the occlusion test hid **15 of 15** labels near the
+  spawn, including the summit the camera was pointed at. Not a logic bug -
+  the geometry really did block those sight lines.
+- **The 328 m mesh drew Gran Paradiso's summit at 3917 m against a real
+  4047 m - it cut 130 m off.** The interpolated terrain around a summit came
+  out higher than the flattened summit itself, so the peak was occluded from
+  *every* distance tested between 400 m and 6 km.
+- The tolerance could not be tuned around it: at 50 m enough labels came back
+  but they also started showing through real mountains again.
+
+`src/terrain.js` was rewritten around a quadtree: `TILE_SEGMENTS = 32`,
+`MAX_DEPTH = 7`, `SPLIT_FACTOR = 1.5`, giving ~300 visible tiles / ~409k
+vertices and **20.5 m cells under the camera** (the heightfield's own
+resolution) against 328 m before.
+- **Nothing streams.** The height texture is already fully resident (4096×2355
+  RG8, ~19 MB), so only geometry is subdivided - a large simplification over a
+  typical tiled terrain.
+- Tiles derive their texture coordinates from world position in the vertex
+  shader, so every tile at every level shares **one material**.
+- **One geometry per depth, sized in real metres** - deliberately not one unit
+  geometry scaled per tile. Tiles are not square (the bbox is 83884×48225 m)
+  and a non-uniform scale would pass through three's `normalMatrix` and shear
+  the world-space normals.
+- Differing-depth neighbours leave T-junction cracks; a 150 m downward skirt on
+  every tile border hides them. Winding was derived per edge so the skirts face
+  outward instead of being backface-culled.
+- Tiles are frustum-culled by the traversal against the real elevation range,
+  with `mesh.frustumCulled = false`, because GPU displacement makes the
+  geometry's own bounds meaningless.
+- The traversal measures distance to the tile rather than its centre, so the
+  tile under the camera always refines to `MAX_DEPTH` - which
+  `sampleRenderedHeight()` relies on.
+
+### Two phase-1 bugs found while doing it
+1. **The RG8 reconstruction had never actually run.** `onBeforeCompile`
+   receives the shader with `#include` directives *unresolved* -
+   `WebGLRenderer` calls it at the getProgram stage and `resolveIncludes()`
+   happens later inside `WebGLProgram` - so the old code's replacement of the
+   inlined displacement line matched nothing, silently. three's stock chunk ran
+   instead, reading only `.x`: **the packed high byte alone**. Rendered
+   elevation was off by `(high - low)/65535` of the range, i.e. up to
+   **±17.6 m of pseudo-random per-texel noise**, and it looked fine only
+   because the high byte carries most of the signal. This contributed to the
+   see-through problem. **Injection must target the `#include` directive, not
+   the chunk body** - true for any future shader patching in this project.
+   Note this invalidates the confident "exact, not an approximation" wording
+   the docs and memory carried about this fix: the maths was right, the patch
+   never applied.
+2. **The terrain had no slope shading at all.** three does not derive normals
+   from a `displacementMap`, so every normal pointed +Y and the only depth cue
+   was aerial-perspective fog. Normals are now computed on the GPU from the
+   height texture at its native resolution. Without this, finer geometry would
+   have shown almost no visible improvement.
+
+### Measured before/after
+| | 328 m single mesh | LOD terrain |
+|---|---|---|
+| Gran Paradiso summit drawn | 3917 m (−130 m) | **4045.6 m** (−1.8 m of 4047.4) |
+| Drawn surface vs true heightfield | mean 29.2 m, max 3104.9 m | **mean 0.38 m, max 7.73 m** |
+| Points that would sink a 1.7 m eye | 44.5% | **0.7%** |
+| Analytic model vs three's Raycaster | 0.0175 m | **0.0001 m** |
+| Label occlusion tolerance needed | 30 m of slack | **10 m**, from the measured max |
+
+Spawn standoff went 400 m → 1200 m → back to 400 m: it was only moved out to
+work around the broken mesh (from 400 m the old geometry hid the summit and all
+15 labels), and from 400 m the LOD terrain shows the summit rising a real 130 m
+at 18° with a clear sight line.
+
+### Rifugi / trailheads investigation (done, decision pending)
+Ran live Overpass queries rather than trusting docs, per the standing rule.
+- **Only 4 huts existed because of the query, not the boundary (~89% query).**
+  `tools/fetch-osm.mjs:52` asks for `node["tourism"="alpine_hut"]` - nodes
+  only, one tag. There are 460 hut-ish elements in the bbox and **35 strictly
+  inside** the park boundary, of which the current query can see 4. Missing:
+  **9 `way` `tourism=alpine_hut`** (including **Rifugio Vittorio Emanuele II**,
+  Città di Chivasso, Savoia, Pontese), 4 `wilderness_hut`, and **19
+  `amenity=shelter`** - which is how every *bivacco* is tagged. Fixing the
+  query alone takes huts 4 → 35, with **0** `isNearNoData` hits.
+- **`docs/ARCHITECTURE.md` §4's "Known OSM data gap" note is factually wrong**
+  (it claims Vittorio Emanuele II doesn't turn up under `tourism=alpine_hut`
+  nor in Nominatim). Correct it.
+- **Pont is *inside* the boundary** (6967 m inside - the Valsavarenche valley
+  floor is included), **Thumel is outside** by 791 m. OSM names them "Le Pont"
+  and "Le Thumel", and a *different* hamlet actually named "Pont" exists in Val
+  di Rhêmes - so any allowlist must key on OSM id, not name.
+- **Ceresole Reale, Noasca, Locana, Rosone and Talosio are outside the DEM
+  bbox** (0.87-4.9 km below `ymin`). They have no terrain under them and cannot
+  become POI without re-extracting the heightmap - a §3 decision, not §4.
+- Recommendation put to the user: for huts, fix the query + keep the strict
+  boundary + a 750 m buffer (a real 969 m gap follows it, and it catches
+  Rifugio Benevolo); for trailheads, a hand-curated 21-row allowlist, because
+  no buffer separates the 14 wanted ones from ~100-190 alpine-pasture toponyms,
+  and the tightest buffer that catches all 14 (1250 m) also starts shipping
+  fake 238.5 m elevations.
+
+### Third real-browser pass (same day, after the LOD landed)
+Frame rate confirmed OK, and three more things came back - two of them
+*caused* by the terrain finally being accurate, which is worth noting as a
+pattern: constants tuned against the old 29 m-inaccurate mesh became visible
+once the ground was right.
+- **Turn speed 90 → 60 deg/s**, and Shift no longer accelerates turning (a
+  predictable rate is easier to aim with; the mouse is still there for a fast
+  look-around).
+- **Searching a POI landed too far from it.** `FLY_TO_STANDOFF_M` 250 → 60 m -
+  the user searched "Col Entrelor" and still had to walk the rest. Verified by
+  driving the real search box: the HUD reads "Near Col Entrelor (60 m)" with
+  `alt - ground` = 2 m, i.e. standing on the ground at the col.
+- **Trails were drawn a few metres above the ground.** Two causes: a fixed 3 m
+  lift (`HEIGHT_OFFSET_M`, harmless when the mesh was 29 m off anyway) and
+  build-time elevations being true heightfield values rather than the drawn
+  surface. Measured over all 26,133 trail vertices: build-time vs drawn is
+  mean 0.37 m / max 8.90 m, so the old float was ~3.4 m typical and up to
+  ~12 m. Now the lift is 1.5 m and `trails.js` has an `alignToGround()` like
+  `poi.js`'s, so it is 1.5 m by construction. Some lift is unavoidable
+  (z-fighting), and it is still visible where a trail crosses a skyline edge.
+  Note `alignToGround()` must re-run `computeLineDistances()` for the dashed
+  styles - it measures real 3D segment lengths, so moving vertices moves the
+  dashes.
+- **Labels now descend toward the ground as the camera approaches** (user
+  request): the offset scales with distance between `LABEL_MIN_OFFSET_M`
+  (1.5 m, roughly signpost height) and `LABEL_MAX_OFFSET_M` (12 m, reached at
+  600 m). The marker line's top follows it, so the marker stays a post instead
+  of detaching from its label. This drove a small restructure of `poi.js`: a
+  flat `markers` array replaces the separate `segments`/`labels` lists, so one
+  pass per HUD tick does visibility, label height and the line's top vertex -
+  they all follow from the same camera distance. `updateLabelVisibility()` is
+  now `updateMarkers()`.
+- Also: the nav HUD's nearest-POI distance shows metres below 1 km. At walking
+  scale a one-decimal km reading was useless - everything under 150 m read
+  "0.1 km", and standing 40 m from a col read "0.0 km".
+
+### Open questions
+1. ~~Frame rate with LOD unmeasured~~ - **CLOSED 2026-08-03: the user
+   confirmed frame rate is OK in their real browser** with the LOD terrain
+   live, so the ~300 extra draw calls are affordable at the shipped settings
+   (`TILE_SEGMENTS` 32 / `MAX_DEPTH` 7 / `SPLIT_FACTOR` 1.5). Headless had
+   reported 2 fps on SwiftShader - meaningless, as expected; that makes four
+   times headless has been wrong or useless on a visual/perf question here.
+   Those three constants at the top of `src/terrain.js` remain the tuning
+   levers if a future phase's geometry eats the headroom.
+   Also settled by the same test: turn speed went 90 → 60 deg/s (90 read as
+   slightly too fast), and Shift no longer accelerates turning.
+2. **Rifugi/trailhead policy** - see the recommendation above; the user hasn't
+   decided yet.
+3. **LOD popping is not smoothed.** Tiles change resolution abruptly; no
+   geomorphing. Unknown whether it's noticeable in practice.
+4. Normals are sampled at a fixed one-texel spacing regardless of tile depth,
+   so distant coarse tiles get high-frequency normals. Fog washes distant
+   terrain out, so this may not matter - worth a look if distant slopes
+   shimmer.
+5. Previously-open items still stand: "nearest place name" covers POI
+   categories only; pointer lock + WASD has no mobile equivalent; Piemonte/VDA
+   DTM licences unverified before public deploy; basemap/orthophoto source;
+   `waterway=stream` and glacier relations not fetched; waterfall ribbons are a
+   visual approximation.
+6. Water/trail/POI data were all built against the true heightfield, so they
+   should now sit *better* on the drawn terrain than before (the old mesh was
+   29 m off on average) - but this hasn't been checked deliberately.
+
+### Next steps
+1. **Get the user's real-browser read on the LOD terrain, frame rate first.**
+   Everything else in this session is verified as far as headless can go.
+2. Decide the rifugi/trailhead policy, then implement: widen
+   `tools/fetch-osm.mjs` to `node|way` × `alpine_hut|wilderness_hut|shelter
+   [shelter_type=basic_hut]` with node/way dedupe within ~150 m, dropping
+   `shelter_type` values `public_transport`/`picnic_shelter`/`gazebo`/
+   `rock_shelter` (100% noise), and add the trailhead allowlist.
+3. Correct `docs/ARCHITECTURE.md` §4's wrong OSM-gap note, and update §12 (the
+   tile/LOD item is now done) and §3/§8 for the shader findings.
+4. Still not started: phase 1's actual deploy (GitHub Pages or Apache).
+
+### How to resume
+Everything from 2026-08-03 is committed, in three commits on `main`:
+`f9ae25e` (standalone keyboard navigation), `5189fd4` (terrain LOD + both
+phase-1 shader bugs + the marker/label/trail round), `fb9cb47` (these docs).
+The middle one is large because `src/main.js` and `src/poi.js` carry hunks for
+every feature in the round - splitting it at file granularity would have
+produced commits that don't build, which is worse than one honest commit.
+`tools/dev/start-preview.sh` +
+port-forwarding is the standing way to look at it in a real browser
+(`tools/dev/README.md`). Run `node tools/test-rendered-height.mjs` after any
+change to terrain geometry or the height sampling - it will catch a drift
+between the drawn surface and the analytic model, which four separate features
+now depend on. **Before touching any shader in this project, read the
+`onBeforeCompile` finding above**: patch the `#include` directive, and don't
+trust a replacement that produces no error, because a silently-unmatched
+replace is exactly how the RG8 bug survived from phase 1.
+
 ## Status as of 2026-07-31
 
 **Frame rate check done, confirmed good.** The one open item left from
