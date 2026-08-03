@@ -1,13 +1,13 @@
 {
-  "note": "DRAFT for review, not public/data/poi.json - curate this (remove junk, fix names, add missing places), then it feeds tools/build-poi.mjs. Source: OpenStreetMap (ODbL, attribution required if these ship as-is - see docs/ARCHITECTURE.md §9). Unnamed elements already dropped (1330 of 3903) - can't show a POI with no label anyway.",
-  "generatedAt": "2026-08-03T10:44:49.939Z",
+  "note": "DRAFT for review, not public/data/poi.json - curate this (remove junk, fix names, add missing places), then it feeds tools/build-poi.mjs. Source: OpenStreetMap (ODbL, attribution required if these ship as-is - see docs/ARCHITECTURE.md §9). Unnamed elements already dropped (1330 of 3925) - can't show a POI with no label anyway.",
+  "generatedAt": "2026-08-03T13:09:09.637Z",
   "bboxWgs84": {
     "south": 45.46178020162524,
     "west": 6.796187831788339,
     "north": 45.911263212262774,
     "east": 7.885816501969224
   },
-  "count": 2573,
+  "count": 2595,
   "pois": [
     {
       "osmType": "node",
@@ -247,6 +247,40 @@
       "local": {
         "x": 34783.5,
         "z": -15275.8
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 63629870,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Ronco Canavese",
+      "valley": "Valle Soana",
+      "ele": null,
+      "elevationM": 952.1,
+      "dataIncomplete": false,
+      "lat": 45.4997374,
+      "lon": 7.5468552,
+      "local": {
+        "x": 15494.4,
+        "z": 21194.8
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 63631263,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Valprato Soana",
+      "valley": "Valle Soana",
+      "ele": null,
+      "elevationM": 1096.7,
+      "dataIncomplete": false,
+      "lat": 45.5214814,
+      "lon": 7.5493546,
+      "local": {
+        "x": 15733.3,
+        "z": 18782.6
       }
     },
     {
@@ -1899,6 +1933,57 @@
     },
     {
       "osmType": "node",
+      "osmId": 437246141,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Bruil",
+      "valley": "Val di Rhêmes",
+      "ele": 1722,
+      "elevationM": 1723,
+      "dataIncomplete": false,
+      "lat": 45.5696499,
+      "lon": 7.118334,
+      "local": {
+        "x": -17802.6,
+        "z": 12732.5
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 437286774,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Valnontey",
+      "valley": "Cogne",
+      "ele": null,
+      "elevationM": 1669.6,
+      "dataIncomplete": false,
+      "lat": 45.5867129,
+      "lon": 7.341223,
+      "local": {
+        "x": -371.3,
+        "z": 11220.7
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 437302412,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Cogne",
+      "valley": "Cogne",
+      "ele": null,
+      "elevationM": 1539.9,
+      "dataIncomplete": false,
+      "lat": 45.6087425,
+      "lon": 7.3560226,
+      "local": {
+        "x": 833.3,
+        "z": 8797
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 454570053,
       "category": "pass",
       "hutKind": null,
@@ -2667,6 +2752,23 @@
     },
     {
       "osmType": "node",
+      "osmId": 650445472,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Pellaud",
+      "valley": "Val di Rhêmes",
+      "ele": 1815,
+      "elevationM": 1815.3,
+      "dataIncomplete": false,
+      "lat": 45.5579132,
+      "lon": 7.1105555,
+      "local": {
+        "x": -18440.3,
+        "z": 14022.2
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 665109782,
       "category": "pass",
       "hutKind": null,
@@ -2855,6 +2957,23 @@
       "local": {
         "x": 22468.8,
         "z": -812.5
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 725277628,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Dégioz",
+      "valley": "Valsavarenche",
+      "ele": null,
+      "elevationM": 1545.9,
+      "dataIncomplete": false,
+      "lat": 45.5918098,
+      "lon": 7.2098437,
+      "local": {
+        "x": -10607.1,
+        "z": 10434
       }
     },
     {
@@ -3671,6 +3790,23 @@
       "local": {
         "x": 30453.6,
         "z": 6528.7
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 943577982,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Cretaz",
+      "valley": "Cogne",
+      "ele": 1499,
+      "elevationM": 1477.9,
+      "dataIncomplete": false,
+      "lat": 45.6148096,
+      "lon": 7.3426525,
+      "local": {
+        "x": -195.3,
+        "z": 8101.5
       }
     },
     {
@@ -4855,6 +4991,23 @@
       "local": {
         "x": 4223.8,
         "z": 10278.3
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1075437390,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Piamprato",
+      "valley": "Valle Soana",
+      "ele": null,
+      "elevationM": 1553.7,
+      "dataIncomplete": false,
+      "lat": 45.5554471,
+      "lon": 7.574144,
+      "local": {
+        "x": 17736.4,
+        "z": 15043.7
       }
     },
     {
@@ -6587,6 +6740,23 @@
     },
     {
       "osmType": "node",
+      "osmId": 1335405595,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Campiglia Soana",
+      "valley": "Valle Soana",
+      "ele": null,
+      "elevationM": 1344.9,
+      "dataIncomplete": false,
+      "lat": 45.539228,
+      "lon": 7.5339227,
+      "local": {
+        "x": 14564.2,
+        "z": 16789.1
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 1343723811,
       "category": "peak",
       "hutKind": null,
@@ -6647,6 +6817,23 @@
       "local": {
         "x": 30150.6,
         "z": -11698.1
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1349527920,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Eaux Rousses (L'Eau-Rousse)",
+      "valley": "Valsavarenche",
+      "ele": null,
+      "elevationM": 1662.1,
+      "dataIncomplete": false,
+      "lat": 45.566808,
+      "lon": 7.2079495,
+      "local": {
+        "x": -10817,
+        "z": 13208.4
       }
     },
     {
@@ -6903,6 +7090,40 @@
       "local": {
         "x": -2722.4,
         "z": 13478.3
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1380014816,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Epinel",
+      "valley": "Cogne",
+      "ele": 1452,
+      "elevationM": 1454.1,
+      "dataIncomplete": false,
+      "lat": 45.6290801,
+      "lon": 7.3247314,
+      "local": {
+        "x": -1559.4,
+        "z": 6487
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1380016259,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Gimillan",
+      "valley": "Cogne",
+      "ele": 1787,
+      "elevationM": 1791.2,
+      "dataIncomplete": false,
+      "lat": 45.6175091,
+      "lon": 7.3588103,
+      "local": {
+        "x": 1070.6,
+        "z": 7827.5
       }
     },
     {
@@ -7499,6 +7720,23 @@
     },
     {
       "osmType": "node",
+      "osmId": 1398949549,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Chanavey",
+      "valley": "Val di Rhêmes",
+      "ele": null,
+      "elevationM": 1688.9,
+      "dataIncomplete": false,
+      "lat": 45.5796947,
+      "lon": 7.1229693,
+      "local": {
+        "x": -17414.8,
+        "z": 11625
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 1401272634,
       "category": "pass",
       "hutKind": null,
@@ -7543,6 +7781,40 @@
       "local": {
         "x": 8213.6,
         "z": 8465.3
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1426354426,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Le Pont",
+      "valley": "Valsavarenche",
+      "ele": 1952,
+      "elevationM": 1950.1,
+      "dataIncomplete": false,
+      "lat": 45.52746,
+      "lon": 7.2023748,
+      "local": {
+        "x": -11349.9,
+        "z": 17570.1
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1428822058,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Nivolet",
+      "valley": "Pian del Nivolet",
+      "ele": null,
+      "elevationM": 2404.7,
+      "dataIncomplete": false,
+      "lat": 45.5050674,
+      "lon": 7.166859,
+      "local": {
+        "x": -14180.1,
+        "z": 19995.2
       }
     },
     {
@@ -7671,6 +7943,40 @@
       "local": {
         "x": -39357.5,
         "z": -19085.7
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1439048732,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Lillaz",
+      "valley": "Cogne",
+      "ele": 1615,
+      "elevationM": 1612.2,
+      "dataIncomplete": false,
+      "lat": 45.594076,
+      "lon": 7.3900994,
+      "local": {
+        "x": 3457.8,
+        "z": 10480.4
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1446305913,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Le Thumel",
+      "valley": "Val di Rhêmes",
+      "ele": null,
+      "elevationM": 1881,
+      "dataIncomplete": false,
+      "lat": 45.5381344,
+      "lon": 7.1028097,
+      "local": {
+        "x": -19096.8,
+        "z": 16205.3
       }
     },
     {
@@ -11131,6 +11437,23 @@
     },
     {
       "osmType": "node",
+      "osmId": 2061494143,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Agnel",
+      "valley": "Val Orco",
+      "ele": null,
+      "elevationM": 2336.9,
+      "dataIncomplete": false,
+      "lat": 45.4684625,
+      "lon": 7.132895,
+      "local": {
+        "x": -16927.9,
+        "z": 24000.7
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 2061494145,
       "category": "pass",
       "hutKind": null,
@@ -11143,6 +11466,23 @@
       "local": {
         "x": -16945.1,
         "z": 23731.1
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 2061494147,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Serrù",
+      "valley": "Val Orco",
+      "ele": null,
+      "elevationM": 2410.6,
+      "dataIncomplete": false,
+      "lat": 45.4665426,
+      "lon": 7.1285708,
+      "local": {
+        "x": -17270.9,
+        "z": 24206.2
       }
     },
     {
@@ -13911,6 +14251,23 @@
       "local": {
         "x": -22676.5,
         "z": 14420
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 2783051154,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Rhêmes-Notre-Dame",
+      "valley": "Val di Rhêmes",
+      "ele": null,
+      "elevationM": 1725.2,
+      "dataIncomplete": false,
+      "lat": 45.5688827,
+      "lon": 7.1181711,
+      "local": {
+        "x": -17817.3,
+        "z": 12817.5
       }
     },
     {
@@ -20839,6 +21196,23 @@
       "local": {
         "x": 9308.5,
         "z": 5197.6
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 7141526696,
+      "category": "trailhead",
+      "hutKind": null,
+      "name": "Pont",
+      "valley": "Val di Rhêmes",
+      "ele": 1794,
+      "elevationM": 1794.5,
+      "dataIncomplete": false,
+      "lat": 45.5599154,
+      "lon": 7.1137142,
+      "local": {
+        "x": -18188.5,
+        "z": 13805.5
       }
     },
     {

@@ -8,6 +8,7 @@ const CATEGORY_STYLE = {
   pass: { color: 0xab47bc },
   waterfall: { color: 0x29b6f6 },
   lake: { color: 0x1e88e5 },
+  trailhead: { color: 0x66bb6a }, // valley bases - green, the only category down among the trees
 };
 
 const CATEGORY_LABELS = {
@@ -16,6 +17,7 @@ const CATEGORY_LABELS = {
   pass: 'Passo/Colle',
   waterfall: 'Cascata',
   lake: 'Lago',
+  trailhead: 'Partenza sentieri',
 };
 
 // The hut category covers both staffed rifugi and unstaffed bivacchi, and

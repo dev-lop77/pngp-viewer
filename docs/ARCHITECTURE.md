@@ -287,10 +287,28 @@ tools/
                              Saves tools/park-boundary.geojson (single Polygon, 7,857
                              points, no holes) - static, no network call needed by the
                              regular pipeline. Resolves docs/ARCHITECTURE_SUGGESTIONS.md #6.
+  trailheads.json         Data, not a script (2026-08-03). Hand-curated allowlist of the 22
+                             valley bases / trailheads (Le Pont, Eaux Rousses, Valnontey,
+                             Cogne, Le Thumel, ...), read by fetch-osm.mjs (which queries
+                             these ids directly, keeping ~5,500 irrelevant toponyms out of
+                             the draft) and build-poi.mjs (which applies displayName/valley).
+                             Its header explains why an allowlist rather than a buffer, and
+                             why it must be keyed on id: three OSM names differ from common
+                             usage ("Le Pont", "Le Thumel", "L'Eau-Rousse" for Eaux Rousses),
+                             and a DIFFERENT hamlet genuinely called "Pont" exists in Val di
+                             Rhêmes. fetch-osm.mjs warns if any id is deleted or renamed
+                             upstream, so an allowlist can't rot silently.
   build-poi.mjs           Written 2026-07-28. Filters tools/osm-poi-draft.json down to
                              tools/park-boundary.geojson (point-in-polygon via @turf) ->
-                             public/data/poi.json - 2,573 -> 404 (205 peaks, 116 passes, 44
-                             lakes, 38 huts, 1 waterfall). Huts are the one category also
+                             public/data/poi.json - 2,595 -> 426 (205 peaks, 116 passes, 44
+                             lakes, 38 huts, 22 trailheads, 1 waterfall). Trailheads bypass
+                             the boundary test entirely: they are an explicit id allowlist
+                             (tools/trailheads.json), so there is nothing left for a
+                             geographic filter to decide - 14 of the 22 are deliberately
+                             outside. That file also carries `displayName` overrides, applied
+                             HERE and not in the fetch, so the draft keeps OSM's raw names for
+                             rename detection and relabelling costs a rebuild rather than an
+                             Overpass round trip. Huts are the one category also
                              admitted from just OUTSIDE the boundary, up to 750 m (user's
                              call 2026-08-03) - the three that qualify sit at 40/63/573 m
                              and the next is 1542 m away, so the threshold lands in a real
@@ -752,13 +770,12 @@ before assuming anything below is still unresolved.
    (SwiftShader; it has been misleading three times on this project), so
    this needs a real-browser read. `TILE_SEGMENTS`/`MAX_DEPTH`/
    `SPLIT_FACTOR` at the top of `src/terrain.js` tune it directly.
-4. **Trailhead localities** (§4, added 2026-08-03) — the hut half of this is
-   settled and implemented (query widened, 750 m buffer, 4 → 38 huts). Valley
-   bases are not: no buffer separates the 14 wanted ones (Le Thumel 791 m out,
-   Cogne 466 m, Gimillan 1210 m) from ~100–190 alpine-pasture toponyms, and
-   the tightest buffer that catches all 14 also starts shipping fake 238.5 m
-   elevations — so it needs a hand-curated allowlist keyed on OSM **id**, not
-   name (a hamlet genuinely called "Pont" exists in Val di Rhêmes, distinct
-   from Valsavarenche's "Le Pont", which is already inside the boundary).
-   Ceresole Reale/Noasca/Locana/Rosone/Talosio sit outside the DEM bbox
-   entirely and would need a new heightmap extraction (§3), not a §4 change.
+4. ~~Rifugi/trailhead ingestion policy~~ — **RESOLVED 2026-08-03.** Huts: query
+   widened + 750 m boundary buffer, 4 → 38. Trailheads: a hand-curated
+   22-row allowlist in `tools/trailheads.json`, keyed on OSM **id** rather than
+   name, since no buffer separates the wanted valley bases from ~100–190
+   alpine-pasture toponyms. What remains is not a policy question but a data
+   one: **Ceresole Reale, Noasca, Locana, Rosone and Talosio sit 0.87–4.9 km
+   south of the DEM bbox**, so there is no terrain under them. Adding those
+   needs a new heightmap extraction (§3) — a decision about the bbox, not about
+   POI filtering.

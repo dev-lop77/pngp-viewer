@@ -45,6 +45,12 @@ const HUT_DEDUPE_M = 150;
 const draft = JSON.parse(readFileSync(DRAFT_FILE, 'utf8'));
 const boundary = JSON.parse(readFileSync(BOUNDARY_FILE, 'utf8'));
 const heightfieldManifest = JSON.parse(readFileSync(HEIGHTFIELD_FILE, 'utf8'));
+// Curation lives here, not in the fetch: the draft keeps OSM's raw names so
+// fetch-osm.mjs can detect upstream renames, and relabelling a place costs a
+// rebuild rather than an Overpass round trip.
+const trailheadById = new Map(
+  JSON.parse(readFileSync('tools/trailheads.json', 'utf8')).trailheads.map((t) => [t.id, t]),
+);
 
 const geom = boundary.geometry;
 const boundaryPoly =
@@ -88,8 +94,19 @@ function metresFromBoundary(px, pz) {
 const kept = [];
 const nearMisses = [];
 for (const p of draft.pois) {
-  if (booleanPointInPolygon(point([p.lon, p.lat]), boundaryPoly)) {
-    kept.push({ ...p, outsideByM: 0 });
+  const insideBoundary = booleanPointInPolygon(point([p.lon, p.lat]), boundaryPoly);
+  // Trailheads are already an explicit, hand-curated id allowlist
+  // (tools/trailheads.json), so the boundary test has nothing left to decide -
+  // 14 of the 22 are deliberately outside it. Their distance is still recorded
+  // for information.
+  if (insideBoundary || p.category === 'trailhead') {
+    const curated = trailheadById.get(`${p.osmType[0]}${p.osmId}`);
+    kept.push({
+      ...p,
+      displayName: curated?.displayName,
+      valley: curated?.valley,
+      outsideByM: insideBoundary ? 0 : Math.round(metresFromBoundary(p.local.x, p.local.z)),
+    });
     continue;
   }
   if (p.category !== 'hut') continue;
@@ -125,10 +142,16 @@ const dropped = kept.length - inside.length;
 console.log(`${inside.length} / ${draft.pois.length} kept (${dropped} node/way hut duplicates merged).`);
 console.log('By category:', byCategory);
 
-const buffered = inside.filter((p) => p.outsideByM > 0);
+const buffered = inside.filter((p) => p.outsideByM > 0 && p.category === 'hut');
 console.log(`Huts admitted from outside the boundary (<= ${HUT_BUFFER_M} m):`);
 for (const p of buffered.sort((a, b) => a.outsideByM - b.outsideByM)) {
   console.log(`  ${String(p.outsideByM).padStart(4)} m  ${p.name} [${p.hutKind ?? '?'}]`);
+}
+const trailheads = inside.filter((p) => p.category === 'trailhead');
+console.log(`Trailheads (allowlist, tools/trailheads.json) - ${trailheads.length}:`);
+for (const p of trailheads.sort((a, b) => a.outsideByM - b.outsideByM || a.name.localeCompare(b.name))) {
+  const where = p.outsideByM ? `${String(p.outsideByM).padStart(4)} m outside` : '      INSIDE   ';
+  console.log(`  ${where}  ${(p.displayName ?? p.name).padEnd(30)} ${String(Math.round(p.elevationM)).padStart(4)} m  ${p.valley ?? ''}`);
 }
 console.log(`Nearest huts still excluded (the gap that justifies ${HUT_BUFFER_M} m):`);
 for (const p of nearMisses.sort((a, b) => a.outsideByM - b.outsideByM).slice(0, 3)) {
@@ -141,8 +164,11 @@ console.log(`In a DEM nodata area (fake elevation): ${incomplete.length}` +
 const pois = inside.map((p) => ({
   id: `${p.osmType[0]}${p.osmId}`,
   category: p.category,
-  name: p.name,
+  // displayName only where OSM's own name would make a place unfindable by the
+  // name people use - "Eaux Rousses" is mapped as "L'Eau-Rousse".
+  name: p.displayName ?? p.name,
   hutKind: p.category === 'hut' ? p.hutKind : undefined,
+  valley: p.valley,
   elevationM: p.elevationM,
   osmElevationM: p.ele,
   dataIncomplete: p.dataIncomplete,
@@ -156,7 +182,7 @@ const output = {
   localOrigin: heightfieldManifest.localOrigin,
   axes: heightfieldManifest.axes,
   coordUnits: 'local scene meters {x, z} at ground level - see localOrigin/axes above, same frame as the terrain',
-  categories: ['peak', 'hut', 'pass', 'waterfall', 'lake'],
+  categories: ['peak', 'hut', 'pass', 'waterfall', 'lake', 'trailhead'],
   count: pois.length,
   boundary: {
     name: boundary.properties.name,

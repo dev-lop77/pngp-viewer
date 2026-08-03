@@ -77,9 +77,17 @@ const CATEGORY_QUERIES = [
   { category: 'lake', ql: `way["natural"="lake"]` },
 ];
 
+// Valley bases / trailheads come from an explicit id allowlist rather than a
+// tag query - see tools/trailheads.json for why a `place=*` filter or a
+// boundary buffer can't do this job. Fetching the ids directly also keeps
+// ~5,500 irrelevant toponyms out of the draft.
+const trailheads = JSON.parse(readFileSync('tools/trailheads.json', 'utf8')).trailheads;
+const trailheadById = new Map(trailheads.map((t) => [t.id, t]));
+
 const query =
   `[out:json][timeout:90];\n(\n` +
   CATEGORY_QUERIES.map((c) => `  ${c.ql}(${south},${west},${north},${east});`).join('\n') +
+  `\n  node(id:${trailheads.map((t) => t.id.slice(1)).join(',')});` +
   `\n);\nout center;`;
 
 const response = await fetch(OVERPASS_URL, {
@@ -99,6 +107,9 @@ console.log(`Overpass returned ${elements.length} elements.`);
 
 function categoryFor(el) {
   const t = el.tags ?? {};
+  // Before the tag checks: a trailhead is defined by being on the allowlist,
+  // not by its tags (they range over hamlet/village/locality/farm).
+  if (trailheadById.has(`${el.type[0]}${el.id}`)) return 'trailhead';
   if (t.natural === 'peak') return 'peak';
   if (t.tourism === 'alpine_hut' || t.tourism === 'wilderness_hut') return 'hut';
   if (t.amenity === 'shelter' && t.shelter_type === 'basic_hut') return 'hut';
@@ -126,6 +137,10 @@ for (const el of elements) {
     // Kept so build-poi.mjs can tell a staffed rifugio from a bivacco, and so
     // a future re-read can see which of the three hut tags matched.
     hutKind: el.tags?.tourism ?? (el.tags?.shelter_type ? `shelter:${el.tags.shelter_type}` : null),
+    // Raw OSM name on purpose. The allowlist's displayName/valley are applied
+    // by build-poi.mjs, not here: this draft is the unedited fetch, and keeping
+    // curation out of it means relabelling a place doesn't cost an Overpass
+    // round trip - only the build re-runs.
     name: el.tags?.name ?? el.tags?.['name:it'] ?? null,
     ele: el.tags?.ele ? Number(el.tags.ele) : null,
     elevationM,
@@ -134,6 +149,19 @@ for (const el of elements) {
     lon,
     local: { x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10 },
   });
+}
+
+// An id allowlist is only safe if upstream changes are noticed: OSM nodes do
+// get deleted, retagged or renamed, and a silently missing trailhead would
+// just look like the allowlist was never applied.
+const returnedById = new Map(elements.map((el) => [`${el.type[0]}${el.id}`, el]));
+for (const t of trailheads) {
+  const el = returnedById.get(t.id);
+  if (!el) {
+    console.warn(`  ! trailhead ${t.id} (${t.name}) no longer exists in OSM - check it`);
+  } else if (el.tags?.name !== t.name) {
+    console.warn(`  ! trailhead ${t.id} is now named "${el.tags?.name}", allowlist expects "${t.name}"`);
+  }
 }
 
 const byCategory = pois.reduce((acc, p) => {

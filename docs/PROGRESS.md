@@ -254,6 +254,39 @@ ricerca"), then asked to include the ones just outside the perimeter.
 - Verified in the browser, not just in the data: 404 search entries, both
   Vittorio Emanuele II buildings findable, selecting one flies there.
 
+### Trailhead localities: the 22-row allowlist (same day)
+User approved the allowlist approach, excluding the places that would need a
+new heightmap extraction, and added one from memory: **Eaux Rousses**.
+- Looking it up live paid off immediately: there is **no `place=*` node named
+  "Eaux Rousses"**. The hamlet is mapped as **"L'Eau-Rousse"** (singular,
+  hyphenated, `n1349527920`); the plural spelling belongs to a bus stop. It is
+  genuinely inside the boundary, as the user remembered - 1662 m elevation.
+- That makes three OSM names that differ from common usage ("Le Pont", "Le
+  Thumel", "L'Eau-Rousse"), plus a *different* hamlet actually called "Pont" in
+  Val di Rhêmes. Hence `tools/trailheads.json` is keyed on OSM **id**, with an
+  optional `displayName` used only where OSM's name would make a place
+  unfindable - "Eaux Rousses (L'Eau-Rousse)" contains both spellings, so either
+  one matches in the search box. Confirmed: searching "Pont ·" now returns both
+  Le Pont and Pont as separate entries.
+- **Where curation lives, corrected mid-implementation**: `displayName`/`valley`
+  were first applied in `fetch-osm.mjs`, which was wrong twice over - it put
+  edited names in what is supposed to be the raw draft, and it made relabelling
+  a place cost an Overpass round trip. Moved to `build-poi.mjs`. The draft now
+  keeps OSM's raw names, which is also what lets the drift check work.
+- **Drift detection**: an id allowlist rots silently when OSM deletes or renames
+  a node, so `fetch-osm.mjs` warns on both. It fired once immediately, on Crétaz
+  - OSM spells it "Cretaz". Resolved the right way round: the allowlist's `name`
+  now matches OSM (so the check stays quiet and therefore meaningful) and
+  `displayName` carries the accented spelling.
+- New `trailhead` category (green, `Partenza sentieri`) in `src/poi.js`, and
+  these bypass the boundary test entirely - an explicit allowlist leaves a
+  geographic filter nothing to decide. 8 of the 22 are inside anyway (Le Pont is
+  6967 m inside); 14 are deliberately outside, from 100 m (Piamprato) to 1210 m
+  (Gimillan).
+- **370 → 426 POIs.** Verified in the browser: 426 search entries, 22 labelled
+  Partenza sentieri, flying to Eaux Rousses lands at 45.5664°N 7.2084°E /
+  1661 m, matching the OSM node.
+
 ### Open questions
 1. ~~Frame rate with LOD unmeasured~~ - **CLOSED 2026-08-03: the user
    confirmed frame rate is OK in their real browser** with the LOD terrain
@@ -265,17 +298,15 @@ ricerca"), then asked to include the ones just outside the perimeter.
    levers if a future phase's geometry eats the headroom.
    Also settled by the same test: turn speed went 90 → 60 deg/s (90 read as
    slightly too fast), and Shift no longer accelerates turning.
-2. **Trailhead localities are still not in** - the hut half is done (see
-   above; query fixed, 750 m buffer, 4 → 38). What remains is the valley
-   bases: no buffer separates the 14 wanted ones (Le Thumel is 791 m out,
-   Cogne 466 m, Gimillan 1210 m) from ~100-190 alpine-pasture toponyms, and
-   the tightest buffer catching all 14 also starts shipping fake 238.5 m
-   elevations - so this needs a hand-curated allowlist keyed on OSM **id**,
-   not name ("Le Pont" and "Le Thumel" are the OSM names, and a *different*
-   hamlet actually called "Pont" exists in Val di Rhêmes). Note Le Pont is
-   already *inside* the boundary, 6967 m in. Ceresole Reale, Noasca, Locana,
-   Rosone and Talosio sit outside the DEM bbox entirely (0.87-4.9 km below
-   `ymin`) and need a new heightmap extraction (§3), not a §4 change.
+2. ~~Rifugi/trailhead policy~~ - **DONE 2026-08-03**, both halves (see the two
+   sections above). What is left is not a policy question: **Ceresole Reale,
+   Noasca, Locana, Rosone and Talosio sit 0.87-4.9 km south of the DEM bbox**,
+   with no terrain under them. They need a new heightmap extraction - a
+   decision about the bbox (`docs/ARCHITECTURE.md` §3 and
+   `tools/dtm-source/*`), not about POI filtering, and it would mean
+   re-running the whole 3-source mosaic. Worth asking whether the user wants
+   the bbox extended south before the public deploy, since it also affects how
+   much of the Piemonte side of the park is visible at all.
 3. **LOD popping is not smoothed.** Tiles change resolution abruptly; no
    geomorphing. Unknown whether it's noticeable in practice.
 4. Normals are sampled at a fixed one-texel spacing regardless of tile depth,
