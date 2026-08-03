@@ -47,9 +47,29 @@ const east = Math.max(...corners.map((c) => c[0]));
 
 console.log(`Querying Overpass for bbox ${south.toFixed(4)},${west.toFixed(4)},${north.toFixed(4)},${east.toFixed(4)}...`);
 
+// The hut queries were `node["tourism"="alpine_hut"]` alone until 2026-08-03,
+// which found 4 in-park huts where there are 35 - it missed ~89% of them, and
+// the shortfall had been wrongly blamed on OSM tagging completeness
+// (docs/ARCHITECTURE.md §4). Two independent causes, both fixed here:
+//
+//  - nodes only. Many huts are mapped as a building `way`, including Rifugio
+//    Vittorio Emanuele II - the park's most famous - plus Città di Chivasso,
+//    Savoia and Pontese. `out center;` below already gives ways a
+//    representative point, so this costs nothing.
+//  - one tag out of three. `tourism=wilderness_hut` covers unstaffed huts, and
+//    `amenity=shelter` + `shelter_type=basic_hut` is how essentially every
+//    *bivacco* in the park is tagged. Other `shelter_type` values are checked
+//    and deliberately not included: `public_transport` is bus stops, and
+//    `picnic_shelter`/`gazebo`/`rock_shelter` are not places you can stay.
+const HUT_QL = [
+  `["tourism"="alpine_hut"]`,
+  `["tourism"="wilderness_hut"]`,
+  `["amenity"="shelter"]["shelter_type"="basic_hut"]`,
+].flatMap((tags) => [`node${tags}`, `way${tags}`]);
+
 const CATEGORY_QUERIES = [
   { category: 'peak', ql: `node["natural"="peak"]` },
-  { category: 'hut', ql: `node["tourism"="alpine_hut"]` },
+  ...HUT_QL.map((ql) => ({ category: 'hut', ql })),
   { category: 'pass', ql: `node["mountain_pass"="yes"]` },
   { category: 'pass', ql: `node["natural"="saddle"]` },
   { category: 'waterfall', ql: `node["waterway"="waterfall"]` },
@@ -80,7 +100,8 @@ console.log(`Overpass returned ${elements.length} elements.`);
 function categoryFor(el) {
   const t = el.tags ?? {};
   if (t.natural === 'peak') return 'peak';
-  if (t.tourism === 'alpine_hut') return 'hut';
+  if (t.tourism === 'alpine_hut' || t.tourism === 'wilderness_hut') return 'hut';
+  if (t.amenity === 'shelter' && t.shelter_type === 'basic_hut') return 'hut';
   if (t.mountain_pass === 'yes' || t.natural === 'saddle') return 'pass';
   if (t.waterway === 'waterfall') return 'waterfall';
   if (t.natural === 'water' || t.natural === 'lake') return 'lake';
@@ -102,6 +123,9 @@ for (const el of elements) {
     osmType: el.type,
     osmId: el.id,
     category: categoryFor(el),
+    // Kept so build-poi.mjs can tell a staffed rifugio from a bivacco, and so
+    // a future re-read can see which of the three hut tags matched.
+    hutKind: el.tags?.tourism ?? (el.tags?.shelter_type ? `shelter:${el.tags.shelter_type}` : null),
     name: el.tags?.name ?? el.tags?.['name:it'] ?? null,
     ele: el.tags?.ele ? Number(el.tags.ele) : null,
     elevationM,

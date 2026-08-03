@@ -289,8 +289,19 @@ tools/
                              regular pipeline. Resolves docs/ARCHITECTURE_SUGGESTIONS.md #6.
   build-poi.mjs           Written 2026-07-28. Filters tools/osm-poi-draft.json down to
                              tools/park-boundary.geojson (point-in-polygon via @turf) ->
-                             public/data/poi.json - 2,421 -> 370 (205 peaks, 116 passes, 44
-                             lakes, 4 huts, 1 waterfall). Per the user's explicit call: the
+                             public/data/poi.json - 2,573 -> 404 (205 peaks, 116 passes, 44
+                             lakes, 38 huts, 1 waterfall). Huts are the one category also
+                             admitted from just OUTSIDE the boundary, up to 750 m (user's
+                             call 2026-08-03) - the three that qualify sit at 40/63/573 m
+                             and the next is 1542 m away, so the threshold lands in a real
+                             969 m gap rather than cutting a continuum. Distance is measured
+                             to the nearest boundary EDGE (not vertex - with 7,857 vertices
+                             that would overstate on long straight stretches), in local
+                             scene metres by converting the ring once, same trick as
+                             build-trails.mjs. Also dedupes node-vs-way duplicates of the
+                             same hut within 150 m, matched on NAME so real neighbours
+                             survive: Vittorio Emanuele II's "Nuovo" and "Vecchio" are 27 m
+                             apart and are two separate buildings. Per the user's explicit call: the
                              draft was too large to curate by hand, so "falls within the
                              real park boundary" stands in for manual curation, rather than
                              a hand-picked subset — supersedes the originally-planned
@@ -359,14 +370,21 @@ park boundary**, against the 4 that reach `poi.json`. The cause is
   essentially every *bivacco* in the park is tagged.
 
 So the boundary filter was never the problem (~89% of the loss is the
-query). The fix is to widen the query to
+query). **Fixed the same day**: `fetch-osm.mjs` now queries
 `node|way × alpine_hut|wilderness_hut|shelter[shelter_type=basic_hut]`,
-dedupe node-vs-way duplicates within ~150 m, and drop the noise
-`shelter_type` values (`public_transport` is bus stops, plus
-`picnic_shelter`/`gazebo`/`rock_shelter`). None of the 35 fall in a DEM
-nodata area. General lesson, consistent with §3's data-source rule: when a
-dataset looks incomplete, test the query against the live endpoint before
-concluding the data is missing.
+dropping the noise `shelter_type` values (`public_transport` is bus stops,
+plus `picnic_shelter`/`gazebo`/`rock_shelter`), and `build-poi.mjs` dedupes
+node-vs-way duplicates. Real result: **4 → 38 huts** (35 inside the
+boundary plus 3 within the 750 m hut buffer), of which 18 are *bivacchi* -
+a class the old query could not see at all. None fall in a DEM nodata area,
+and the OSM `ele` tag agrees with our own heightfield sampling to within
+~20 m except for Rifugio Noaschetta (OSM 1520 m vs our 1905 m - one of the
+two is wrong; not chased, but don't trust that row).
+
+General lesson, consistent with §3's rule about testing data sources live:
+when a dataset looks incomplete, test the *query* against the live endpoint
+before concluding the data is missing. This note previously blamed OSM for
+five phases.
 
 **Why the height data is a raw binary, not a PNG (decided 2026-07-28,
 resolving `docs/ARCHITECTURE_SUGGESTIONS.md` #1)**: browsers decode PNGs
@@ -571,7 +589,7 @@ pngp-viewer/
 │                              the thin line real tolerance to aim at). Also exposes
 │                              `searchEntries` for index.html's searchable POI list
 │                              (`<input list=datalist>`, "Name · Category" labels since plain
-│                              names aren't guaranteed unique across ~370 POIs)
+│                              names aren't guaranteed unique across ~400 POIs)
 │   ├── controls.js         Done, 2026-07-31. Walk/fly navigation replacing OrbitControls
 │                              as the primary way to move (user's explicit request after
 │                              testing phase 5) - walk mode is the default (ground-clamped
@@ -587,7 +605,7 @@ pngp-viewer/
 │                              exposed in the old POI marker sizing
 │   ├── nav.js              Done, 2026-07-31 (phase 5). Pure logic, no DOM: compass
 │                              bearing from the camera's view direction, 8-point compass
-│                              label, nearest-POI lookup (linear scan over the ~370-POI
+│                              label, nearest-POI lookup (linear scan over the ~400-POI
 │                              list already loaded by poi.js - reusing that dataset for
 │                              "nearest place name" instead of a new OSM settlement
 │                              fetch was the user's explicit call, confirmed via
@@ -734,10 +752,13 @@ before assuming anything below is still unresolved.
    (SwiftShader; it has been misleading three times on this project), so
    this needs a real-browser read. `TILE_SEGMENTS`/`MAX_DEPTH`/
    `SPLIT_FACTOR` at the top of `src/terrain.js` tune it directly.
-4. **Rifugi/trailhead ingestion policy** (§4, added 2026-08-03) — the hut
-   query fix is unambiguous, but whether to add a boundary buffer for the
-   three just-outside rifugi, and how to admit valley trailheads like Le
-   Thumel (outside by 791 m) without dragging in ~100+ alpine-pasture
-   toponyms, is undecided. Note Ceresole Reale/Noasca/Locana/Rosone/Talosio
-   sit outside the DEM bbox entirely and would need a new heightmap
-   extraction (§3), not a §4 change.
+4. **Trailhead localities** (§4, added 2026-08-03) — the hut half of this is
+   settled and implemented (query widened, 750 m buffer, 4 → 38 huts). Valley
+   bases are not: no buffer separates the 14 wanted ones (Le Thumel 791 m out,
+   Cogne 466 m, Gimillan 1210 m) from ~100–190 alpine-pasture toponyms, and
+   the tightest buffer that catches all 14 also starts shipping fake 238.5 m
+   elevations — so it needs a hand-curated allowlist keyed on OSM **id**, not
+   name (a hamlet genuinely called "Pont" exists in Val di Rhêmes, distinct
+   from Valsavarenche's "Le Pont", which is already inside the boundary).
+   Ceresole Reale/Noasca/Locana/Rosone/Talosio sit outside the DEM bbox
+   entirely and would need a new heightmap extraction (§3), not a §4 change.

@@ -18,6 +18,14 @@ const CATEGORY_LABELS = {
   lake: 'Lago',
 };
 
+// The hut category covers both staffed rifugi and unstaffed bivacchi, and
+// calling the latter "Rifugio" in the search list would be wrong - 17 of the
+// 38 are bivacchi (tools/build-poi.mjs keeps OSM's tag as hutKind).
+function categoryLabel(poi) {
+  if (poi.category === 'hut' && poi.hutKind === 'shelter:basic_hut') return 'Bivacco';
+  return CATEGORY_LABELS[poi.category] ?? poi.category;
+}
+
 // A human-scale walker used to stand right next to a real 180-220m sphere
 // marker (fine seen from a 26km-high overview, but enormous at walking
 // scale - once walking is the default, see docs/PROGRESS.md 2026-07-31).
@@ -121,7 +129,7 @@ export async function loadPOI(dataUrl = `${import.meta.env.BASE_URL}data`, { onS
   // Markers are first built at poi.elevationM (the build-time heightfield
   // value) because POI data loads in parallel with the terrain - keeping
   // that parallelism matters for startup (§10), so the fix is a cheap
-  // rewrite afterwards rather than serializing the two fetches. ~370 POIs x
+  // rewrite afterwards rather than serializing the two fetches. ~400 POIs x
   // 6 floats is nothing.
   //
   // elevationM is the POI's real altitude and stays what the info panel
@@ -169,11 +177,11 @@ export async function loadPOI(dataUrl = `${import.meta.env.BASE_URL}data`, { onS
   // post rather than detaching from its label.
   //
   // Visibility: beyond LABEL_MAX_DIST_M labels are hidden outright - real
-  // decluttering now that walking puts the camera at ground level (all ~370 at
+  // decluttering now that walking puts the camera at ground level (all ~400 at
   // once from up close would be the same "disturbing" clutter the old balloon
   // markers were) - and nearer ones are hidden when terrain stands in front of
   // them (isHiddenByTerrain). Distance is tested first, so the ray march only
-  // runs for the handful of candidates rather than all ~370 (§10).
+  // runs for the handful of candidates rather than all ~400 (§10).
   function updateMarkers(camera) {
     for (const marker of markers) {
       const { poi, object, attr, index, groundY } = marker;
@@ -196,9 +204,9 @@ export async function loadPOI(dataUrl = `${import.meta.env.BASE_URL}data`, { onS
 
   // For the searchable POI list (index.html's #poi-search): "Name ·
   // Category" as a display label unique enough to disambiguate POIs that
-  // share a plain name (plausible among ~370 named features).
+  // share a plain name (plausible among ~400 named features).
   const searchEntries = data.pois.map((poi) => ({
-    label: `${poi.name} · ${CATEGORY_LABELS[poi.category] ?? poi.category}`,
+    label: `${poi.name} · ${categoryLabel(poi)}`,
     poi,
   }));
 
@@ -216,7 +224,7 @@ function writeMarker(positions, i, x, z, groundY, offset) {
 }
 
 export function poiInfoHTML(poi) {
-  const label = CATEGORY_LABELS[poi.category] ?? poi.category;
+  const label = categoryLabel(poi);
   let html = `<div class="name">${poi.name}</div><div>${label} · ${Math.round(poi.elevationM)} m</div>`;
   if (poi.dataIncomplete) {
     html += `<div class="warning">⚠ dati di elevazione incompleti in quest'area (versante piemontese)</div>`;

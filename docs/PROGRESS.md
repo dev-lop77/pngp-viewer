@@ -220,6 +220,40 @@ once the ground was right.
   scale a one-decimal km reading was useless - everything under 150 m read
   "0.1 km", and standing 40 m from a col read "0.0 km".
 
+### Rifugi and bivacchi: 4 → 38 (implemented, same day)
+The user pointed out the finding had been written up but never acted on
+("mancano ancora tutti i rifugi ed i bivacchi nuovi, come minimo nella
+ricerca"), then asked to include the ones just outside the perimeter.
+- `tools/fetch-osm.mjs` now queries `node|way` × `alpine_hut` /
+  `wilderness_hut` / `shelter[shelter_type=basic_hut]`. Hut-ish elements found
+  in the bbox went 40 → 197. Other `shelter_type` values were checked and
+  deliberately excluded: `public_transport` is bus stops,
+  `picnic_shelter`/`gazebo`/`rock_shelter` are not places you can stay.
+- `tools/build-poi.mjs` keeps huts up to **750 m outside** the boundary. The
+  number is derived, not chosen: the qualifying huts sit at 40 m (Sogno di
+  Berdzé), 63 m (Ciavanassa) and 573 m (Rifugio Benevolo), and the next is
+  1542 m out - the run confirms that 969 m gap empirically, so the threshold
+  sits in empty space. Not extended to other categories: settlements have no
+  such gap, which is why trailheads remain undecided.
+- Distance is to the nearest boundary **edge**, not vertex - with 7,857
+  vertices, vertex-only distance overstates on long straight stretches. Done
+  in local scene metres by converting the ring once, the same trick
+  `build-trails.mjs` uses.
+- Node-vs-way duplicates of the same hut are merged within 150 m, matched on
+  **name**. A pure distance rule would have been wrong: flying to Rifugio
+  Vittorio Emanuele II Nuovo shows the nearest POI as its "Vecchio" **27 m**
+  away, and those are two real separate buildings.
+- Result: **370 → 404 POIs, huts 4 → 38**, of which **18 are bivacchi** - a
+  class the old query could not see at all. Peaks/passes/lakes/waterfalls
+  unchanged (205/116/44/1), confirming nothing else moved. Zero in a DEM
+  nodata area. `src/poi.js` labels `shelter_type=basic_hut` as "Bivacco"
+  rather than "Rifugio", since 18 of 38 would otherwise be mislabelled.
+- **OSM `ele` cross-check**: agrees with our heightfield sampling to ~20 m
+  except **Rifugio Noaschetta** (OSM 1520 m vs our 1905 m). One of the two is
+  wrong; not chased.
+- Verified in the browser, not just in the data: 404 search entries, both
+  Vittorio Emanuele II buildings findable, selecting one flies there.
+
 ### Open questions
 1. ~~Frame rate with LOD unmeasured~~ - **CLOSED 2026-08-03: the user
    confirmed frame rate is OK in their real browser** with the LOD terrain
@@ -231,8 +265,17 @@ once the ground was right.
    levers if a future phase's geometry eats the headroom.
    Also settled by the same test: turn speed went 90 → 60 deg/s (90 read as
    slightly too fast), and Shift no longer accelerates turning.
-2. **Rifugi/trailhead policy** - see the recommendation above; the user hasn't
-   decided yet.
+2. **Trailhead localities are still not in** - the hut half is done (see
+   above; query fixed, 750 m buffer, 4 → 38). What remains is the valley
+   bases: no buffer separates the 14 wanted ones (Le Thumel is 791 m out,
+   Cogne 466 m, Gimillan 1210 m) from ~100-190 alpine-pasture toponyms, and
+   the tightest buffer catching all 14 also starts shipping fake 238.5 m
+   elevations - so this needs a hand-curated allowlist keyed on OSM **id**,
+   not name ("Le Pont" and "Le Thumel" are the OSM names, and a *different*
+   hamlet actually called "Pont" exists in Val di Rhêmes). Note Le Pont is
+   already *inside* the boundary, 6967 m in. Ceresole Reale, Noasca, Locana,
+   Rosone and Talosio sit outside the DEM bbox entirely (0.87-4.9 km below
+   `ymin`) and need a new heightmap extraction (§3), not a §4 change.
 3. **LOD popping is not smoothed.** Tiles change resolution abruptly; no
    geomorphing. Unknown whether it's noticeable in practice.
 4. Normals are sampled at a fixed one-texel spacing regardless of tile depth,

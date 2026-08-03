@@ -116,6 +116,7 @@ const trailsPromise = loadTrails().then((result) => {
 
 // Select a POI: show its info panel and fly the camera toward it - shared by
 // both selection paths (clicking a label, and the search box).
+//
 // Where a fly-to puts you relative to the POI. Was 2500 m for the old
 // overview camera, then 250 m for walking - still too far in practice: after
 // searching for a col the user had to walk the remaining distance to reach it
@@ -161,7 +162,7 @@ const poiPromise = loadPOI(undefined, { onSelect: selectPoi }).then((index) => {
   renderCredits();
 
   // Searchable POI list (native <datalist> - no custom dropdown code needed
-  // at this scale, ~370 entries). Labels include the category since plain
+  // at this scale, ~400 entries). Labels include the category since plain
   // names aren't guaranteed unique across that many POIs.
   const searchByLabel = new Map(index.searchEntries.map((e) => [e.label, e.poi]));
   const datalist = document.getElementById('poi-search-list');

@@ -19,7 +19,7 @@ export function compassLabel(deg) {
 
 // Closest POI to a local (x, z) position, horizontal distance only (real
 // "nearest place" is a ground-distance notion, not line-of-sight through a
-// mountain) - linear scan over ~370 POIs, cheap enough to call every HUD
+// mountain) - linear scan over ~400 POIs, cheap enough to call every HUD
 // tick (docs/ARCHITECTURE.md §10 - not the kind of per-frame cost that
 // needs a spatial index at this N).
 export function nearestPOI(x, z, pois) {
