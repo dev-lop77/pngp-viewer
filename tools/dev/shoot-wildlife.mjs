@@ -37,6 +37,10 @@ const found = await page.evaluate(async ({ species, distM, bearingDeg }) => {
     ibex: [-16164, 22824], // Colle del Nivolet, 2619 m
     marmot: [-16164, 22824],
     chamois: [-12595, 4501], // Mont Paillasse, 2412 m, with woodland below
+    fox: [-16164, 22824], // they live nearly everywhere, so anywhere will do
+    // Squirrels need solid canopy: a mask pixel of 255 at 1,826 m inside the park
+    // (same site tools/test-wildlife.mjs uses).
+    squirrel: [-14121, 4997],
   };
   const [siteX, siteZ] = SITES[species] ?? SITES.ibex;
   camera.position.set(siteX, 3000, siteZ);

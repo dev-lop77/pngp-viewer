@@ -712,7 +712,15 @@ pngp-viewer/
 │                              terrain gradient. Low-poly opaque cones, deliberately: no
 │                              alpha sorting, no texture asset, and correct from above,
 │                              which billboards are not once you can fly
-│   ├── wildlife.js         Done, 2026-08-04 (phase 6). Ibex, chamois and marmots. One
+│   ├── wildlife.js         Done, 2026-08-04 (phase 6). Ibex, chamois, marmots, foxes and
+│                              squirrels - the last two added the same day at the user's
+│                              request, and both are about behaviour: a species declares a
+│                              REACTION, either 'flee', 'curious' (bold foxes walk up to
+│                              the camera and stop at 7 m watching) or 'hide' (squirrels
+│                              put a real trunk between themselves and the camera, via
+│                              vegetation.js's exported nearestTree(), which reads the same
+│                              offsets buffer the shader does - verified against it to
+│                              0.000000 m). One
 │                              InstancedMesh per species, matrices rewritten per frame -
 │                              NOT vegetation.js's shader placement, because an animal's
 │                              position depends on where it was last frame and that is

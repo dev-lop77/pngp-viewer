@@ -73,16 +73,16 @@ function mulberry32(seed) {
   };
 }
 
-export function createVegetation({ manifest, heightTexture }) {
-  const { xmin, ymin, xmax, ymax } = manifest.bboxCrsUnits;
-  const { min: elevMin, max: elevMax } = manifest.elevationRangeM;
-  const worldWidth = xmax - xmin;
-  const worldDepth = ymax - ymin;
+// The window's jittered offsets, built once and shared. src/wildlife.js needs the
+// same tree positions on the CPU (a squirrel hides behind a specific trunk), and
+// the only safe way to agree with the shader is to read the very same numbers
+// rather than to re-derive them.
+let latticeCache = null;
 
+function treeLattice() {
+  if (latticeCache) return latticeCache;
   const perSide = Math.round(WINDOW_M / SPACING_M);
-  const count = perSide * perSide;
-
-  const offsets = new Float32Array(count * 2);
+  const offsets = new Float32Array(perSide * perSide * 2);
   const random = mulberry32(0x9e3779b9);
   for (let iz = 0; iz < perSide; iz++) {
     for (let ix = 0; ix < perSide; ix++) {
@@ -91,6 +91,62 @@ export function createVegetation({ manifest, heightTexture }) {
       offsets[i * 2 + 1] = (iz + 0.5 + (random() - 0.5) * 2 * JITTER) * SPACING_M;
     }
   }
+  latticeCache = { offsets, perSide };
+  return latticeCache;
+}
+
+export { SPACING_M as TREE_SPACING_M };
+
+// Where the tree nearest (x, z) actually stands, applying the same wrap the
+// vertex shader does, from the same offsets - so this is the trunk the user can
+// see, not an approximation of it.
+//
+// The camera is a parameter because the shader's window follows it: a slot's
+// world position is o + floor((camera - o)/WINDOW_M + 0.5) * WINDOW_M. That means
+// the answer is only meaningful for points NEAR the camera. At half a window
+// (500 m) out, which copy is in play flips, and a tree there is beyond the tree
+// draw distance anyway - so callers must stay well inside that, as wildlife.js's
+// 130 m squirrels do.
+//
+// O(9): the lattice is regular with at most JITTER of a cell of jitter, so the
+// nearest instance can only be in the 3x3 of grid indices around the point.
+export function nearestTree(x, z, camX, camZ) {
+  const { offsets, perSide } = treeLattice();
+  const fold = (v) => ((v % WINDOW_M) + WINDOW_M) % WINDOW_M;
+  const gx = Math.floor(fold(x) / SPACING_M);
+  const gz = Math.floor(fold(z) / SPACING_M);
+
+  let best = null;
+  let bestDistSq = Infinity;
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      // Wrapping the index as well as the coordinate: the window tiles, so grid
+      // column -1 is column perSide-1 of the copy next door.
+      const ix = ((gx + dx) % perSide + perSide) % perSide;
+      const iz = ((gz + dz) % perSide + perSide) % perSide;
+      const i = iz * perSide + ix;
+      const ox = offsets[i * 2];
+      const oz = offsets[i * 2 + 1];
+      const sx = ox + Math.floor((camX - ox) / WINDOW_M + 0.5) * WINDOW_M;
+      const sz = oz + Math.floor((camZ - oz) / WINDOW_M + 0.5) * WINDOW_M;
+      const distSq = (sx - x) ** 2 + (sz - z) ** 2;
+      if (distSq < bestDistSq) {
+        bestDistSq = distSq;
+        best = { x: sx, z: sz, index: i };
+      }
+    }
+  }
+  return { ...best, distanceM: Math.sqrt(bestDistSq) };
+}
+
+export function createVegetation({ manifest, heightTexture }) {
+  const { xmin, ymin, xmax, ymax } = manifest.bboxCrsUnits;
+  const { min: elevMin, max: elevMax } = manifest.elevationRangeM;
+  const worldWidth = xmax - xmin;
+  const worldDepth = ymax - ymin;
+
+  const { offsets, perSide } = treeLattice();
+  const count = perSide * perSide;
 
   // Open-ended: the base disc is never visible (it sits in the ground) and
   // skipping it saves a third of the triangles.

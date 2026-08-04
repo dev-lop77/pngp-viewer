@@ -141,15 +141,65 @@ same lighting, which the user confirmed as good in Firefox - is just as dark, an
 SwiftShader behaviour and not a regression. It is exactly the trap documented
 below: never retune lighting against a headless screenshot.
 
+### Then the user asked for two more, and they are the interesting ones
+"Alle faune aggiungerei le volpi, ogni tanto si avvicinano loro alle persone. E
+gli scoiattoli che si nascondono dietro agli alberi." Both are about *behaviour*,
+not about another model, and between them they turned the flee code into one of
+three reactions declared per species:
+
+- **`'curious'` - the fox comes to YOU.** Bold ones notice the camera at 130 m,
+  walk in at 1.7x speed, stop at 7 m and turn to face it; get closer than 3.5 m
+  and even a bold one gives ground. Whether a given fox is bold comes from the
+  herd's own generator (55%), so it is a property of that place rather than of
+  the session - which is what makes it "ogni tanto" instead of always. Shy ones
+  fall through to `'flee'`. Solitary and territorial, so the coarsest lattice
+  here: 900 m cells, one or two animals.
+- **`'hide'` - the squirrel puts a trunk between you and it**, and keeps
+  shuffling round the trunk as the camera moves.
+
+**The squirrel needed a real tree, and that was the one hard part.** Trees are
+placed entirely in the vertex shader, so the CPU has no idea where they are.
+Rather than re-deriving the lattice (which would drift), `src/vegetation.js` now
+exports `nearestTree(x, z, camX, camZ)`, built on the very same offsets buffer the
+shader reads and applying the shader's own wrap
+`o + floor((camera - o)/WINDOW_M + 0.5) * WINDOW_M`. O(9), because the lattice is
+regular with at most 0.45 of a cell of jitter, so only the 3x3 of grid indices
+around the point can win. The camera is a parameter because the window follows it,
+which also means the answer is only meaningful near the camera - fine for 130 m
+squirrels.
+
+**Measured against the GPU's own buffer, not assumed:** the test brute-forces all
+27,889 instances of the real `aOffset` attribute and compares. Agreement is
+**0.000000 m and the same instance index** at all four probes. That check is the
+reason to trust a squirrel is behind something.
+
+What is *not* reproduced on the CPU is the tree's existence test
+(`step(hash(cell), coverage)`): that hash is chaotic by design, and GLSL float32
+against JS float64 would give a different answer for the same cell. So instead
+squirrels are restricted to **canopy >= 0.9**, where nearly every slot is a tree
+anyway - a documented ~5% chance the specific trunk is missing, inside solid
+forest where the neighbour is 6 m away. Deliberate, and cheaper than a fragile
+hash port.
+
+**Observation from the screenshots, worth a decision:** dense wood is exactly
+where the trees are widest (a cone's base radius runs to ~3.6 m at that altitude),
+so standing 2.5 m from a squirrel fills the frame with canopy - the shot came back
+almost black. From 11 m it reads as real forest. So squirrels are well hidden in
+the strict sense, possibly *too* well. `habitat.canopyMin` for squirrel in
+`src/wildlife.js` is the lever if they should also appear at forest margins, but
+lowering it below ~0.9 is what the existence caveat above pays for, so it is the
+user's call rather than a free tweak.
+
 ### Next steps
 1. **Read the four look peaks and say which one spikes** (see above). That is the
    whole remaining diagnosis; the fix follows from the answer and is small either
    way - reject the spike, or cap the dt the smoothing sees.
-2. **Judge the animals in a real browser.** Do they read as ibex/chamois/marmots
-   at walking distance, is the herd density plausible, and does the flee behaviour
-   feel right rather than skittish? Headless settled placement and cost, but not
-   these. Every number worth tuning is a named constant in the `SPECIES` table at
-   the top of `src/wildlife.js`.
+2. **Judge the animals in a real browser.** Five species now: do they read as
+   ibex/chamois/marmots/foxes/squirrels at walking distance, is the density
+   plausible, does a fox walking up to you land as intended, and are the squirrels
+   findable at all (see the observation above)? Headless settled placement, the
+   reactions and the cost, but not any of this. Every number worth tuning is a
+   named constant in the `SPECIES` table at the top of `src/wildlife.js`.
 3. **Ambient audio** closes phase 6. Procedural, no asset licensing to resolve,
    and it needs a user gesture to start - the click that grabs pointer lock is
    already there.

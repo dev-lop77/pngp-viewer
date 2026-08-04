@@ -32,15 +32,27 @@ const url = process.argv[2] ?? 'http://localhost:5173';
 // shipped POI data - a hand-typed coordinate would be one more thing to keep
 // true if the local frame ever moved.
 const poi = JSON.parse(readFileSync(new URL('../public/data/poi.json', import.meta.url), 'utf8'));
-const SITES = poi.pois
-  .filter((p) => p.elevationM > 2200 && p.elevationM < 2750)
-  .slice(0, 8)
-  .map((p) => ({ name: p.name, x: p.local.x, z: p.local.z }));
+const SITES = [
+  ...poi.pois
+    .filter((p) => p.elevationM > 2200 && p.elevationM < 2750)
+    .slice(0, 8)
+    .map((p) => ({ name: p.name, x: p.local.x, z: p.local.z })),
+  // Squirrels need solid canopy below 2,200 m, which no high col has. These four
+  // are pixels of value 255 in the shipped forest mask at 1,000-1,900 m, each
+  // inside the real park boundary and >5 km apart, found by scanning
+  // public/data/forest.*.png against the heightfield rather than guessed.
+  { name: 'dense wood 1036 m', x: -8530, z: 2990 },
+  { name: 'dense wood 1826 m', x: -14121, z: 4997 },
+  { name: 'dense wood 1895 m', x: -4229, z: 5570 },
+  { name: 'dense wood 1732 m', x: 358, z: 7863 },
+];
 
 const HABITAT = {
   ibex: { elevMin: 2000, elevMax: 3400, slopeMin: 18, slopeMax: 58, canopyMax: 0.18 },
   chamois: { elevMin: 1100, elevMax: 2700, slopeMin: 12, slopeMax: 48, canopyMin: 0.02, canopyMax: 0.7 },
   marmot: { elevMin: 1500, elevMax: 2900, slopeMin: 0, slopeMax: 26, canopyMax: 0.28 },
+  fox: { elevMin: 700, elevMax: 2800, slopeMin: 0, slopeMax: 45, canopyMax: 0.9 },
+  squirrel: { elevMin: 600, elevMax: 2200, slopeMin: 0, slopeMax: 45, canopyMin: 0.9 },
 };
 
 const browser = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'] });
@@ -109,12 +121,90 @@ const result = await page.evaluate(async ({ sites, dt }) => {
     }
   }
 
+  // 6 & 7: the reactions. These need the camera to actually walk up to an animal -
+  // every reaction has a radius (45 m for ibex, 130 for a fox, 35 for a squirrel),
+  // so measuring from wherever the herd happened to be tests nothing.
+  const nearestOf = (name, bold = false) => wildlife.snapshot()
+    .filter((a) => a.species === name && (!bold || a.bold))
+    .sort((p, q) => p.camDistM - q.camDistM)[0];
+
+  const stalk = (name, standM, seconds, bold = false) => {
+    for (const site of sites) {
+      visit(site, 10);
+      const subject = nearestOf(name, bold);
+      if (!subject) continue;
+      // Stand standM to the east of it and then hold still.
+      camera.position.set(subject.x + standM, 0, subject.z);
+      wildlife.update(dt, camera);
+      const startDist = nearestOf(name, bold).camDistM;
+      for (let i = 0; i < seconds * 60; i++) wildlife.update(dt, camera);
+      const end = nearestOf(name, bold);
+      return { site: site.name, standM, startDist, endDist: end?.camDistM ?? null };
+    }
+    return null;
+  };
+
+  const approach = {
+    fox: stalk('fox', 60, 8, true), // inside curiousM (130) but well outside standoff
+    ibex: stalk('ibex', 20, 8), // inside alertM (45), so the herd should break
+  };
+
+  // Squirrels: stand 15 m off, inside their 35 m alert radius, and see where they
+  // put themselves relative to their trunk.
+  const hiding = [];
+  for (const site of sites) {
+    visit(site, 10);
+    const subject = nearestOf('squirrel');
+    if (!subject) continue;
+    camera.position.set(subject.x + 15, 0, subject.z);
+    for (let i = 0; i < 240; i++) wildlife.update(dt, camera); // 4 s to reach cover
+    hiding.push(...wildlife.snapshot().filter((a) => a.species === 'squirrel' && a.camDistM < 40));
+    if (hiding.length >= 4) break;
+  }
+
+  // 8. The one that could silently break the squirrels: vegetation.js's CPU
+  // nearestTree() must return the same trunk the GPU draws. Brute-forced here
+  // against the mesh's REAL aOffset attribute - the exact buffer the shader
+  // reads - with the wrap formula copied from the shader source, so a drift in
+  // either the offsets or the wrap shows up as a mismatch in metres.
+  const veg = await import('/src/vegetation.js');
+  const vegMesh = scene.getObjectByName('vegetation');
+  const aOffset = vegMesh.geometry.getAttribute('aOffset');
+  const WINDOW = 1000; // must match vegetation.js's WINDOW_M
+  const latticeCheck = [];
+  for (const probe of [[0, 0], [123.4, -456.7], [-8530, 2990], [40000, -20000]]) {
+    const [px, pz] = probe;
+    const camX = px + 17; // a camera near but not on the probe, as in real use
+    const camZ = pz - 23;
+    let bestDist = Infinity;
+    let best = null;
+    for (let i = 0; i < aOffset.count; i++) {
+      const ox = aOffset.getX(i);
+      const oz = aOffset.getY(i);
+      const sx = ox + Math.floor((camX - ox) / WINDOW + 0.5) * WINDOW;
+      const sz = oz + Math.floor((camZ - oz) / WINDOW + 0.5) * WINDOW;
+      const d = Math.hypot(sx - px, sz - pz);
+      if (d < bestDist) { bestDist = d; best = { x: sx, z: sz, index: i }; }
+    }
+    const got = veg.nearestTree(px, pz, camX, camZ);
+    latticeCheck.push({
+      probe,
+      bruteDist: bestDist,
+      gotDist: got.distanceM,
+      offsetM: Math.hypot(got.x - best.x, got.z - best.z),
+      sameIndex: got.index === best.index,
+    });
+  }
+
   return {
     seen,
     drawn,
+    latticeCheck,
     capacities: meshes.map((m) => ({ species: m.name, count: m.count, capacity: m.instanceMatrix.count })),
     determinism: { before, after },
     swingTrack,
+    approach,
+    hiding,
     groundCheck: drawn.slice(0, 40).map((d) => ({
       species: d.species,
       y: d.y,
@@ -136,10 +226,10 @@ const byName = (name) => all.filter((a) => a.species === name);
 
 console.log(`Visited ${result.seen.length} mid-altitude sites from the shipped POI data.\n`);
 for (const { site, animals } of result.seen) {
-  const counts = ['ibex', 'chamois', 'marmot']
+  const counts = Object.keys(HABITAT)
     .map((n) => `${animals.filter((a) => a.species === n).length} ${n}`)
     .join(', ');
-  console.log(`  ${site.padEnd(24)} ${counts}`);
+  console.log(`  ${site.padEnd(20)} ${counts}`);
 }
 console.log(`\ntotal simulated ${all.length}, drawn instances ${result.drawn.length}`);
 console.log(`  ${result.capacities.map((c) => `${c.species} ${c.count}/${c.capacity}`).join(' · ')}`);
@@ -207,6 +297,56 @@ for (const c of result.capacities) {
   }
 }
 
+// 6. A bold fox comes to you; an ibex does the opposite. Asserting both ways
+// round matters - "the distance changed" would pass for either behaviour.
+console.log('\nreaction to a camera walking up and then standing still for 8 s:');
+for (const [name, run] of Object.entries(result.approach)) {
+  if (!run) {
+    console.log(`  ${name}: no candidate within 120 m at any site - inconclusive`);
+    continue;
+  }
+  const delta = run.endDist - run.startDist;
+  console.log(`  ${name}: approached to ${run.standM} m, then ${run.startDist.toFixed(1)} m -> ${run.endDist?.toFixed(1)} m (${delta > 0 ? '+' : ''}${delta.toFixed(1)} m) near ${run.site}`);
+  if (name === 'fox' && delta > -1) {
+    console.log('\nFAIL: a bold fox did not approach the camera - the curious reaction is not working.');
+    failures++;
+  }
+  if (name === 'ibex' && delta < 1) {
+    console.log('\nFAIL: an ibex did not open the distance - the flee reaction regressed.');
+    failures++;
+  }
+}
+
+// 7. Squirrels behind trunks.
+const shielded = result.hiding.filter((s) => s.shielded).length;
+const closeToTree = result.hiding.filter((s) => s.treeDistM <= s.treeSpacingM).length;
+console.log(`\nsquirrels within 40 m after 4 s of being watched from 15 m: ${result.hiding.length}`);
+if (result.hiding.length) {
+  console.log(`  ${shielded} have the trunk between them and the camera, ${closeToTree} are within one tree spacing of it`);
+  console.log(`  trunk distances: ${result.hiding.slice(0, 6).map((s) => `${s.treeDistM.toFixed(2)} m`).join(', ')}`);
+  if (shielded / result.hiding.length < 0.7) {
+    console.log('\nFAIL: most squirrels are not hiding behind their tree.');
+    failures++;
+  }
+  if (closeToTree / result.hiding.length < 0.7) {
+    console.log('\nFAIL: squirrels are not reaching their trunk at all - the lattice lookup is probably wrong.');
+    failures++;
+  }
+} else {
+  console.log('  none found close enough to judge - inconclusive, not a failure');
+}
+
+// 8. CPU tree lattice == the trees the GPU is given.
+console.log('\nnearestTree() vs the vegetation mesh\'s own aOffset buffer:');
+for (const c of result.latticeCheck) {
+  console.log(`  probe (${c.probe.join(', ')}): brute force ${c.bruteDist.toFixed(3)} m, module ${c.gotDist.toFixed(3)} m, apart by ${c.offsetM.toFixed(6)} m, same instance: ${c.sameIndex}`);
+  if (c.offsetM > 1e-6 || !c.sameIndex) {
+    console.log('\nFAIL: the CPU lattice does not agree with the trees the shader draws - squirrels would hide behind nothing.');
+    failures++;
+  }
+}
+
 if (problems.length) console.log(`\nPage problems:\n  ${problems.join('\n  ')}`);
 if (failures || problems.length) process.exit(1);
-console.log('\nWildlife is placed by real habitat, stands on the drawn terrain, is deterministic, and walks.');
+console.log('\nWildlife is placed by real habitat, stands on the drawn terrain, is deterministic, walks,'
+  + '\nand reacts in character: ibex retreat, bold foxes approach, squirrels get behind a real trunk.');

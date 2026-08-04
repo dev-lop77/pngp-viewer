@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { attachAtmo } from './atmosphere.js';
+import { nearestTree, TREE_SPACING_M } from './vegetation.js';
 
 // Wildlife (phase 6, docs/ARCHITECTURE.md §8): Alpine ibex above all - the park
 // was created in 1922 to save the last few hundred of them, and they are the
@@ -31,6 +32,18 @@ import { attachAtmo } from './atmosphere.js';
 // Deliberately NOT scoped to the park boundary, unlike POI and trails: ibex have
 // recolonised most of the western Alps from this population, so a herd on a ridge
 // just outside the line is accurate rather than a bug.
+//
+// Each species also has a REACTION to being approached, which is the part that
+// makes an animal read as that animal (added 2026-08-04 at the user's request for
+// foxes and squirrels, and it turned the existing flee code into one of three
+// cases):
+//   'flee'    - ibex, chamois, marmots: keep their distance.
+//   'curious' - foxes: they come to YOU. The user's point exactly - habituated
+//               foxes approach walkers near trails and huts. Only some of them
+//               do, decided per animal from the lattice hash, so it stays an
+//               event rather than a rule.
+//   'hide'    - squirrels: put a trunk between themselves and you, using the real
+//               tree positions from vegetation.js.
 const TAU = Math.PI * 2;
 
 // Coats solved backwards from their intended on-screen colour with
@@ -42,6 +55,13 @@ const COAT = {
   horn: 0x726a5f, // wants rgb(74,66,56) - keratin, darker than the coat
   chamois: 0xa1805d, // wants rgb(122,90,58) - reddish summer coat
   marmot: 0xb49e7e, // wants rgb(141,122,92) - sandy grey-brown
+  fox: 0xd08447, // wants rgb(164,96,42) - russet
+  squirrel: 0xb57f5a, // wants rgb(140,90,56) - red squirrel, dark Alpine form
+  stocking: 0x635b52, // wants rgb(58,51,43) - a fox's black legs and ear tips
+  // The pale chest/bib/tail-tip. Its target is out of reach at this exposure, so
+  // like the nival band this is simply as bright as the rig allows - which is the
+  // right answer for it, since it only has to read as "much lighter than the coat".
+  bib: 0xfffce0,
 };
 
 // A herd is re-chosen when the camera has moved far enough for the cell window to
@@ -55,6 +75,7 @@ const SWING_RAD = 0.42;
 const SPECIES = [
   {
     name: 'ibex',
+    reaction: 'flee',
     salt: 0x1b1,
     // ~4,000 ibex over ~700 km2 of park is 5-6 per km2. A herd every other
     // 600 m cell, 4-9 animals each, lands at ~6/km2 of suitable ground.
@@ -79,6 +100,7 @@ const SPECIES = [
   },
   {
     name: 'chamois',
+    reaction: 'flee',
     salt: 0x2c2,
     cellM: 500,
     presence: 0.45,
@@ -103,6 +125,7 @@ const SPECIES = [
   },
   {
     name: 'marmot',
+    reaction: 'flee',
     salt: 0x3d3,
     // Family groups at a burrow, so a much finer lattice and tighter spread.
     cellM: 240,
@@ -125,6 +148,67 @@ const SPECIES = [
     // Burrows need diggable, gentle, open ground - which is exactly why marmots
     // are a meadow animal and not a cliff one.
     habitat: { elevMin: 1500, elevMax: 2900, slopeMin: 0, slopeMax: 26, canopyMax: 0.28 },
+  },
+  {
+    name: 'fox',
+    salt: 0x4e4,
+    reaction: 'curious',
+    // Solitary and territorial - a red fox holds a few km2 - so much the coarsest
+    // lattice here and rarely more than a pair.
+    cellM: 900,
+    presence: 0.35,
+    herdMin: 1,
+    herdMax: 2,
+    spreadM: 30,
+    wanderM: 26, // they cover ground constantly rather than grazing a patch
+    speedMps: 1.1,
+    grazeS: 5,
+    strideM: 0.7,
+    turnRate: 2.4,
+    visibleM: 380,
+    fadeStartM: 300,
+    scaleMin: 0.9,
+    scaleMax: 1.1,
+    capacity: 24,
+    // How this species reacts, instead of the flee radius the others use.
+    curiousM: 130, // notices you from here and starts coming over
+    standoffM: 7, // ...and stops about this far off, watching
+    pushbackM: 3.5, // closer than this and even a bold one gives ground
+    boldChance: 0.55, // the rest keep their distance like everything else
+    approachMul: 1.7,
+    fleeMul: 2.2, // used by the shy ones
+    alertM: 40,
+    // The least fussy animal in the park: valley floor to well above the
+    // treeline, forest or open, as long as it is not a cliff.
+    habitat: { elevMin: 700, elevMax: 2800, slopeMin: 0, slopeMax: 45, canopyMax: 0.9 },
+  },
+  {
+    name: 'squirrel',
+    salt: 0x5f5,
+    reaction: 'hide',
+    // Dense in woodland, and solitary: a fine lattice with one or two animals.
+    cellM: 120,
+    presence: 0.45,
+    herdMin: 1,
+    herdMax: 2,
+    spreadM: 6,
+    wanderM: 5, // never far from its own tree
+    speedMps: 1.6, // darting, not walking
+    grazeS: 3.5,
+    strideM: 0.2,
+    turnRate: 6,
+    visibleM: 130, // 25 cm of animal - past this it is one pixel
+    fadeStartM: 95,
+    scaleMin: 0.85,
+    scaleMax: 1.05,
+    capacity: 40,
+    alertM: 35,
+    fleeMul: 2.5, // the dash for cover
+    hideR: 1.2, // how far round the far side of the trunk it settles
+    // Real canopy, not a margin: a squirrel needs a tree to hide behind, and only
+    // a solid mask cell guarantees the shader actually put one there (see
+    // hideBehindTree). 2,200 m is about where this forest stops.
+    habitat: { elevMin: 600, elevMax: 2200, slopeMin: 0, slopeMax: 45, canopyMin: 0.9 },
   },
 ];
 
@@ -300,7 +384,81 @@ function buildMarmot() {
   ];
 }
 
-const BUILDERS = { ibex: buildIbex, chamois: buildChamois, marmot: buildMarmot };
+function buildFox() {
+  // Long and low, unlike the three ungulates: 70 cm of body at 40 cm of shoulder,
+  // and a tail nearly as long as the body. Legs and ear tips are the dark
+  // "stockings" a red fox actually has, which is most of what makes the silhouette
+  // read as a fox rather than a small dog.
+  const frame = { legR: 0.035, legLen: 0.34, spreadX: 0.09, spreadZ: 0.16, hipY: 0.36 };
+  const body = capsuleZ(0.14, 0.42);
+  body.translate(0, 0.38, 0);
+  const neck = new THREE.CapsuleGeometry(0.1, 0.14, 2, 6);
+  neck.rotateX(-1.05); // low and forward - a fox carries its head level, not up
+  neck.translate(0, 0.4, 0.24);
+  const head = capsuleZ(0.075, 0.08, 6);
+  head.translate(0, 0.44, 0.34);
+  const muzzle = new THREE.CylinderGeometry(0.018, 0.055, 0.12, 5, 1);
+  muzzle.rotateX(Math.PI / 2);
+  muzzle.translate(0, 0.42, 0.45);
+  const bib = capsuleZ(0.06, 0.1, 6);
+  bib.translate(0, 0.34, 0.26);
+  const parts = [
+    part(body, COAT.fox),
+    part(neck, COAT.fox),
+    part(head, COAT.fox),
+    part(muzzle, COAT.fox),
+    part(bib, COAT.bib),
+    ...legs(frame, COAT.stocking),
+  ];
+  for (const side of [0.055, -0.055]) {
+    const ear = new THREE.ConeGeometry(0.035, 0.09, 4, 1);
+    ear.translate(side, 0.51, 0.32);
+    parts.push(part(ear, COAT.stocking));
+  }
+  // Held out behind and slightly down, with the white tag on the tip.
+  parts.push(...chain(0, 0.36, -0.22, [
+    { len: 0.22, angle: 95, r0: 0.075, r1: 0.07 },
+    { len: 0.18, angle: 110, r0: 0.07, r1: 0.05 },
+  ], COAT.fox));
+  parts.push(...chain(0, 0.28, -0.6, [{ len: 0.08, angle: 110, r0: 0.05, r1: 0.03 }], COAT.bib));
+  return parts;
+}
+
+function buildSquirrel() {
+  // 25 cm of animal, and the tail is the whole silhouette: it arcs up behind the
+  // back rather than trailing, which is what tells a squirrel apart from anything
+  // else at this size.
+  const frame = { legR: 0.016, legLen: 0.07, spreadX: 0.04, spreadZ: 0.05, hipY: 0.09 };
+  const body = capsuleZ(0.055, 0.11, 6);
+  body.translate(0, 0.1, 0);
+  const head = capsuleZ(0.045, 0.03, 6);
+  head.translate(0, 0.145, 0.09);
+  const parts = [
+    part(body, COAT.squirrel),
+    part(head, COAT.squirrel),
+    ...legs(frame, COAT.squirrel),
+  ];
+  for (const side of [0.025, -0.025]) {
+    // The ear tufts - a red squirrel's, not a grey's.
+    const ear = new THREE.ConeGeometry(0.012, 0.045, 4, 1);
+    ear.translate(side, 0.185, 0.075);
+    parts.push(part(ear, COAT.squirrel));
+  }
+  parts.push(...chain(0, 0.11, -0.07, [
+    { len: 0.08, angle: 100, r0: 0.03, r1: 0.035 },
+    { len: 0.08, angle: 55, r0: 0.035, r1: 0.035 },
+    { len: 0.07, angle: 12, r0: 0.035, r1: 0.022 },
+  ], COAT.squirrel));
+  return parts;
+}
+
+const BUILDERS = {
+  ibex: buildIbex,
+  chamois: buildChamois,
+  marmot: buildMarmot,
+  fox: buildFox,
+  squirrel: buildSquirrel,
+};
 
 function speciesMesh(spec) {
   const merged = BufferGeometryUtils.mergeGeometries(BUILDERS[spec.name]());
@@ -385,7 +543,9 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
     const elev = sampleGroundHeight(x, z);
     if (!Number.isFinite(elev) || elev < h.elevMin || elev > h.elevMax) return false;
     const canopy = canopyAt(x, z);
-    if (canopy > h.canopyMax) return false;
+    // Both bounds optional: a squirrel has only a floor (it needs a tree), most of
+    // the others only a ceiling.
+    if (h.canopyMax != null && canopy > h.canopyMax) return false;
     if (h.canopyMin != null && canopy < h.canopyMin) return false;
     const slope = slopeDegrees(x, z);
     return slope >= h.slopeMin && slope <= h.slopeMax;
@@ -419,6 +579,11 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
         timer: rnd() * spec.grazeS, // so a herd doesn't move off in lockstep
         phase: rnd() * TAU,
         swing: 0,
+        // Only some foxes will come to you - "ogni tanto si avvicinano", as the
+        // user put it. Drawn from the herd's own generator, so which fox is bold
+        // is a property of that place and not of this session.
+        bold: spec.boldChance != null && rnd() < spec.boldChance,
+        watching: false,
         scale: spec.scaleMin + rnd() * (spec.scaleMax - spec.scaleMin),
       });
     }
@@ -435,23 +600,70 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
     return from + d;
   }
 
-  function stepAnimal(spec, herd, a, dt, camX, camZ) {
+  // Being approached overrides whatever the animal was doing, and what it does
+  // instead is the species' whole character. Returns the speed multiplier, and
+  // sets a.watching when the animal should hold still and face the camera.
+  function react(spec, a, camX, camZ, camDist) {
     const fromCamX = a.x - camX;
     const fromCamZ = a.z - camZ;
-    const camDist = Math.hypot(fromCamX, fromCamZ);
-    // Being approached overrides grazing: all three species keep a distance, and
-    // watching a herd break and move off is most of the reward for finding one.
-    const fleeing = camDist < spec.alertM;
-    if (fleeing) {
-      const away = camDist > 1e-3 ? 1 / camDist : 0;
-      a.targetX = camX + fromCamX * away * (spec.alertM * 1.8);
-      a.targetZ = camZ + fromCamZ * away * (spec.alertM * 1.8);
-      a.walking = true;
+    const unit = camDist > 1e-3 ? 1 / camDist : 0;
+    a.watching = false;
+
+    // Foxes: the bold ones close the distance instead of opening it. This is the
+    // behaviour the user asked for, and the shy ones fall through to 'flee'.
+    if (spec.reaction === 'curious' && a.bold && camDist < spec.curiousM) {
+      if (camDist < spec.pushbackM) {
+        a.targetX = camX + fromCamX * unit * spec.standoffM;
+        a.targetZ = camZ + fromCamZ * unit * spec.standoffM;
+        a.walking = true;
+        return spec.approachMul;
+      }
+      if (camDist > spec.standoffM * 1.15) {
+        a.targetX = camX + fromCamX * unit * spec.standoffM;
+        a.targetZ = camZ + fromCamZ * unit * spec.standoffM;
+        a.walking = true;
+        return spec.approachMul;
+      }
+      // Arrived at its standoff distance: stop, and watch.
+      a.walking = false;
+      a.swing = 0;
+      a.watching = true;
+      return 1;
     }
+
+    // Squirrels: put a trunk between us. The tree comes from vegetation.js's own
+    // lattice, so this is the trunk that is actually drawn - and the animal keeps
+    // shuffling round it as the camera moves, which is the whole charm.
+    if (spec.reaction === 'hide' && camDist < spec.alertM) {
+      const tree = nearestTree(a.homeX, a.homeZ, camX, camZ);
+      const treeDist = Math.hypot(tree.x - camX, tree.z - camZ) || 1;
+      a.targetX = tree.x + ((tree.x - camX) / treeDist) * spec.hideR;
+      a.targetZ = tree.z + ((tree.z - camZ) / treeDist) * spec.hideR;
+      a.walking = true;
+      return spec.fleeMul;
+    }
+
+    if (camDist < spec.alertM) {
+      a.targetX = camX + fromCamX * unit * (spec.alertM * 1.8);
+      a.targetZ = camZ + fromCamZ * unit * (spec.alertM * 1.8);
+      a.walking = true;
+      return spec.fleeMul;
+    }
+    return 1;
+  }
+
+  function stepAnimal(spec, herd, a, dt, camX, camZ) {
+    const camDist = Math.hypot(a.x - camX, a.z - camZ);
+    const speedMul = react(spec, a, camX, camZ, camDist);
 
     if (!a.walking) {
       a.timer -= dt;
       a.swing = 0;
+      // A watching fox turns to face you rather than standing side-on.
+      if (a.watching) {
+        a.heading = turnToward(a.heading, Math.atan2(camX - a.x, camZ - a.z), spec.turnRate * dt);
+        return;
+      }
       if (a.timer <= 0) {
         const angle = herd.rnd() * TAU;
         const radius = spec.wanderM * (0.3 + 0.7 * herd.rnd());
@@ -465,13 +677,15 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
     const dx = a.targetX - a.x;
     const dz = a.targetZ - a.z;
     const dist = Math.hypot(dx, dz);
-    if (dist < 0.4) {
+    // A squirrel settling behind a trunk needs a finer arrival radius than a
+    // 0.4 m one: the whole hiding spot is only 1.2 m from the trunk.
+    if (dist < Math.min(0.4, spec.hideR ? spec.hideR * 0.25 : 0.4)) {
       a.walking = false;
       a.swing = 0;
       a.timer = spec.grazeS * (0.5 + herd.rnd());
       return;
     }
-    const speed = spec.speedMps * (fleeing ? spec.fleeMul : 1);
+    const speed = spec.speedMps * speedMul;
     const travel = Math.min(dist, speed * dt);
     a.x += (dx / dist) * travel;
     a.z += (dz / dist) * travel;
@@ -511,10 +725,16 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
   let sinceRescan = RESCAN_S;
   let lastScanX = Infinity;
   let lastScanZ = Infinity;
+  // Where the camera was on the last update, so snapshot() can report distances
+  // and the squirrels' hiding geometry without being handed the camera again.
+  let lastCamX = 0;
+  let lastCamZ = 0;
 
   function update(dt, camera) {
     const camX = camera.position.x;
     const camZ = camera.position.z;
+    lastCamX = camX;
+    lastCamZ = camZ;
     sinceRescan += dt;
     if (sinceRescan >= RESCAN_S || Math.hypot(camX - lastScanX, camZ - lastScanZ) > RESCAN_MOVE_M) {
       rescan(camera);
@@ -569,19 +789,38 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
       for (const herd of herds.values()) {
         if (!herd) continue;
         for (const a of herd.animals) {
-          out.push({
+          const row = {
             species: spec.name,
             x: a.x,
             z: a.z,
             elevationM: sampleGroundHeight(a.x, a.z),
             slopeDeg: slopeDegrees(a.x, a.z),
             canopy: canopyAt(a.x, a.z),
+            camDistM: Math.hypot(a.x - lastCamX, a.z - lastCamZ),
             walking: a.walking,
             swing: a.swing,
-          });
+            bold: a.bold,
+            watching: a.watching,
+            drawn: mesh.count,
+          };
+          if (spec.reaction === 'hide') {
+            // Enough to check the hiding actually works: how far the animal is
+            // from its trunk, and whether that trunk is between it and the camera
+            // (a positive dot product of the two directions out of the tree means
+            // the same side, so shielded is the negative case).
+            const tree = nearestTree(a.homeX, a.homeZ, lastCamX, lastCamZ);
+            const toAnimal = [a.x - tree.x, a.z - tree.z];
+            const toCam = [lastCamX - tree.x, lastCamZ - tree.z];
+            const lenA = Math.hypot(...toAnimal) || 1;
+            const lenC = Math.hypot(...toCam) || 1;
+            row.treeDistM = lenA;
+            row.treeSpacingM = TREE_SPACING_M;
+            row.shielded = (toAnimal[0] * toCam[0] + toAnimal[1] * toCam[1]) / (lenA * lenC) < 0;
+          }
+          out.push(row);
         }
       }
-      return out.map((o) => ({ ...o, drawn: mesh.count }));
+      return out;
     });
   }
 
