@@ -43,9 +43,10 @@ Both start scripts:
   (<https://dev-lop77.github.io/pngp-viewer/>).
 - `shoot.mjs "<place>" [out.png] [--climb=m] [--pitch=deg] [--look=deg]` —
   screenshots the viewer standing at a named place, by driving the search
-  box. `tools/verify.mjs` only ever shoots the 3918 m spawn point, up in
-  the rock band, which is useless for anything happening at treeline
-  altitude. `--climb` rises in fly mode (polling the HUD altitude, since
+  box. `tools/verify.mjs` only ever shoots the default spawn — since
+  2026-08-04 the Le Pont trailhead at 1,950 m, which is at least in the
+  right band, but still one fixed valley. `--climb` rises in fly mode
+  (polling the HUD altitude, since
   fly speed is `controls.js`'s business) and pitches down, which is the
   only way to judge what reads at landscape scale — forest cover, LOD,
   band transitions.

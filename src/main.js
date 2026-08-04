@@ -276,18 +276,36 @@ Promise.all([terrainPromise, poiPromise, trailsPromise]).then(([{ sampleRendered
   trails.alignToGround(sampleRenderedHeight);
 
   const pois = index.manifest.pois;
-  const landmark = pois.find((p) => p.name === 'Gran Paradiso') ?? pois.find((p) => p.category === 'peak') ?? pois[0];
-  if (!landmark) return;
-  // Measured against the LOD terrain: from here the ground is 3916 m and the
-  // summit rises a real 130 m at 18 deg with a clear line of sight. (Briefly
-  // moved out to 1200 m while the old 328 m mesh drew this summit 130 m too
-  // low and blocked every sight line from any distance - not needed now that
-  // the drawn summit is within 2 m of the data.)
-  const standoffM = 400;
-  const sx = landmark.local.x;
-  const sz = landmark.local.z + standoffM; // stand south of it (docs/ARCHITECTURE.md §6: +Z = South)
-  camera.position.set(sx, sampleRenderedHeight(sx, sz) + EYE_HEIGHT_M, sz);
-  camera.lookAt(landmark.local.x, sampleRenderedHeight(landmark.local.x, landmark.local.z), landmark.local.z);
+  // Start at a real trailhead rather than on a summit - the user's call
+  // (2026-08-04): Le Pont, at the head of Valsavarenche, 1,950 m. It is where the
+  // walk to Rifugio Vittorio Emanuele II and Gran Paradiso itself actually starts,
+  // so the viewer opens where a visitor would open the day, at walking scale,
+  // instead of on top of the mountain looking down at it.
+  //
+  // Falls back through any trailhead, then the peak the park is named for, then
+  // whatever is first: a missing POI must not leave the camera at the placeholder
+  // 3,000 m with nothing under it.
+  const spawn = pois.find((p) => p.name === 'Le Pont' && p.category === 'trailhead')
+    ?? pois.find((p) => p.category === 'trailhead')
+    ?? pois.find((p) => p.name === 'Gran Paradiso')
+    ?? pois[0];
+  if (!spawn) return;
+
+  // Face Gran Paradiso, ~5.2 km ESE of Le Pont - the view that gives the place its
+  // point - and stand back along that same line so the trailhead's own marker is
+  // in front of the camera rather than through it.
+  const target = pois.find((p) => p.name === 'Gran Paradiso') ?? spawn;
+  const toTarget = new THREE.Vector2(target.local.x - spawn.local.x, target.local.z - spawn.local.z);
+  if (toTarget.lengthSq() < 1) toTarget.set(0, 1);
+  toTarget.normalize();
+  const BACK_OFF_M = 20;
+  const sx = spawn.local.x - toTarget.x * BACK_OFF_M;
+  const sz = spawn.local.z - toTarget.y * BACK_OFF_M;
+  const eyeY = sampleRenderedHeight(sx, sz) + EYE_HEIGHT_M;
+  camera.position.set(sx, eyeY, sz);
+  // Level with the eye rather than down at the ground: from a valley floor the
+  // interesting half of the view is up the valley.
+  camera.lookAt(sx + toTarget.x * 400, eyeY, sz + toTarget.y * 400);
 });
 
 let waterUpdate = null;

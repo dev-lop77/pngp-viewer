@@ -4,11 +4,26 @@ Read this first at the start of each session. Update it before ending one.
 
 ## Status as of 2026-08-04
 
-Opened by asking the user the two questions the previous session closed on. Their
+**Session ended with a clean working tree and every test passing. "Next steps" and
+"How to resume" near the end of this section are current as of the close; everything
+between here and them is the day in order.**
+
+Headline: **the mouse-look jump is fixed and confirmed**, and **phase 6's wildlife
+is done and accepted** - five species, not three, because the user asked for foxes
+and squirrels once the first three were up. Phase 6 now needs only ambient audio.
+The viewer also opens at the Le Pont trailhead instead of on the Gran Paradiso
+summit. Two things the user wants to discuss next session are recorded below:
+**saving/auto-saving the position**, and **birds**.
+
+The day opened by asking the two questions the previous session closed on. Their
 answers: **the mouse-look jump is still there** - "mentre sposto il mouse verso
 l'alto, anche molto lentamente, ad un certo punto ho un salto", plus a request for
 the view angle in the HUD, which they had no way to quote a number from - and
 **wildlife** is the piece of phase 6 to build next.
+
+Both then came back a second time with a real-browser verdict that found genuine
+faults, which is the shape the whole day took: build, measure, hand it over, fix
+what they see.
 
 ### The jump is not in our angle maths, and now that is measured across the whole range
 "At a certain point" describes a discontinuity at one particular angle, which is a
@@ -281,29 +296,84 @@ Animals also carry a stable `id` now, so a test can follow one individual throug
 interaction instead of watching "the nearest", which is a much sharper instrument -
 that is what makes the squirrel bail-out assertion meaningful at all.
 
+### The animals are accepted, and the viewer now opens at a trailhead
+"ok gli animali ora" - the wildlife round is closed. With it, the user's call on
+where the viewer should start: **Le Pont, the Valsavarenche trailhead at 1,950 m**,
+instead of 400 m south of the Gran Paradiso summit at 3,916 m.
+
+It is the better opening for a real reason, not just a preference: Le Pont is where
+the walk to Rifugio Vittorio Emanuele II and to Gran Paradiso itself actually
+starts, so the viewer now opens where a visitor opens their day, at walking scale,
+rather than on top of the mountain looking down at it. `src/main.js` stands the
+camera 20 m back along the line to Gran Paradiso (~5.2 km ESE) so the trailhead's
+own marker is in front of the camera rather than through it, and looks level with
+the eye rather than down at the ground - from a valley floor the interesting half
+of the view is up the valley. It falls back through any trailhead, then Gran
+Paradiso, then the first POI, because a missing name must not leave the camera at
+the 3,000 m placeholder with no ground under it.
+
+Verified: HUD reads `45.5275°N, 7.2021°E · alt 1955 m · ground 1953 m`,
+`E 103° · pitch +0°`, `Near Le Pont (20 m)`, and the opening frame is the green
+valley with larch stands on the slopes and the Savara running up it. Incidentally
+that shot is much brighter than the wildlife ones, which is one more confirmation
+that those were dark because of sun angle and aspect rather than the lighting rig.
+
+`tools/dev/README.md` said `verify.mjs` "only ever shoots the 3918 m spawn point,
+up in the rock band" - true until today, so it was corrected rather than left to
+mislead.
+
+### Two things the user wants to talk about next session, noted here so they are not lost
+1. **Saving and auto-saving the position.** Explicitly a discussion first, not a
+   task: "parleremo di save e autosave della posizione." Worth knowing before it
+   starts - the state that would need saving is small and already all in one place
+   (camera position and orientation, walk/fly mode, time of day, weather), and
+   `localStorage` needs no backend, which matters given §9's static-hosting-only
+   deploy. The questions that are actually decisions: autosave on a timer or on
+   unload; one slot or several named ones; whether a shared/linkable URL hash is
+   wanted (that one changes the design, since a hash is a save format too); and
+   what should happen on a first visit versus a return visit, which is exactly the
+   Le Pont default above and therefore interacts with it.
+2. **Birds.** "Vorrei aggiungere qualche volatile." Nothing built. Worth knowing
+   before starting: the species that belong here are the golden eagle (the park's
+   emblem alongside the ibex), the bearded vulture - reintroduced in the Alps and a
+   real conservation story - the alpine chough in noisy flocks around the high
+   cols, and the nutcracker in the conifers. And unlike everything in
+   `src/wildlife.js` so far, a bird is not ground-clamped: its position is free in
+   Y, so the habitat signals that drive the five current species (elevation, slope,
+   canopy) do not transfer directly. A soaring eagle wants a ridge and a thermal,
+   which is terrain-derived but a different derivation. The `SPECIES` table and the
+   reaction dispatch should extend to them; `sampleGroundHeight` as the Y source is
+   the part that will not.
+
 ### Next steps
 1. ~~Confirm the warp filter~~ - **CLOSED 2026-08-04**: "direi che ora è a posto."
-2. **Re-check the animals after the three fixes.** The tilt, the fox's standoff and
-   the squirrel's bail-out are all measured, but only in numbers - whether they
-   *feel* right is the user's call. Still open from before, and untouched by these
-   fixes: whether the density is plausible, whether each species reads as itself at
-   walking distance, and whether squirrels are findable at all in dense wood (see
-   the observation above). Every number worth tuning is a named constant in the
-   `SPECIES` table at the top of `src/wildlife.js`.
-3. **Ambient audio** closes phase 6. Procedural, no asset licensing to resolve,
+2. ~~Re-check the animals after the three fixes~~ - **CLOSED 2026-08-04**: "ok gli
+   animali ora." Left unjudged, and not worth chasing unprompted: whether squirrels
+   are findable at all in dense wood (the observation above). Every number worth
+   tuning is a named constant in the `SPECIES` table at the top of
+   `src/wildlife.js`.
+3. **Discuss save/autosave of the position**, then **birds** - the two items above.
+   Both are the user's to open.
+4. **Ambient audio** closes phase 6. Procedural, no asset licensing to resolve,
    and it needs a user gesture to start - the click that grabs pointer lock is
    already there.
-4. **Phase 7 polish**: LOD popping/geomorphing, one-texel normals at any depth,
+5. **Phase 7 polish**: LOD popping/geomorphing, one-texel normals at any depth,
    the >500 kB bundle, and the mobile pass (pointer lock + WASD has no touch
    equivalent at all).
-5. **Republish when wanted** - the live site is now several commits behind `main`.
+6. **Republish when wanted** - the live site is now several commits behind `main`.
    `tools/dev/deploy.sh` does the whole thing.
-6. Deferred by the user, do not re-raise unprompted: the satellite/orthophoto
+7. Deferred by the user, do not re-raise unprompted: the satellite/orthophoto
    basemap.
 
 ### How to resume
-Everything from 2026-08-04 is committed on `main`. The test tools cover the
-fragile parts - they are quick, run them:
+Everything from 2026-08-04 is committed on `main`. This session's commits, in order:
+`2cf1f59` (view pitch in the HUD + the look instrumentation), `c2bb7de` (wildlife:
+ibex, chamois, marmots), `0e3a29b` (foxes and squirrels, plus `nearestTree()` in
+vegetation.js), `e1886c8` (the dev-only 'G' key), `0514e1a` (the pointer-warp
+filter), `66d040c` (terrain-aligned bodies, the fox standoff, the squirrel
+bail-out), and the spawn/notes commit that closed the session.
+
+The test tools cover the fragile parts - they are quick, run them:
 - `node tools/test-rendered-height.mjs` after any change to terrain geometry or
   height sampling. Five features now depend on the analytic model matching the
   drawn surface - the animals are the fifth.
