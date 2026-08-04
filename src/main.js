@@ -11,7 +11,7 @@ import { installAtmosphere } from './atmosphere.js';
 import { Lighting } from './lighting.js';
 import { Weather } from './weather.js';
 import { localToWGS84 } from './geo.js';
-import { headingDegrees, compassLabel, nearestPOI } from './nav.js';
+import { headingDegrees, compassLabel, pitchDegrees, nearestPOI } from './nav.js';
 import { WalkFlyControls, EYE_HEIGHT_M } from './controls.js';
 
 installAtmosphere(); // patch the fog chunks before any material compiles (phase 4, docs/ARCHITECTURE.md §7)
@@ -332,6 +332,25 @@ const fpsEl = document.getElementById('fps');
 let fpsFrames = 0;
 let fpsAccum = 0;
 
+// Dev-only readout for the mouse-look jump still open on 2026-08-04. The angle
+// maths is already ruled out - tools/dev/probe-pitch-sweep.mjs shows pitch
+// advancing uniformly across the entire range, with zero yaw drift and zero
+// roll - so a jump at one particular moment has to come from the input side:
+// either one oversized delta (the OS/browser warping the locked pointer) or a
+// frame long enough to queue several events and then spend them together.
+// Those are different fixes, so the peaks are shown side by side and whichever
+// spikes when a jump is seen names the cause. Built from JS rather than
+// index.html so it cannot reach a production build at all.
+let lookDiagEl = null;
+if (import.meta.env.DEV) {
+  lookDiagEl = document.createElement('div');
+  lookDiagEl.id = 'look-diag';
+  lookDiagEl.style.cssText = 'position:fixed;top:30px;right:10px;padding:3px 7px;'
+    + 'background:rgba(10,14,20,0.55);border-radius:4px;color:#ffd479;'
+    + 'font:11px/1.4 -apple-system,system-ui,sans-serif;pointer-events:none;';
+  fpsEl.after(lookDiagEl);
+}
+
 // Phase 5 nav HUD (docs/ARCHITECTURE.md §7): heading compass, live lat/lon +
 // elevation, nearest named POI. Throttled like the fps counter - a compass/
 // position readout doesn't need per-frame precision.
@@ -366,7 +385,17 @@ renderer.setAnimationLoop(() => {
     navAccum = 0;
     const heading = headingDegrees(camera);
     compassNeedle.style.transform = `translate(-50%, -100%) rotate(${heading}deg)`;
-    navHeadingEl.textContent = `${compassLabel(heading)} ${Math.round(heading)}°`;
+    const pitch = pitchDegrees(camera);
+    navHeadingEl.textContent = `${compassLabel(heading)} ${Math.round(heading)}°`
+      + ` · pitch ${pitch >= 0 ? '+' : '-'}${Math.abs(pitch).toFixed(0)}°`;
+
+    if (lookDiagEl) {
+      const d = controls.lookDiag;
+      lookDiagEl.textContent = `look peaks/3s: ${d.eventPx.value.toFixed(0)} px/event`
+        + ` · ${d.eventsPerFrame.value.toFixed(0)} ev/frame`
+        + ` · ${d.frameMs.value.toFixed(0)} ms/frame`
+        + ` · ${d.stepDeg.value.toFixed(2)}°/frame`;
+    }
 
     if (originReady) {
       const { lat, lon } = localToWGS84(camera.position.x, camera.position.z);

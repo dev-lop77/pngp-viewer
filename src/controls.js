@@ -59,6 +59,35 @@ const MOUSE_SENSITIVITY = 0.002; // rad/px, three's own value - keeps the establ
 const LOOK_SMOOTHING_S = 0.045;
 const MAX_PITCH_RAD = Math.PI / 2 - 0.002; // just inside the pole - see cause 3 above
 
+// Highest value seen in roughly the last few seconds. Two buckets rather than
+// one so a readout doesn't blink back to zero the instant a window rolls over -
+// which would make a peak easy to miss at the 4 Hz the HUD refreshes at.
+class PeakWindow {
+  constructor(windowS = 3) {
+    this._windowS = windowS;
+    this._current = 0;
+    this._previous = 0;
+    this._age = 0;
+  }
+
+  add(value) {
+    if (value > this._current) this._current = value;
+  }
+
+  tick(dt) {
+    this._age += dt;
+    if (this._age >= this._windowS) {
+      this._age = 0;
+      this._previous = this._current;
+      this._current = 0;
+    }
+  }
+
+  get value() {
+    return Math.max(this._current, this._previous);
+  }
+}
+
 const MOVE_KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'Space', 'KeyC', 'ShiftLeft', 'ShiftRight',
 ]);
@@ -86,6 +115,17 @@ export class WalkFlyControls {
     this._euler = new THREE.Euler(0, 0, 0, 'YXZ');
     this._pendingYaw = 0;
     this._pendingPitch = 0;
+    // Live instrumentation for the jump the user still reported on 2026-08-04
+    // (docs/PROGRESS.md). main.js shows these in a dev-only HUD line; the cost
+    // is a handful of comparisons a frame, so they are always collected and can
+    // be read off window.__pngp.controls on any build that exposes it.
+    this.lookDiag = {
+      eventPx: new PeakWindow(),      // biggest single mousemove delta - a warp spike
+      eventsPerFrame: new PeakWindow(), // events queued into one frame - a hitch
+      frameMs: new PeakWindow(),      // longest frame - the hitch itself
+      stepDeg: new PeakWindow(),      // biggest pitch change applied in one frame
+    };
+    this._eventsSinceFrame = 0;
 
     domElement.addEventListener('click', () => {
       if (document.pointerLockElement !== domElement) domElement.requestPointerLock();
@@ -108,6 +148,8 @@ export class WalkFlyControls {
       if (!this._enabled || !this.plc.isLocked) return;
       this._pendingYaw -= e.movementX * MOUSE_SENSITIVITY;
       this._pendingPitch -= e.movementY * MOUSE_SENSITIVITY;
+      this.lookDiag.eventPx.add(Math.max(Math.abs(e.movementX), Math.abs(e.movementY)));
+      this._eventsSinceFrame += 1;
     });
 
     window.addEventListener('keydown', (e) => {
@@ -156,9 +198,11 @@ export class WalkFlyControls {
     this._pendingPitch -= pitch;
 
     this._euler.setFromQuaternion(this.camera.quaternion);
+    const pitchBefore = this._euler.x;
     this._euler.y += yaw;
     this._euler.x = Math.max(-MAX_PITCH_RAD, Math.min(MAX_PITCH_RAD, this._euler.x + pitch));
     this.camera.quaternion.setFromEuler(this._euler);
+    this.lookDiag.stepDeg.add((Math.abs(this._euler.x - pitchBefore) * 180) / Math.PI);
 
     // Below a fraction of a pixel's worth of angle the remainder is invisible;
     // zero it so the smoothing can't leave the camera creeping forever.
@@ -167,6 +211,13 @@ export class WalkFlyControls {
   }
 
   update(dt) {
+    // Ahead of the enabled check, so the windows keep rolling (and decaying)
+    // even while a flyTo has control of the camera.
+    this.lookDiag.frameMs.add(dt * 1000);
+    this.lookDiag.eventsPerFrame.add(this._eventsSinceFrame);
+    this._eventsSinceFrame = 0;
+    for (const peak of Object.values(this.lookDiag)) peak.tick(dt);
+
     // Deliberately NOT gated on this.locked: keyboard movement works with or
     // without pointer lock, only mouse-look needs the lock. Requiring it
     // meant pressing Esc to click a POI label also froze movement, which the

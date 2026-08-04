@@ -2,6 +2,65 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## Status as of 2026-08-04
+
+Opened by asking the user the two questions the previous session closed on. Their
+answers: **the mouse-look jump is still there** - "mentre sposto il mouse verso
+l'alto, anche molto lentamente, ad un certo punto ho un salto", plus a request for
+the view angle in the HUD, which they had no way to quote a number from - and
+**wildlife** is the piece of phase 6 to build next.
+
+### The jump is not in our angle maths, and now that is measured across the whole range
+"At a certain point" describes a discontinuity at one particular angle, which is a
+different symptom from the per-event stepping fixed in `964d0b4`. The existing
+`tools/test-mouselook.mjs` could not see one: it only exercises mid-range pitch
+plus the two limits.
+
+New `tools/dev/probe-pitch-sweep.mjs` drives a steady 1 px per frame from just
+inside the bottom limit to the top - 1,537 frames, -85.9 deg to +89.9 deg - and
+checks the per-frame pitch step against the sensitivity everywhere in between.
+Result: **worst deviation 0.0000 deg, yaw drift 0.0000 deg, roll 0.0000 deg**.
+Pitch advances perfectly uniformly across the entire range. (The probe first
+reported a 0.0425 deg failure at 89.885 deg, which was the probe's own bug: the
+step that *first meets* the clamp is legitimately a partial one. Fixed to judge
+the frame before it.)
+
+So the cause is on the input side, and there are exactly two candidates left,
+each with a different fix:
+- **one oversized delta** - the OS or browser warping the locked pointer and
+  reporting the warp as movement. Not fixable by smoothing; needs the spike
+  rejected. Note `requestPointerLock({ unadjustedMovement: true })`, the proper
+  answer to this, is already known not to work on Linux (see 2026-08-03).
+- **a long frame** - one that queues several mousemove events and then spends
+  them together. `THREE.Timer` (r185) does **not** clamp its delta, verified in
+  `node_modules/three/src/core/Timer.js`, so a 200 ms hitch makes
+  `k = 1 - exp(-dt/0.045)` ≈ 0.99 and the whole queue lands in that one frame.
+  The fix there is to cap the dt the smoothing sees, or to remove the hitch.
+
+### Instrumented rather than guessed
+Two readouts, and the user's next report picks the cause:
+- **`pitch +NN°` in the nav HUD**, next to the compass heading - permanent, and
+  what they asked for. `pitchDegrees()` in `src/nav.js` takes it from the camera's
+  world direction, not a YXZ euler's x, because that decomposition is degenerate
+  at the poles.
+- **a dev-only `#look-diag` line** under the fps counter showing four peaks over
+  the last 3 s: biggest single mousemove delta, events queued into one frame,
+  longest frame, and biggest pitch change applied in one frame. `PeakWindow` in
+  `src/controls.js` keeps two buckets so a peak can't blink away between the
+  HUD's 4 Hz refreshes. Built from JS under `import.meta.env.DEV`, so it cannot
+  reach a production build.
+
+Verified headlessly, which is legitimate here because this is text and geometry,
+not brightness or feel: after a slow drag the HUD read `N 0° · pitch +18°`, and a
+synthetic 900 px event moved it to `+90°` (the clamp) while the diag line reported
+`900 px/event` and `72.13°/frame`. The instrument demonstrably catches the
+symptom. `test-mouselook.mjs` and the sweep both still pass with it in place.
+
+**What the user needs to do:** with the dev server up, look up slowly until the
+jump happens, then read the four peaks. `NN px/event` far above the others means
+a warp spike; `ms/frame` in the hundreds means a hitch. Either way `°/frame` is
+the size of the jump itself.
+
 ## Status as of 2026-08-03
 
 **Session ended with a clean working tree and every test passing. Start at

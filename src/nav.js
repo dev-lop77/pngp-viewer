@@ -17,6 +17,17 @@ export function compassLabel(deg) {
   return COMPASS_POINTS[Math.round(deg / 45) % 8];
 }
 
+// Vertical view angle in degrees, positive looking up, 0 at the horizon - the
+// user asked for it in the HUD (2026-08-04) while reporting that mouse look
+// still jumps somewhere, and with no readout there was no way to say where.
+// Taken from the camera's world direction rather than a YXZ euler's x: the euler
+// decomposition goes degenerate at the poles, and this is the angle actually
+// read off the horizon regardless of any roll.
+export function pitchDegrees(camera) {
+  camera.getWorldDirection(_dir);
+  return (Math.asin(THREE.MathUtils.clamp(_dir.y, -1, 1)) * 180) / Math.PI;
+}
+
 // Closest POI to a local (x, z) position, horizontal distance only (real
 // "nearest place" is a ground-distance notion, not line-of-sight through a
 // mountain) - linear scan over ~400 POIs, cheap enough to call every HUD
