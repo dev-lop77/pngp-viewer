@@ -5,8 +5,9 @@ import { loadTerrain } from './terrain.js';
 import { loadTrails } from './trails.js';
 import { loadPOI, poiInfoHTML } from './poi.js';
 import { loadWater } from './water.js';
-import { loadForest } from './forest.js';
+import { loadForest, createCoverageSampler } from './forest.js';
 import { createVegetation } from './vegetation.js';
+import { createWildlife } from './wildlife.js';
 import { installAtmosphere } from './atmosphere.js';
 import { Lighting } from './lighting.js';
 import { Weather } from './weather.js';
@@ -160,12 +161,24 @@ const forestPromise = loadForest().catch((err) => {
   return null;
 });
 
+let wildlife = null; // animals carry state between frames, so they need the loop
+
 // Trees need the terrain's height texture (they displace onto the same surface)
 // but NOT the mask, thanks to the shared holder.
 Promise.all([terrainPromise, forestPromise]).then(([terrain, forest]) => {
   if (!forest) return;
   const vegetation = createVegetation({ manifest: terrain.manifest, heightTexture: terrain.heightTexture });
   scene.add(vegetation.object);
+
+  // Wildlife needs the same mask, but on the CPU: it decides where a herd can
+  // stand in JavaScript, then keeps moving those animals from frame to frame.
+  // sampleRenderedHeight for the same reason the walking camera uses it - an
+  // animal has to stand on the surface that is actually drawn.
+  wildlife = createWildlife({
+    sampleGroundHeight: terrain.sampleRenderedHeight,
+    canopyAt: createCoverageSampler({ manifest: forest.manifest, texture: forest.texture }),
+  });
+  scene.add(wildlife.object);
 });
 
 const trailsPromise = loadTrails().then((result) => {
@@ -303,7 +316,11 @@ renderer.domElement.addEventListener('click', () => {
 // investigation being the case that finally justified it): the alternative is
 // re-deriving the whole scene in a test page, which stops testing the real one.
 if (import.meta.env.DEV) {
-  window.__pngp = { camera, controls, scene, renderer, lighting, getPoiIndex: () => poiIndex };
+  window.__pngp = {
+    camera, controls, scene, renderer, lighting,
+    getPoiIndex: () => poiIndex,
+    getWildlife: () => wildlife, // loads late, so a getter rather than the value
+  };
 }
 
 window.addEventListener('resize', () => {
@@ -370,6 +387,7 @@ renderer.setAnimationLoop(() => {
   timer.update();
   waterUpdate?.(timer.getElapsed());
   weather?.update(timer.getDelta(), camera);
+  wildlife?.update(timer.getDelta(), camera);
   lighting.applyState(); // re-grades every frame so an in-progress weather transition stays live
 
   fpsFrames += 1;

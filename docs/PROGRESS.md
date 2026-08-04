@@ -61,6 +61,139 @@ jump happens, then read the four peaks. `NN px/event` far above the others means
 a warp spike; `ms/frame` in the hundreds means a hitch. Either way `°/frame` is
 the size of the jump itself.
 
+### Done: wildlife (`src/wildlife.js`)
+Ibex, chamois and marmots. The park was created in 1922 to save the last few
+hundred ibex in the Alps, so that is the species this had to get right.
+
+**Placement is CPU-side, and deliberately not vegetation.js's trick.** Trees can
+be placed entirely in the vertex shader because a tree never moves: its position
+is a pure function of its lattice slot. An animal's position depends on where it
+was last frame, which is state, and state lives on the CPU. So each species is
+one `InstancedMesh` whose matrices are rewritten every frame - affordable because
+the population is bounded by draw distance rather than by map size: **~50 animals
+typical, 184 worst case, against 27,889 trees.** Measured cost of moving the whole
+population: **0.026 ms per frame**, about 1.5% of a 60 fps budget.
+
+What *is* borrowed from the trees is the deterministic lattice. Herds sit on a
+per-species grid (ibex 600 m, chamois 500 m, marmots 240 m) and a cell's contents
+come from a hash of its integer coordinates, so the same hillside always holds the
+same herd and walking away and back does not reshuffle the park. A cell that fails
+the habitat test is remembered as a miss, so it is never re-tested.
+
+**Habitat comes from three real signals, which is the whole point:**
+- elevation and slope from the terrain's own `sampleRenderedHeight` - the DRAWN
+  surface, so animals stand on the ground the user sees;
+- canopy from the OSM forest mask, via a new CPU-side `createCoverageSampler()` in
+  `src/forest.js`. Decoded at half resolution (~41 m, 2.4 MB): herd sites are
+  chosen on a 240-600 m lattice and the mask is 20 m data quantised to 16 levels,
+  so full resolution would change no decision while costing a 38 MB
+  `getImageData` spike and a 9.6 MB array.
+
+Which puts ibex on open rock 2,000-3,400 m at 18-58 deg of slope, chamois at the
+treeline (1,100-2,700 m, canopy 0.02-0.7 - the one species that uses the forest
+itself), and marmots in gentle open meadow 1,500-2,900 m under 26 deg, because a
+burrow needs diggable ground. Verified by the numbers: the chamois photographed
+below was at 2,053 m on a 44 deg slope under 0.19 canopy, the marmot at 2,571 m on
+7 deg with none.
+
+Deliberately **not** scoped to the park boundary, unlike POI and trails: ibex have
+recolonised most of the western Alps from this population, so a herd just outside
+the line is accurate rather than a bug.
+
+**Behaviour.** Each animal grazes, then walks to a new spot near its own patch,
+and turns to face where it is going at a capped rate. All three flee an
+approaching camera - ibex at 45 m, chamois at 55 m (the most easily spooked),
+marmots only at 25 m and then they bolt at 3.2x. Watching a herd break and move
+off is most of the reward for having found one.
+
+**The gait is in the vertex shader, but the timing is not.** Legs swing about
+their hip, and each vertex carries `aLeg = (swing sign, pivot height)`: the sign
+puts diagonal legs in antiphase, which is the trot all three animals use, and the
+pivot is read rather than assumed so the same code serves a 0.6 m ibex hip and a
+0.18 m marmot one. Body vertices carry sign 0, so the same line reduces to the
+stock transform with no branch. The swing itself is one per-instance float set by
+the CPU from **distance travelled, not time**, so a fleeing animal takes faster
+strides rather than longer ones and the legs cannot skate. Flat shading means the
+rotated legs get correct normals from screen-space derivatives for free.
+
+Coats were solved backwards from their intended on-screen colour with
+`tools/dev/solve-albedo.mjs`, like every other colour in this project.
+
+### How the wildlife was verified
+`tools/test-wildlife.mjs` visits eight mid-altitude sites taken from the shipped
+POI data (a hand-typed coordinate would be one more thing to keep true if the
+local frame moved) and pins five properties: animals appear at all and all three
+species do; every animal sits inside its species' elevation/slope/canopy envelope;
+their feet are on the drawn surface to within 5 cm; leaving for 4 km and coming
+back finds the same animals in the same places; and the leg swing actually
+changes. Habitat is a **rate**, not a ban - habitat is tested at the herd site and
+animals then wander up to 30 m, so some drift onto ground that would not have been
+chosen. Currently 1.8% do, all chamois, against a 25% limit.
+
+New `tools/dev/shoot-wildlife.mjs` photographs a herd. It has to chase: every
+species flees, so a camera aimed once and screenshotted a second later
+photographs empty hillside. Shots of all three are in `tools/dev/logs/`.
+
+**On brightness in those shots: they look very dark, and that was checked rather
+than assumed.** `tools/dev/logs/trees-cretaz-ground.png` from 2026-08-03 - the
+same lighting, which the user confirmed as good in Firefox - is just as dark, and
+`test-terrain-albedo.mjs` still passes to within 0.002. So this is the known
+SwiftShader behaviour and not a regression. It is exactly the trap documented
+below: never retune lighting against a headless screenshot.
+
+### Next steps
+1. **Read the four look peaks and say which one spikes** (see above). That is the
+   whole remaining diagnosis; the fix follows from the answer and is small either
+   way - reject the spike, or cap the dt the smoothing sees.
+2. **Judge the animals in a real browser.** Do they read as ibex/chamois/marmots
+   at walking distance, is the herd density plausible, and does the flee behaviour
+   feel right rather than skittish? Headless settled placement and cost, but not
+   these. Every number worth tuning is a named constant in the `SPECIES` table at
+   the top of `src/wildlife.js`.
+3. **Ambient audio** closes phase 6. Procedural, no asset licensing to resolve,
+   and it needs a user gesture to start - the click that grabs pointer lock is
+   already there.
+4. **Phase 7 polish**: LOD popping/geomorphing, one-texel normals at any depth,
+   the >500 kB bundle, and the mobile pass (pointer lock + WASD has no touch
+   equivalent at all).
+5. **Republish when wanted** - the live site is now several commits behind `main`.
+   `tools/dev/deploy.sh` does the whole thing.
+6. Deferred by the user, do not re-raise unprompted: the satellite/orthophoto
+   basemap.
+
+### How to resume
+Everything from 2026-08-04 is committed on `main`. The test tools cover the
+fragile parts - they are quick, run them:
+- `node tools/test-rendered-height.mjs` after any change to terrain geometry or
+  height sampling. Five features now depend on the analytic model matching the
+  drawn surface - the animals are the fifth.
+- `node tools/test-terrain-albedo.mjs` after touching terrain colours or the mask.
+- `node tools/test-vegetation.mjs` after touching trees or the mask.
+- `node tools/test-wildlife.mjs` after touching the animals, their habitat rules,
+  or `createCoverageSampler()`.
+- `node tools/test-mouselook.mjs` and `node tools/dev/probe-pitch-sweep.mjs` after
+  touching `src/controls.js`.
+- All of them except `test-rendered-height` need a **dev** server
+  (`tools/dev/start-dev.sh`), not preview: they import `/src/*.js` and read
+  `window.__pngp`, which only exists under `import.meta.env.DEV`.
+
+**Three landmines that have each cost real time - read before editing:**
+1. **`onBeforeCompile` gets unresolved `#include` directives.** Patch the
+   directive, never the inlined chunk body, and never trust a replacement that
+   produces no error. `patch()` in `terrain.js`/`vegetation.js`/`wildlife.js`
+   throws on an unmatched marker, which is the guard that was missing when the RG8
+   bug survived from phase 1.
+2. **Albedo is not appearance.** Lambert divides by PI, so a natural-looking
+   colour renders near-black under this lighting. Solve it backwards with
+   `tools/dev/solve-albedo.mjs`; the washed-out hexes in the code are correct. And
+   `new THREE.Color(hex)` **already** converts sRGB to linear - never also call
+   `convertSRGBToLinear()`. Note colour *attributes* (wildlife.js) are read as
+   working space, so the constructor is the one and only conversion there too.
+3. **Headless is SwiftShader.** Trust it for geometry, placement, layout and
+   console errors; never for brightness, frame rate or input feel. When a shot
+   looks wrong, compare it against an older shot the user already approved before
+   changing anything - that is what settled the dark wildlife screenshots.
+
 ## Status as of 2026-08-03
 
 **Session ended with a clean working tree and every test passing. Start at

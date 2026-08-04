@@ -712,7 +712,22 @@ pngp-viewer/
 │                              terrain gradient. Low-poly opaque cones, deliberately: no
 │                              alpha sorting, no texture asset, and correct from above,
 │                              which billboards are not once you can fly
-│   ├── wildlife.js         (phase 6) ibex/chamois/marmots
+│   ├── wildlife.js         Done, 2026-08-04 (phase 6). Ibex, chamois and marmots. One
+│                              InstancedMesh per species, matrices rewritten per frame -
+│                              NOT vegetation.js's shader placement, because an animal's
+│                              position depends on where it was last frame and that is
+│                              state. Herds sit on a deterministic per-species cell
+│                              lattice (hash of the integer cell -> same herd on the same
+│                              hillside every load), and habitat is tested at the site
+│                              against three real signals: elevation and slope from the
+│                              terrain's sampleRenderedHeight, and canopy from the OSM
+│                              mask via forest.js's CPU-side createCoverageSampler().
+│                              Ibex want open rock above 2,000 m, chamois the treeline,
+│                              marmots gentle open meadow. All three flee an approaching
+│                              camera. Legs swing about the hip in the vertex shader,
+│                              driven by one per-instance float the CPU sets from distance
+│                              travelled, so the gait cannot skate. ~0.026 ms/frame for a
+│                              50-animal population (measured, tools/dev/shoot-wildlife.mjs)
 │   └── ui/                 Still not created - phase 4's and phase 5's HUD controls
 │                              (time-of-day slider, weather select, compass/position
 │                              readout) all turned out small enough to wire directly in
