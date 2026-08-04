@@ -9,8 +9,9 @@
 // trusted with (docs/PROGRESS.md: brightness, frame rate and input feel are the
 // things it cannot judge).
 //
-// Five properties:
-//   1. animals appear at all, at mid-altitude sites where they should;
+// The properties, in the order they are reported:
+//   1. animals appear at all, at mid-altitude sites where they should, and all five
+//      species do;
 //   2. every animal satisfies its own species' elevation/slope/canopy envelope -
 //      the whole point of driving placement from the OSM canopy mask and the
 //      terrain rather than scattering at random;
@@ -19,7 +20,21 @@
 //   4. herds are deterministic: leaving and coming back finds the same animals in
 //      the same places, so the park does not reshuffle as you walk;
 //   5. the legs move - the vertex-shader gait actually receives a changing swing,
-//      and no instance exceeds its species' capacity.
+//      and no instance exceeds its species' capacity;
+//   6/7. the reactions, asserted in OPPOSITE directions: a bold fox closes the gap
+//      to a still camera while an ibex opens it, and squirrels end up with a trunk
+//      between themselves and the camera;
+//   8. vegetation.js's CPU nearestTree() returns the trunk the GPU actually draws,
+//      brute-forced against the mesh's own aOffset buffer. Nothing else would catch
+//      a squirrel hiding behind a tree that is not there;
+//   9. each body's up axis matches the terrain normal - pitch AND roll, which is
+//      what "standing on the slope rather than through it" means;
+//   10. a bold fox cannot be walked into at the controls' real 4 m/s;
+//   11. a squirrel abandons its trunk once the camera reaches that trunk.
+//
+// 9, 10 and 11 were all added on 2026-08-04 from the user's real-browser report,
+// and each of them is a thing headless CAN measure that had simply never been
+// asked.
 //
 // Usage: tools/dev/start-dev.sh && node tools/test-wildlife.mjs
 
@@ -162,6 +177,100 @@ const result = await page.evaluate(async ({ sites, dt }) => {
     if (hiding.length >= 4) break;
   }
 
+  // 9. Standing ON the slope, not through it. The user reported the first version
+  // as "posizione/inclinazione non coerente con il terreno": it pitched along the
+  // heading only and never rolled, so on a side-slope one pair of legs floated.
+  // The body's own up axis is compared against the terrain normal - that is the
+  // property, and it covers pitch and roll at once.
+  const tilt = [];
+  for (const site of sites) {
+    visit(site, 40);
+    for (const mesh of meshes) {
+      for (let i = 0; i < mesh.count; i++) {
+        mesh.getMatrixAt(i, matrix);
+        pos.setFromMatrixPosition(matrix);
+        // Column 1 of the instance matrix is the model's +Y, rotated into world
+        // space. Normalised because the matrix also carries the animal's scale.
+        const bodyUp = new THREE.Vector3(matrix.elements[4], matrix.elements[5], matrix.elements[6]).normalize();
+        const h = window.__pngp.controls.getGroundHeight;
+        const b = 0.5; // any baseline inside one 20.5 m facet gives the same gradient
+        const normal = new THREE.Vector3(
+          -(h(pos.x + b, pos.z) - h(pos.x - b, pos.z)) / (2 * b),
+          1,
+          -(h(pos.x, pos.z + b) - h(pos.x, pos.z - b)) / (2 * b),
+        ).normalize();
+        tilt.push({
+          species: mesh.name.replace('wildlife-', ''),
+          offAxisDeg: (Math.acos(Math.min(1, Math.max(-1, bodyUp.dot(normal)))) * 180) / Math.PI,
+          groundSlopeDeg: (Math.acos(Math.min(1, normal.y)) * 180) / Math.PI,
+          footErrorM: pos.y - h(pos.x, pos.z),
+        });
+      }
+    }
+    if (tilt.length > 40) break;
+  }
+
+  // 10. A bold fox must not be touchable - "curiosa.. ma non stupida". Walk at the
+  // 4 m/s WalkFlyControls actually uses and see how close it lets us get.
+  let foxChase = null;
+  for (const site of sites) {
+    visit(site, 10);
+    const start = nearestOf('fox', true);
+    if (!start) continue;
+    camera.position.set(start.x + 40, 0, start.z);
+    wildlife.update(dt, camera);
+    let minDist = Infinity;
+    for (let i = 0; i < 900; i++) { // 15 s of walking straight at it
+      const cur = nearestOf('fox', true);
+      if (!cur) break;
+      const dx = cur.x - camera.position.x;
+      const dz = cur.z - camera.position.z;
+      const d = Math.hypot(dx, dz) || 1;
+      camera.position.x += (dx / d) * 4 * dt;
+      camera.position.z += (dz / d) * 4 * dt;
+      wildlife.update(dt, camera);
+      minDist = Math.min(minDist, nearestOf('fox', true)?.camDistM ?? Infinity);
+    }
+    foxChase = { site: site.name, minDist };
+    break;
+  }
+
+  // 11. A squirrel's cover must not be permanent: walk to the trunk it chose and
+  // it should abandon it for one further away.
+  let bailout = null;
+  for (const site of sites) {
+    visit(site, 10);
+    const first = nearestOf('squirrel');
+    if (!first) continue;
+    camera.position.set(first.x + 15, 0, first.z);
+    for (let i = 0; i < 240; i++) wildlife.update(dt, camera); // let it get behind a tree
+    const follow = (id) => wildlife.snapshot().find((a) => a.id === id);
+    const hidden = follow(first.id);
+    if (!hidden?.treeX) continue;
+    const firstTree = { x: hidden.treeX, z: hidden.treeZ };
+    // Now walk right up to that trunk.
+    for (let i = 0; i < 600; i++) {
+      const dx = firstTree.x - camera.position.x;
+      const dz = firstTree.z - camera.position.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 1.5) {
+        camera.position.x += (dx / d) * 4 * dt;
+        camera.position.z += (dz / d) * 4 * dt;
+      }
+      wildlife.update(dt, camera);
+    }
+    const after = follow(first.id);
+    bailout = {
+      site: site.name,
+      id: first.id,
+      treeMovedM: after ? Math.hypot(after.treeX - firstTree.x, after.treeZ - firstTree.z) : null,
+      awayFromOldTreeM: after ? Math.hypot(after.x - firstTree.x, after.z - firstTree.z) : null,
+      stillShielded: after?.shielded ?? null,
+      camDistM: after?.camDistM ?? null,
+    };
+    break;
+  }
+
   // 8. The one that could silently break the squirrels: vegetation.js's CPU
   // nearestTree() must return the same trunk the GPU draws. Brute-forced here
   // against the mesh's REAL aOffset attribute - the exact buffer the shader
@@ -200,6 +309,9 @@ const result = await page.evaluate(async ({ sites, dt }) => {
     seen,
     drawn,
     latticeCheck,
+    tilt,
+    foxChase,
+    bailout,
     capacities: meshes.map((m) => ({ species: m.name, count: m.count, capacity: m.instanceMatrix.count })),
     determinism: { before, after },
     swingTrack,
@@ -334,6 +446,57 @@ if (result.hiding.length) {
   }
 } else {
   console.log('  none found close enough to judge - inconclusive, not a failure');
+}
+
+// 9. Bodies aligned to the ground they stand on.
+const worst = result.tilt.reduce((a, b) => (b.offAxisDeg > a.offAxisDeg ? b : a), { offAxisDeg: 0 });
+const steep = result.tilt.filter((t) => t.groundSlopeDeg > 20);
+const meanOff = result.tilt.reduce((n, t) => n + t.offAxisDeg, 0) / (result.tilt.length || 1);
+const footWorst = result.tilt.reduce((a, t) => Math.max(a, Math.abs(t.footErrorM)), 0);
+console.log(`\nbody up axis vs terrain normal, over ${result.tilt.length} drawn animals:`);
+console.log(`  mean ${meanOff.toFixed(2)} deg, worst ${worst.offAxisDeg.toFixed(2)} deg (${worst.species}, on ${worst.groundSlopeDeg?.toFixed(0)} deg ground)`);
+console.log(`  ${steep.length} of them on ground steeper than 20 deg, where a missing roll would show`);
+console.log(`  worst foot height error ${footWorst.toFixed(3)} m`);
+if (worst.offAxisDeg > 6) {
+  console.log('\nFAIL: an animal is not aligned to the surface it stands on.');
+  failures++;
+}
+if (!steep.length) {
+  console.log('\nWARNING: no animal was on steep ground, so roll was not really exercised.');
+}
+if (footWorst > 0.2) {
+  console.log('\nFAIL: an animal is floating above or sunk into the ground.');
+  failures++;
+}
+
+// 10. The fox keeps its distance even from a walking camera.
+console.log('\nwalking straight at a bold fox for 15 s at 4 m/s:');
+if (!result.foxChase) {
+  console.log('  no bold fox found - inconclusive');
+} else {
+  console.log(`  it never let the camera closer than ${result.foxChase.minDist.toFixed(2)} m (${result.foxChase.site})`);
+  if (result.foxChase.minDist < 3) {
+    console.log('\nFAIL: the fox was walked into - curious but not stupid, and this is stupid.');
+    failures++;
+  }
+}
+
+// 11. The squirrel gives up a trunk once the camera reaches it.
+console.log('\nwalking up to the trunk a squirrel hid behind:');
+if (!result.bailout) {
+  console.log('  no squirrel got behind a tree - inconclusive');
+} else {
+  const b = result.bailout;
+  console.log(`  ${b.id} moved to a trunk ${b.treeMovedM?.toFixed(1)} m away, ending ${b.awayFromOldTreeM?.toFixed(1)} m from the old one`);
+  console.log(`  still shielded by its new tree: ${b.stillShielded}, camera ${b.camDistM?.toFixed(1)} m off`);
+  if (!(b.treeMovedM > 4)) {
+    console.log('\nFAIL: the squirrel stayed at the same trunk with the camera on top of it.');
+    failures++;
+  }
+  if (b.stillShielded === false) {
+    console.log('\nFAIL: the squirrel bailed out but ended up in the open.');
+    failures++;
+  }
 }
 
 // 8. CPU tree lattice == the trees the GPU is given.

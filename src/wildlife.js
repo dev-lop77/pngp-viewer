@@ -71,10 +71,21 @@ const RESCAN_MOVE_M = 50;
 const RESCAN_S = 1.5;
 // Legs swing about the hip through this angle at full stride.
 const SWING_RAD = 0.42;
+// How fast an animal's body settles onto a new surface normal. The facet gradient
+// steps as it crosses a terrain cell boundary, and applying that instantly reads
+// as a twitch.
+const ORIENT_SMOOTH_S = 0.2;
+// Feet a few centimetres into the ground: the body is oriented to the facet under
+// its centre, so a foot reaching over a cell edge can otherwise show daylight.
+const FOOT_SINK_M = 0.04;
 
 const SPECIES = [
   {
     name: 'ibex',
+    // Baseline for the surface-normal estimate: about the animal's own length, so
+    // one standing across a terrain cell edge averages both facets instead of
+    // snapping between them.
+    orientBaseM: 1.5,
     reaction: 'flee',
     salt: 0x1b1,
     // ~4,000 ibex over ~700 km2 of park is 5-6 per km2. A herd every other
@@ -100,6 +111,7 @@ const SPECIES = [
   },
   {
     name: 'chamois',
+    orientBaseM: 1.2,
     reaction: 'flee',
     salt: 0x2c2,
     cellM: 500,
@@ -125,6 +137,7 @@ const SPECIES = [
   },
   {
     name: 'marmot',
+    orientBaseM: 0.6,
     reaction: 'flee',
     salt: 0x3d3,
     // Family groups at a burrow, so a much finer lattice and tighter spread.
@@ -151,6 +164,7 @@ const SPECIES = [
   },
   {
     name: 'fox',
+    orientBaseM: 1.0,
     salt: 0x4e4,
     reaction: 'curious',
     // Solitary and territorial - a red fox holds a few km2 - so much the coarsest
@@ -173,9 +187,12 @@ const SPECIES = [
     // How this species reacts, instead of the flee radius the others use.
     curiousM: 130, // notices you from here and starts coming over
     standoffM: 7, // ...and stops about this far off, watching
-    pushbackM: 3.5, // closer than this and even a bold one gives ground
     boldChance: 0.55, // the rest keep their distance like everything else
     approachMul: 1.7,
+    // Retreating is much faster than approaching, and deliberately faster than the
+    // 4 m/s walk in controls.js: at 1.7x it simply lost the race and could be
+    // walked into. A real fox does 50 km/h, so 1.1 x 4.5 = 5 m/s is still modest.
+    escapeMul: 4.5,
     fleeMul: 2.2, // used by the shy ones
     alertM: 40,
     // The least fussy animal in the park: valley floor to well above the
@@ -184,6 +201,7 @@ const SPECIES = [
   },
   {
     name: 'squirrel',
+    orientBaseM: 0.4,
     salt: 0x5f5,
     reaction: 'hide',
     // Dense in woodland, and solitary: a fine lattice with one or two animals.
@@ -205,6 +223,11 @@ const SPECIES = [
     alertM: 35,
     fleeMul: 2.5, // the dash for cover
     hideR: 1.2, // how far round the far side of the trunk it settles
+    // Cover stops being cover when the camera reaches the tree itself: inside this
+    // distance from the TRUNK, the squirrel gives it up and dashes to another one
+    // about bailoutHopM further into the wood.
+    bailoutM: 6,
+    bailoutHopM: 14,
     // Real canopy, not a margin: a squirrel needs a tree to hide behind, and only
     // a solid mask cell guarantees the shader actually put one there (see
     // hideBehindTree). 2,200 m is about where this forest stops.
@@ -523,10 +546,13 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
   for (const s of state) group.add(s.mesh);
 
   const matrix = new THREE.Matrix4();
+  const basis = new THREE.Matrix4();
   const position = new THREE.Vector3();
   const quaternion = new THREE.Quaternion();
   const scaleVec = new THREE.Vector3();
-  const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+  const up = new THREE.Vector3();
+  const forward = new THREE.Vector3();
+  const right = new THREE.Vector3();
 
   // Rise over run across 2x SLOPE_PROBE_M, in degrees. Sampled from the drawn
   // surface, so it is the slope the user can see rather than the true one.
@@ -568,6 +594,9 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
       const x = siteX + Math.cos(angle) * radius;
       const z = siteZ + Math.sin(angle) * radius;
       animals.push({
+        // Stable identity: a test that follows one individual through an
+        // interaction is a much sharper instrument than one watching "the nearest".
+        id: `${spec.name}:${ix}:${iz}:${i}`,
         x,
         z,
         homeX: x,
@@ -579,6 +608,9 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
         timer: rnd() * spec.grazeS, // so a herd doesn't move off in lockstep
         phase: rnd() * TAU,
         swing: 0,
+        gradX: 0,
+        gradZ: 0,
+        oriented: false, // first frame takes the terrain normal as-is, then smooths
         // Only some foxes will come to you - "ogni tanto si avvicinano", as the
         // user put it. Drawn from the herd's own generator, so which fox is bold
         // is a property of that place and not of this session.
@@ -600,6 +632,30 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
     return from + d;
   }
 
+  // A trunk further from the camera than this one, for a squirrel giving up on its
+  // cover. Tries a fan of directions away from the camera rather than one, because
+  // a single ray can land on a trunk that is no better placed or outside the wood;
+  // and it insists on real canopy at the destination, so a bolting squirrel retreats
+  // deeper into the forest instead of out into the open.
+  function furtherTree(from, camX, camZ, spec) {
+    const awayAngle = Math.atan2(from.x - camX, from.z - camZ);
+    const currentDist = Math.hypot(from.x - camX, from.z - camZ);
+    let best = null;
+    for (const spread of [0, 0.5, -0.5, 1.0, -1.0]) {
+      const angle = awayAngle + spread;
+      const probeX = from.x + Math.sin(angle) * spec.bailoutHopM;
+      const probeZ = from.z + Math.cos(angle) * spec.bailoutHopM;
+      if (canopyAt(probeX, probeZ) < spec.habitat.canopyMin) continue;
+      const candidate = nearestTree(probeX, probeZ, camX, camZ);
+      const gain = Math.hypot(candidate.x - camX, candidate.z - camZ) - currentDist;
+      // Meaningfully further, or it is not worth breaking cover for.
+      if (gain > spec.bailoutHopM * 0.4 && (!best || gain > best.gain)) {
+        best = { ...candidate, gain };
+      }
+    }
+    return best;
+  }
+
   // Being approached overrides whatever the animal was doing, and what it does
   // instead is the species' whole character. Returns the speed multiplier, and
   // sets a.watching when the animal should hold still and face the camera.
@@ -609,14 +665,19 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
     const unit = camDist > 1e-3 ? 1 / camDist : 0;
     a.watching = false;
 
-    // Foxes: the bold ones close the distance instead of opening it. This is the
-    // behaviour the user asked for, and the shy ones fall through to 'flee'.
+    // Foxes: the bold ones close the distance instead of opening it - but they
+    // MAINTAIN a distance rather than merely arriving at one. The user's verdict on
+    // the first version (2026-08-04) was exact: "se mi avvicino fino a toccarla,
+    // dovrebbe allontanarsi e non farsi toccare. curiosa.. ma non stupida." It
+    // backed off at 1.87 m/s against a 4 m/s walk, so it simply lost the race.
+    // Now the retreat has its own, much higher multiplier.
     if (spec.reaction === 'curious' && a.bold && camDist < spec.curiousM) {
-      if (camDist < spec.pushbackM) {
-        a.targetX = camX + fromCamX * unit * spec.standoffM;
-        a.targetZ = camZ + fromCamZ * unit * spec.standoffM;
+      if (camDist < spec.standoffM * 0.85) {
+        // Too close. Back off past the standoff, and fast enough to keep it.
+        a.targetX = camX + fromCamX * unit * spec.standoffM * 1.3;
+        a.targetZ = camZ + fromCamZ * unit * spec.standoffM * 1.3;
         a.walking = true;
-        return spec.approachMul;
+        return spec.escapeMul;
       }
       if (camDist > spec.standoffM * 1.15) {
         a.targetX = camX + fromCamX * unit * spec.standoffM;
@@ -624,7 +685,7 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
         a.walking = true;
         return spec.approachMul;
       }
-      // Arrived at its standoff distance: stop, and watch.
+      // Inside the band it is happy: stop, and watch.
       a.walking = false;
       a.swing = 0;
       a.watching = true;
@@ -635,7 +696,20 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
     // lattice, so this is the trunk that is actually drawn - and the animal keeps
     // shuffling round it as the camera moves, which is the whole charm.
     if (spec.reaction === 'hide' && camDist < spec.alertM) {
-      const tree = nearestTree(a.homeX, a.homeZ, camX, camZ);
+      let tree = nearestTree(a.homeX, a.homeZ, camX, camZ);
+      // ...but a trunk is only cover until the camera reaches the trunk. The user
+      // again: "lo scoiattolo è giusto che sparisca dietro un albero, poi però
+      // dovrebbe continuare a scappare se mi avvicino a quell'albero." So once the
+      // camera closes on the tree itself, it abandons it and dashes to a further
+      // one, deeper into the wood.
+      if (Math.hypot(tree.x - camX, tree.z - camZ) < spec.bailoutM) {
+        const nextTree = furtherTree(tree, camX, camZ, spec);
+        if (nextTree) {
+          a.homeX = nextTree.x;
+          a.homeZ = nextTree.z;
+          tree = nextTree;
+        }
+      }
       const treeDist = Math.hypot(tree.x - camX, tree.z - camZ) || 1;
       a.targetX = tree.x + ((tree.x - camX) / treeDist) * spec.hideR;
       a.targetZ = tree.z + ((tree.z - camZ) / treeDist) * spec.hideR;
@@ -757,17 +831,47 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
 
           const ground = sampleGroundHeight(a.x, a.z);
           if (!Number.isFinite(ground)) continue;
-          // Pitch along the heading, so an ibex on a 40 deg face stands on it
-          // rather than through it. Two extra samples per drawn animal.
-          const ahead = 0.5 * a.scale;
-          const sinH = Math.sin(a.heading);
-          const cosH = Math.cos(a.heading);
-          const front = sampleGroundHeight(a.x + sinH * ahead, a.z + cosH * ahead);
-          const back = sampleGroundHeight(a.x - sinH * ahead, a.z - cosH * ahead);
-          euler.set(Math.atan2(front - back, 2 * ahead), a.heading, 0);
 
-          position.set(a.x, ground, a.z);
-          quaternion.setFromEuler(euler);
+          // Stand the animal ON the slope: orient it to the surface NORMAL, which
+          // gives roll as well as pitch. The first version pitched along the
+          // heading only, over a 1 m baseline, and the user reported exactly what
+          // that produces (2026-08-04): "posizione/inclinazione non coerente con
+          // il terreno" - across a side-slope the downhill legs float while the
+          // uphill ones sink into the hill, because nothing was rolling the body.
+          //
+          // Central differences over the animal's own footprint. The drawn surface
+          // is piecewise planar over 20.5 m cells at best, so any baseline of a
+          // metre or two recovers the exact facet gradient - and a baseline as long
+          // as the body is the right average for one straddling a cell edge.
+          const base = spec.orientBaseM;
+          const gradX = (sampleGroundHeight(a.x + base, a.z) - sampleGroundHeight(a.x - base, a.z)) / (2 * base);
+          const gradZ = (sampleGroundHeight(a.x, a.z + base) - sampleGroundHeight(a.x, a.z - base)) / (2 * base);
+          // Normal of the height field y = h(x, z).
+          if (a.oriented) {
+            // Smoothed in time, because the facet gradient steps as an animal
+            // crosses a cell boundary and an instant change reads as a twitch.
+            const k = 1 - Math.exp(-dt / ORIENT_SMOOTH_S);
+            a.gradX += (gradX - a.gradX) * k;
+            a.gradZ += (gradZ - a.gradZ) * k;
+          } else {
+            a.gradX = gradX;
+            a.gradZ = gradZ;
+            a.oriented = true;
+          }
+
+          up.set(-a.gradX, 1, -a.gradZ).normalize();
+          forward.set(Math.sin(a.heading), 0, Math.cos(a.heading));
+          // The heading is a compass bearing, so tilt it into the tangent plane
+          // rather than using it raw - otherwise the body is not square to the
+          // ground it is standing on.
+          forward.addScaledVector(up, -forward.dot(up));
+          if (forward.lengthSq() < 1e-8) forward.set(0, 0, 1); // degenerate only on a vertical face
+          forward.normalize();
+          right.crossVectors(up, forward);
+          basis.makeBasis(right, up, forward);
+
+          position.set(a.x, ground - FOOT_SINK_M, a.z);
+          quaternion.setFromRotationMatrix(basis);
           scaleVec.setScalar(a.scale * fade);
           matrix.compose(position, quaternion, scaleVec);
           mesh.setMatrixAt(drawn, matrix);
@@ -790,6 +894,7 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
         if (!herd) continue;
         for (const a of herd.animals) {
           const row = {
+            id: a.id,
             species: spec.name,
             x: a.x,
             z: a.z,
@@ -813,6 +918,8 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
             const toCam = [lastCamX - tree.x, lastCamZ - tree.z];
             const lenA = Math.hypot(...toAnimal) || 1;
             const lenC = Math.hypot(...toCam) || 1;
+            row.treeX = tree.x;
+            row.treeZ = tree.z;
             row.treeDistM = lenA;
             row.treeSpacingM = TREE_SPACING_M;
             row.shielded = (toAnimal[0] * toCam[0] + toAnimal[1] * toCam[1]) / (lenA * lenC) < 0;

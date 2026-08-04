@@ -241,18 +241,55 @@ the strict sense, possibly *too* well. `habitat.canopyMin` for squirrel in
 lowering it below ~0.9 is what the existence caveat above pays for, so it is the
 user's call rather than a free tweak.
 
+### The user's real-browser verdict on the animals, and three fixes
+The warp filter is confirmed good ("direi che ora è a posto"). On the wildlife they
+found three things, and all three were real:
+
+**1. "Gli animali sono in una posizione/inclinazione non coerente con il terreno."**
+The worst of the three and structurally my fault: the first version pitched the body
+along its heading only, over a 1 m baseline, and applied **no roll at all**. Across a
+side-slope that floats the downhill legs and buries the uphill ones. Fixed by
+orienting to the surface **normal**: central differences over the animal's own
+footprint (`orientBaseM`, 0.4-1.5 m per species) give the facet gradient - the drawn
+surface is piecewise planar over 20.5 m cells, so a baseline of a metre or two
+recovers it exactly - and the body is then built as a basis from that normal plus the
+heading tilted into the tangent plane. Smoothed with a 0.2 s time constant, because
+the gradient steps as an animal crosses a cell boundary and applying that instantly
+reads as a twitch. Measured over 45 drawn animals: **mean 0.25 deg between body-up
+and terrain normal, worst 4.92 deg** (an ibex walking across 54 deg ground, i.e. the
+smoothing lag), and 35 of them on ground steeper than 20 deg, so roll is genuinely
+exercised rather than incidentally zero.
+
+**2. "La volpe, se mi avvicino fino a toccarla, dovrebbe allontanarsi. Curiosa.. ma
+non stupida."** Correct, and the cause was arithmetic: it backed off at
+1.1 x 1.7 = 1.87 m/s against `controls.js`'s 4 m/s walk, so it simply lost the race.
+The curious reaction now *maintains* a distance rather than merely arriving at one -
+approach above 8.05 m, hold between, retreat below 5.95 m - and retreating has its own
+`escapeMul` of 4.5 (4.95 m/s; a real fox does 50 km/h, so this is still modest).
+Measured: walking straight at a bold fox for 15 s at 4 m/s, **it never let the camera
+closer than 5.95 m**, which is exactly the equilibrium the band predicts.
+
+**3. "Lo scoiattolo è giusto che sparisca dietro un albero, poi però dovrebbe
+continuare a scappare se mi avvicino a quell'albero."** It used to shuffle round the
+same trunk forever. Now, once the camera is within 6 m of the *trunk*, it abandons it
+for one about 14 m further off, chosen from a fan of five directions away from the
+camera and required to still have real canopy - so a bolting squirrel retreats deeper
+into the wood rather than out into the open. Measured: **it moved to a trunk 19.3 m
+away and was still shielded by the new one.**
+
+Animals also carry a stable `id` now, so a test can follow one individual through an
+interaction instead of watching "the nearest", which is a much sharper instrument -
+that is what makes the squirrel bail-out assertion meaningful at all.
+
 ### Next steps
-1. **Confirm the warp filter in a real browser** - look up slowly past where the
-   jump used to happen. It should not jump, and the dev HUD's `warps N` should
-   tick up at that moment (that pairing is the confirmation; the count alone could
-   be anything). Also worth a fast flick or two, to be sure none are being eaten:
-   the test says none are, but feel is the user's call.
-2. **Judge the animals in a real browser.** Five species now: do they read as
-   ibex/chamois/marmots/foxes/squirrels at walking distance, is the density
-   plausible, does a fox walking up to you land as intended, and are the squirrels
-   findable at all (see the observation above)? Headless settled placement, the
-   reactions and the cost, but not any of this. Every number worth tuning is a
-   named constant in the `SPECIES` table at the top of `src/wildlife.js`.
+1. ~~Confirm the warp filter~~ - **CLOSED 2026-08-04**: "direi che ora è a posto."
+2. **Re-check the animals after the three fixes.** The tilt, the fox's standoff and
+   the squirrel's bail-out are all measured, but only in numbers - whether they
+   *feel* right is the user's call. Still open from before, and untouched by these
+   fixes: whether the density is plausible, whether each species reads as itself at
+   walking distance, and whether squirrels are findable at all in dense wood (see
+   the observation above). Every number worth tuning is a named constant in the
+   `SPECIES` table at the top of `src/wildlife.js`.
 3. **Ambient audio** closes phase 6. Procedural, no asset licensing to resolve,
    and it needs a user gesture to start - the click that grabs pointer lock is
    already there.
