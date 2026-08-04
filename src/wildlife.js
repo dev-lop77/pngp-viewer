@@ -824,12 +824,50 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
     });
   }
 
+  // Dev aid: where is the nearest animal of a species? Herds only materialise
+  // within draw distance, so without this, testing means hunting across 84 x 48 km
+  // for something 25 cm tall - and a squirrel's habitat (solid canopy under
+  // 2,200 m) can genuinely be kilometres from wherever the camera happens to be.
+  //
+  // Spirals outward over that species' own cell lattice and reuses makeHerd(), so
+  // the answer respects presence, the hash and the habitat rules exactly as the
+  // real thing does. Costs a few height samples per cell tested, and is called on
+  // a keypress rather than per frame.
+  function findNearest(name, fromX, fromZ, maxRings = 90) {
+    const s = state.find((entry) => entry.spec.name === name);
+    if (!s) return null;
+    const { spec } = s;
+    const cx = Math.floor(fromX / spec.cellM);
+    const cz = Math.floor(fromZ / spec.cellM);
+    for (let ring = 0; ring <= maxRings; ring++) {
+      const found = [];
+      for (let iz = cz - ring; iz <= cz + ring; iz++) {
+        for (let ix = cx - ring; ix <= cx + ring; ix++) {
+          // Only the new perimeter each ring, so a cell is never tested twice.
+          if (ring > 0 && Math.abs(ix - cx) !== ring && Math.abs(iz - cz) !== ring) continue;
+          const herd = makeHerd(spec, ix, iz);
+          if (herd) found.push(herd);
+        }
+      }
+      if (found.length) {
+        // Nearest of the ring, so the result does not jump to a far corner of it.
+        found.sort((p, q) => Math.hypot(p.siteX - fromX, p.siteZ - fromZ)
+          - Math.hypot(q.siteX - fromX, q.siteZ - fromZ));
+        const herd = found[0];
+        const a = herd.animals[0];
+        return { species: name, x: a.x, z: a.z, ring, distanceM: Math.hypot(a.x - fromX, a.z - fromZ) };
+      }
+    }
+    return null;
+  }
+
   return {
     object: group,
     update,
     snapshot,
+    findNearest,
+    species: SPECIES.map((s) => s.name),
     stats: {
-      species: SPECIES.map((s) => s.name),
       capacity: SPECIES.reduce((n, s) => n + s.capacity, 0),
       trianglesPerAnimal: Object.fromEntries(
         state.map(({ spec, mesh }) => [spec.name, mesh.geometry.index

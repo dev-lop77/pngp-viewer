@@ -61,6 +61,22 @@ jump happens, then read the four peaks. `NN px/event` far above the others means
 a warp spike; `ms/frame` in the hundreds means a hitch. Either way `°/frame` is
 the size of the jump itself.
 
+### The dev-only 'G' key, added because the test was impractical otherwise
+The user asked how to actually run these tests, and for the animals the honest
+answer was "hunt a 25 cm squirrel across 84 x 48 km", since herds only materialise
+within draw distance. So `wildlife.findNearest(species, x, z)` spirals outward over
+that species' own cell lattice, reusing `makeHerd()` so the answer respects
+presence, the hash and the habitat rules exactly, and **'G' (dev only) stands the
+camera 18 m from the nearest animal, cycling species on each press.** 18 m is
+outside every reaction radius except the fox's curiosity, so the animal is
+undisturbed when you arrive and you can then walk in and watch it react.
+
+Measured worst case, from the Gran Paradiso summit - the least hospitable place
+for a squirrel, so the deepest scan: **3.4 ms, 29 rings, 4.6 km**. The other four
+are under 1 ms. Verified all five species are reachable, each landing 14-21 m from
+an animal, and confirmed the whole thing (peaks line, note line, key handler) is
+absent from a production build.
+
 ### Done: wildlife (`src/wildlife.js`)
 Ibex, chamois and marmots. The park was created in 1922 to save the last few
 hundred ibex in the Alps, so that is the species this had to get right.

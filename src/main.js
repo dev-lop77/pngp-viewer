@@ -321,6 +321,34 @@ if (import.meta.env.DEV) {
     getPoiIndex: () => poiIndex,
     getWildlife: () => wildlife, // loads late, so a getter rather than the value
   };
+
+  // 'G' stands next to the nearest animal, cycling species on each press. Purely
+  // a testing aid, and only reachable in dev: judging the animals needs a real
+  // browser (headless cannot rate how they read or how the fox's approach feels),
+  // and without this that means hunting a 25 cm squirrel across the whole park.
+  let goSpecies = 0;
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'KeyG' || !wildlife) return;
+    const el = document.activeElement;
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA')) return;
+    const name = wildlife.species[goSpecies % wildlife.species.length];
+    goSpecies += 1;
+    const found = wildlife.findNearest(name, camera.position.x, camera.position.z);
+    if (!found) {
+      devNoteEl.textContent = `no ${name} found within reach`;
+      return;
+    }
+    // 18 m off, which is outside every reaction radius except the fox's curiosity -
+    // so the animal is undisturbed when you arrive and you can then walk in.
+    const angle = Math.atan2(camera.position.x - found.x, camera.position.z - found.z);
+    const cx = found.x + Math.sin(angle) * 18;
+    const cz = found.z + Math.cos(angle) * 18;
+    const ground = controls.getGroundHeight?.(cx, cz) ?? 0;
+    camera.position.set(cx, ground + EYE_HEIGHT_M, cz);
+    camera.lookAt(found.x, (controls.getGroundHeight?.(found.x, found.z) ?? ground) + 0.7, found.z);
+    wildlife.update(1 / 60, camera); // materialise the herd before the next frame draws
+    devNoteEl.textContent = `${name}: 18 m ahead (it was ${(found.distanceM / 1000).toFixed(1)} km away)`;
+  });
 }
 
 window.addEventListener('resize', () => {
@@ -359,6 +387,7 @@ let fpsAccum = 0;
 // spikes when a jump is seen names the cause. Built from JS rather than
 // index.html so it cannot reach a production build at all.
 let lookDiagEl = null;
+let devNoteEl = null; // separate from the peaks line, which is rewritten at 4 Hz
 if (import.meta.env.DEV) {
   lookDiagEl = document.createElement('div');
   lookDiagEl.id = 'look-diag';
@@ -366,6 +395,14 @@ if (import.meta.env.DEV) {
     + 'background:rgba(10,14,20,0.55);border-radius:4px;color:#ffd479;'
     + 'font:11px/1.4 -apple-system,system-ui,sans-serif;pointer-events:none;';
   fpsEl.after(lookDiagEl);
+
+  devNoteEl = document.createElement('div');
+  devNoteEl.id = 'dev-note';
+  devNoteEl.style.cssText = 'position:fixed;top:52px;right:10px;padding:3px 7px;'
+    + 'background:rgba(10,14,20,0.55);border-radius:4px;color:#9fe0a0;'
+    + 'font:11px/1.4 -apple-system,system-ui,sans-serif;pointer-events:none;';
+  devNoteEl.textContent = 'G: go to the next species';
+  lookDiagEl.after(devNoteEl);
 }
 
 // Phase 5 nav HUD (docs/ARCHITECTURE.md §7): heading compass, live lat/lon +
