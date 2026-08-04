@@ -5,10 +5,11 @@
 //
 // A first probe established that the angle maths was never the problem: twelve
 // identical synthetic 5 px events each moved pitch by exactly 0.572958 deg, no
-// roll, no yaw cross-talk. The unevenness was that rotation was applied the
-// instant an event arrived, so a frame receiving two events turned twice as far
-// as one receiving one. This test therefore checks the three properties the fix
-// depends on, none of which are about linearity:
+// roll, no yaw cross-talk (and tools/dev/probe-pitch-sweep.mjs later showed the
+// same across the entire pitch range). The unevenness was that rotation was
+// applied the instant an event arrived, so a frame receiving two events turned
+// twice as far as one receiving one. This test therefore checks the four
+// properties the fix depends on, none of which are about linearity:
 //
 //   1. a burst of input is SPREAD over frames, not applied in one jump;
 //   2. no input is lost or amplified - the view ends up exactly where the total
@@ -17,6 +18,10 @@
 //      at exactly +/-90 deg lands on the YXZ euler singularity, where roll is
 //      forced to zero and yaw is re-derived from another matrix branch, which
 //      snaps the view sideways. controls.js clamps just inside for that reason.
+//   4. a pointer warp is discarded and a fast flick is not (added 2026-08-04,
+//      once the user's reading identified the warp as the remaining cause). Both
+//      directions matter: a filter that ate real flicks would be worse than the
+//      jump it fixes.
 //
 // Usage: tools/dev/start-dev.sh && node tools/test-mouselook.mjs
 
@@ -87,14 +92,44 @@ const result = await page.evaluate(async ({ sensitivity, dt }) => {
   const totalApplied = start.pitch - prev;
   const expectedTotal = BURST_PX * sensitivity;
 
+  // --- 4: the pointer-warp filter, both ways round. The user's own reading on
+  // 2026-08-04 was 230 px in a single event while moving slowly, which is a
+  // compositor recentring the locked pointer; that must be discarded. But a fast
+  // flick also produces large events, and it must NOT be - so the same threshold
+  // is fed a run of them.
+  const spikeStart = angles();
+  const spikeBefore = controls.spikesRejected;
+  for (let i = 0; i < 6; i++) { move(0, -3); await frame(); } // slow, steady, accepted
+  // Let the smoothing finish first. Without this the tail of those six accepted
+  // events keeps arriving during the warp's settle window and reads as the warp
+  // having moved the view - which it did not.
+  await settle(25);
+  const beforeWarp = angles().pitch;
+  move(0, -230); // the warp
+  await settle(20);
+  const afterWarp = angles().pitch;
+  const spikesAfter = controls.spikesRejected;
+
+  // A real flick: a RUN of large events, which must all be applied.
+  const flickStart = angles().pitch;
+  for (let i = 0; i < 8; i++) { move(0, -60); await frame(); }
+  await settle(20);
+  const flickApplied = angles().pitch - flickStart;
+  const flickRejected = controls.spikesRejected - spikesAfter;
+
   // --- 3: shove into the pitch limit and check the yaw holds still.
   const beforeLimit = angles();
-  for (let i = 0; i < 10; i++) move(0, 4000); // far past 90 deg
+  // 100 px per frame rather than one 4000 px event. A single delta that large is
+  // now discarded as a pointer warp, which quietly turned this whole check into a
+  // no-op: it read 54.77 deg instead of the clamp and passed anyway. 100 px is
+  // under SPIKE_FLOOR_PX, so it is always accepted, and 60 of them is 12 rad -
+  // still far past the limit.
+  for (let i = 0; i < 60; i++) { move(0, 100); await frame(); }
   await settle(40);
   const atLimit = angles();
 
   // And back up the other way, same check.
-  for (let i = 0; i < 20; i++) move(0, -4000);
+  for (let i = 0; i < 120; i++) { move(0, -100); await frame(); }
   await settle(40);
   const atTopLimit = angles();
 
@@ -102,6 +137,14 @@ const result = await page.evaluate(async ({ sensitivity, dt }) => {
     perFrame,
     totalApplied,
     expectedTotal,
+    warp: {
+      pitchMovedDeg: ((afterWarp - beforeWarp) * 180) / Math.PI,
+      rejected: spikesAfter - spikeBefore,
+      slowMovedDeg: ((beforeWarp - spikeStart.pitch) * 180) / Math.PI,
+      flickAppliedDeg: (flickApplied * 180) / Math.PI,
+      flickExpectedDeg: ((8 * 60 * sensitivity) * 180) / Math.PI,
+      flickRejected,
+    },
     framesToSpread: perFrame.filter((d) => Math.abs(d) > expectedTotal * 0.01).length,
     largestSingleFrame: Math.max(...perFrame.map(Math.abs)),
     limit: {
@@ -143,6 +186,32 @@ if (result.largestSingleFrame > result.expectedTotal * 0.75) {
 // 2. Conserved: the camera must land exactly where the input asked.
 if (Math.abs(result.totalApplied - result.expectedTotal) > result.expectedTotal * 0.02) {
   console.log('\nFAIL: total rotation does not match the input - movement is being lost or amplified.');
+  failures++;
+}
+
+const W = result.warp;
+console.log(`\npointer-warp filter:`);
+console.log(`  six slow 3 px events turned the view ${W.slowMovedDeg.toFixed(4)} deg`);
+console.log(`  one 230 px warp then turned it ${W.pitchMovedDeg.toFixed(4)} deg, and ${W.rejected} event(s) were rejected`);
+console.log(`  a run of eight 60 px events applied ${W.flickAppliedDeg.toFixed(3)} deg of ${W.flickExpectedDeg.toFixed(3)} asked, ${W.flickRejected} rejected`);
+
+// The warp must contribute nothing at all, not merely less.
+if (W.rejected !== 1) {
+  console.log(`\nFAIL: the 230 px warp was not rejected exactly once (${W.rejected}).`);
+  failures++;
+}
+if (Math.abs(W.pitchMovedDeg) > 1e-6) {
+  console.log(`\nFAIL: the warp still turned the view by ${W.pitchMovedDeg.toFixed(4)} deg.`);
+  failures++;
+}
+// And a genuine fast flick must survive intact - a filter that eats those would
+// be worse than the jump it fixes.
+if (W.flickRejected !== 0) {
+  console.log(`\nFAIL: ${W.flickRejected} event(s) of a real fast flick were rejected as warps.`);
+  failures++;
+}
+if (Math.abs(W.flickAppliedDeg - W.flickExpectedDeg) > W.flickExpectedDeg * 0.02) {
+  console.log('\nFAIL: a fast flick was not applied in full.');
   failures++;
 }
 

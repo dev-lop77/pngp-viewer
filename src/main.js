@@ -449,7 +449,10 @@ renderer.setAnimationLoop(() => {
       lookDiagEl.textContent = `look peaks/3s: ${d.eventPx.value.toFixed(0)} px/event`
         + ` · ${d.eventsPerFrame.value.toFixed(0)} ev/frame`
         + ` · ${d.frameMs.value.toFixed(0)} ms/frame`
-        + ` · ${d.stepDeg.value.toFixed(2)}°/frame`;
+        + ` · ${d.stepDeg.value.toFixed(2)}°/frame`
+        // The warp filter's own report: how many pointer warps it has thrown away
+        // and how big the worst recent one was.
+        + ` · warps ${controls.spikesRejected} (worst ${d.spikePx.value.toFixed(0)} px)`;
     }
 
     if (originReady) {

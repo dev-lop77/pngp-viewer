@@ -59,6 +59,37 @@ const MOUSE_SENSITIVITY = 0.002; // rad/px, three's own value - keeps the establ
 const LOOK_SMOOTHING_S = 0.045;
 const MAX_PITCH_RAD = Math.PI / 2 - 0.002; // just inside the pole - see cause 3 above
 
+// Cause 2, finally measured (2026-08-04). With the instrumentation in place the
+// user looked up slowly until the jump happened and read off:
+//
+//     230 px/event · 34 ms/frame · 20.40 deg/frame, at pitch +55 deg
+//
+// 230 px in ONE mousemove event, where slow movement is 1-5. A queue of small
+// events cannot produce that - each event carries its own delta - so this is the
+// platform reporting a pointer warp as movement: under pointer lock the physical
+// pointer still travels, and when it reaches the edge of the screen the compositor
+// recentres it and the jump comes through as one enormous delta. 230 px x 0.002
+// rad/px = 26 deg, which is the 20.40 deg that landed in a single frame. It
+// happens at whatever pitch the pointer happens to hit the edge at, which is why
+// it read as "at a certain point" rather than at a fixed angle.
+//
+// The same reading rules the other candidate OUT: 34 ms was the worst frame in
+// three seconds, so nothing hitched and no queue built up. No dt cap is needed.
+//
+// A warp carries no real movement, so it is dropped rather than clamped -
+// clamping would still turn the view by the cap. The test is deliberately two
+// sided, because the difference between a warp and a fast flick is not magnitude
+// alone: a warp is one isolated huge event, a flick is a RUN of large ones.
+//  - the floor keeps slow movement safe: 120 px is 13.7 deg in a single event,
+//    far more than a hand produces between two polls;
+//  - the adaptive term keeps fast movement safe: once a flick is under way the
+//    typical magnitude has risen, so its own events stay well under the bar.
+const SPIKE_FLOOR_PX = 120;
+const SPIKE_FACTOR = 8;
+// How fast the "typical" magnitude forgets. Without decay, a warp arriving just
+// after a fast flick would be measured against the flick and let through.
+const TYPICAL_DECAY_S = 0.5;
+
 // Highest value seen in roughly the last few seconds. Two buckets rather than
 // one so a readout doesn't blink back to zero the instant a window rolls over -
 // which would make a peak easy to miss at the 4 Hz the HUD refreshes at.
@@ -124,8 +155,14 @@ export class WalkFlyControls {
       eventsPerFrame: new PeakWindow(), // events queued into one frame - a hitch
       frameMs: new PeakWindow(),      // longest frame - the hitch itself
       stepDeg: new PeakWindow(),      // biggest pitch change applied in one frame
+      spikePx: new PeakWindow(),      // biggest delta the warp filter threw away
     };
     this._eventsSinceFrame = 0;
+    // Rolling magnitude of accepted movement, and how many warps have been
+    // rejected in total - exposed so the fix can be seen working rather than
+    // taken on trust.
+    this._typicalPx = 0;
+    this._spikesRejected = 0;
 
     domElement.addEventListener('click', () => {
       if (document.pointerLockElement !== domElement) domElement.requestPointerLock();
@@ -146,10 +183,20 @@ export class WalkFlyControls {
     // must not fight main.js's flyTo() animation.
     domElement.ownerDocument.addEventListener('mousemove', (e) => {
       if (!this._enabled || !this.plc.isLocked) return;
+      const magnitude = Math.hypot(e.movementX, e.movementY);
+      this.lookDiag.eventPx.add(magnitude);
+      this._eventsSinceFrame += 1;
+
+      // A pointer warp, not a hand: drop it and leave the view where it was.
+      if (magnitude > Math.max(SPIKE_FLOOR_PX, SPIKE_FACTOR * this._typicalPx)) {
+        this._spikesRejected += 1;
+        this.lookDiag.spikePx.add(magnitude);
+        return;
+      }
+      this._typicalPx += (magnitude - this._typicalPx) * 0.25;
+
       this._pendingYaw -= e.movementX * MOUSE_SENSITIVITY;
       this._pendingPitch -= e.movementY * MOUSE_SENSITIVITY;
-      this.lookDiag.eventPx.add(Math.max(Math.abs(e.movementX), Math.abs(e.movementY)));
-      this._eventsSinceFrame += 1;
     });
 
     window.addEventListener('keydown', (e) => {
@@ -168,6 +215,12 @@ export class WalkFlyControls {
 
   get locked() {
     return this.plc.isLocked;
+  }
+
+  // Total pointer warps discarded since load - a lifetime count, not a window, so
+  // the readout can be checked after the fact rather than caught in the act.
+  get spikesRejected() {
+    return this._spikesRejected;
   }
 
   // Also gates PointerLockControls' own mouse-look listener, not just this
@@ -217,6 +270,9 @@ export class WalkFlyControls {
     this.lookDiag.eventsPerFrame.add(this._eventsSinceFrame);
     this._eventsSinceFrame = 0;
     for (const peak of Object.values(this.lookDiag)) peak.tick(dt);
+    // Forget the recent magnitude when the hand stops, so the spike floor governs
+    // again rather than a stale flick's threshold.
+    this._typicalPx *= Math.exp(-dt / TYPICAL_DECAY_S);
 
     // Deliberately NOT gated on this.locked: keyboard movement works with or
     // without pointer lock, only mouse-look needs the lock. Requiring it

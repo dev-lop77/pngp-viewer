@@ -56,10 +56,45 @@ synthetic 900 px event moved it to `+90°` (the clamp) while the diag line repor
 `900 px/event` and `72.13°/frame`. The instrument demonstrably catches the
 symptom. `test-mouselook.mjs` and the sweep both still pass with it in place.
 
-**What the user needs to do:** with the dev server up, look up slowly until the
-jump happens, then read the four peaks. `NN px/event` far above the others means
-a warp spike; `ms/frame` in the hundreds means a hitch. Either way `°/frame` is
-the size of the jump itself.
+### The user's reading, and the fix that followed from it
+They looked up slowly until the jump happened and read off:
+
+    230 px/event · 34 ms/frame · 20.40 deg/frame, at pitch +55 deg
+
+That settles it. **230 px in a single mousemove event**, where slow movement is
+1-5 - and a queue of small events cannot produce that, because each event carries
+its own delta. So it is the platform reporting a pointer warp as movement: under
+pointer lock the physical pointer still travels, and when it reaches the edge of
+the screen the compositor recentres it and the jump arrives as one enormous delta.
+230 px x 0.002 rad/px = 26 deg, which is the 20.40 deg that landed in one frame.
+It happens at whatever pitch the pointer happens to hit the edge at, which is
+exactly why it read as "at a certain point" rather than at a fixed angle.
+
+The same reading **rules the other candidate out**: 34 ms was the worst frame in
+three seconds, so nothing hitched and no queue built up. No dt cap was added -
+there was no evidence for one.
+
+**The filter.** A warp carries no real movement, so it is dropped rather than
+clamped (clamping would still turn the view by the cap). The threshold is two
+sided, because magnitude alone does not separate a warp from a fast flick - a warp
+is one isolated huge event, a flick is a *run* of large ones:
+`reject if magnitude > max(120 px, 8 x recent typical magnitude)`. The 120 px floor
+keeps slow movement safe (120 px is 13.7 deg in one event, far more than a hand
+produces between two polls); the adaptive term keeps fast movement safe, since by
+the time a flick is under way its own typical magnitude has risen. The typical
+magnitude decays with a 0.5 s time constant, so a warp arriving just after a flick
+is not measured against the flick.
+
+`controls.spikesRejected` counts them and the dev HUD shows
+`warps N (worst NNN px)`, so the fix can be watched working rather than trusted.
+
+**Tested in both directions**, which caught a real regression: the 230 px warp now
+turns the view **0.0000 deg** and is rejected exactly once, while a run of eight
+60 px events applies 54.995 of the 55.004 deg asked with **0 rejected**. And the
+filter silently broke the existing pitch-limit check, which drove the clamp with a
+single 4000 px event - now discarded as a warp, so that check was reading 54.77 deg
+instead of the clamp and passing anyway. It drives 100 px per frame instead and is
+back to measuring +/-89.8854 deg.
 
 ### The dev-only 'G' key, added because the test was impractical otherwise
 The user asked how to actually run these tests, and for the animals the honest
@@ -207,9 +242,11 @@ lowering it below ~0.9 is what the existence caveat above pays for, so it is the
 user's call rather than a free tweak.
 
 ### Next steps
-1. **Read the four look peaks and say which one spikes** (see above). That is the
-   whole remaining diagnosis; the fix follows from the answer and is small either
-   way - reject the spike, or cap the dt the smoothing sees.
+1. **Confirm the warp filter in a real browser** - look up slowly past where the
+   jump used to happen. It should not jump, and the dev HUD's `warps N` should
+   tick up at that moment (that pairing is the confirmation; the count alone could
+   be anything). Also worth a fast flick or two, to be sure none are being eaten:
+   the test says none are, but feel is the user's call.
 2. **Judge the animals in a real browser.** Five species now: do they read as
    ibex/chamois/marmots/foxes/squirrels at walking distance, is the density
    plausible, does a fox walking up to you land as intended, and are the squirrels
