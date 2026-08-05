@@ -2,11 +2,185 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## Status as of 2026-08-05
+
+**Phase 6 is closed.** The user picked ambient audio out of the four things left
+open at the last session's end (the other three: the save/autosave discussion,
+the birds, and phase-7 polish - all still open, and the first two are still
+theirs to open). Audio was the last item phase 6 needed, so with it done the
+roadmap in `docs/ARCHITECTURE.md` §7 has phases 0-6 complete and only phase 7
+remaining.
+
+**Not yet judged by the user.** Everything below is measured, but how a mix
+*sounds* is exactly the class of question headless has been wrong about four
+times (brightness, frame rate, input feel - now loudness and balance). The
+numbers say each layer responds to the right thing by the right amount; they
+cannot say whether the wind is too loud at 3,000 m or the river too quiet at the
+trailhead. That is the first thing to ask next session.
+
+### Done: procedural ambient audio (`src/audio.js`)
+No audio files at all - one shared pink-noise buffer read at six different rates
+through six filter/gain chains, plus oscillators for the alarm calls. Procedural
+was the right call for two reasons beyond neatness: a field recording is one more
+licence to read before shipping (and this project has spent days on exactly that,
+see the DTM licences), and ambience loops long enough not to *read* as loops are
+megabytes on a deploy whose bundle size is already a phase-7 item. The whole
+feature is one 430-line module and zero bytes of asset.
+
+The design principle is the one the visuals already follow: **every gain is
+driven by something real in the scene**, never by a timer. That is what stops
+ambience sounding like a loop - it changes because you walked somewhere.
+
+| layer | is | driven by |
+|---|---|---|
+| windLow | the body of the wind | altitude + ridge exposure, rain, canopy shelter |
+| windHigh | its hiss over rock and grass | the same, plus fly-mode airspeed |
+| rustle | leaves and needles | canopy x wind |
+| waterLow | the roar of moving water | distance to the nearest lake/river/waterfall |
+| waterHigh | its splash and hiss | the same, absorbed faster with distance |
+| rain | precipitation | `weather.mod.rain` |
+| calls | marmot and chamois alarm whistles | `wildlife.js`'s new `onAlarm` event |
+
+Four choices worth recording, because each of them is a place the obvious version
+would have been worse:
+
+1. **Exposure, not just altitude.** The same 2,800 m is a sheltered basin or a
+   col, and only the ground *around* you says which: four height samples 90 m out
+   compared against the ground under the camera. It uses `sampleRenderedHeight`,
+   the drawn surface, like everything else that has to agree with what the user
+   sees.
+2. **A wood is a windbreak.** Canopy raises the rustle and *lowers* the wind body
+   in the same move, which is why walking into a forest sounds like walking into
+   a forest instead of like adding a layer.
+3. **Water is indexed by earshot, from the same manifest `water.js` draws.**
+   Rivers and lake shores are resampled to 40 m *before* indexing: OSM river
+   vertices here are a median 19 m apart but reach **242 m**, so nearest-vertex
+   would have reported a stream 120 m away while you stood on its bank. A
+   waterfall's loudness comes from its own `dropM` (Entrelor's 78 m against
+   Lillaz's 12 m), which the manifest already carried.
+4. **An alarm call is an event, not a state.** `wildlife.js` now reports the
+   moment a fleeing animal takes fright (`onAlarm`) and re-arms only once it has
+   been left alone; `audio.js` decides which species has a call (marmots and
+   chamois - a marmot's whistle is *the* sound of these meadows), whether it is
+   within earshot, and which side it came from. Ibex, foxes and squirrels stay
+   silent on purpose: a curious fox arriving in silence is the point of it.
+
+Also: snow muffles everything through a master lowpass, which is the single most
+recognisable thing about falling snow, and lakes get a slow lapping swell that
+torrents deliberately do not.
+
+**Deliberately not built**: birdsong (the user has an unopened topic about birds -
+pre-empting it with sound would be the wrong order) and footsteps (not ambience,
+and a walking sound is a much bigger commitment than it looks).
+
+### How it was verified, and why this method was available at all
+`tools/test-audio.mjs` renders the **real graph** into an `OfflineAudioContext` -
+same nodes, same driving code, no audio device and no real-time dependency - and
+measures the power spectrum of the result with a Welch periodogram (a small FFT
+written into the test). So every assertion is about energy in a frequency band,
+which is as close to "what you would hear" as a test can get, and none of it
+depends on frame timing. `createAudio()` takes its own `random`, so the noise
+buffer, the gusts and the whistle repeats are seeded and identical run to run.
+18 checks, all passing. The measurements:
+
+- **wind**: an exposed 3,200 m summit against a sheltered 1,400 m valley floor -
+  **x37 in the 80-250 Hz band, x78 in 600-1600 Hz**.
+- **canopy**: same ground, same weather - **rustle x12** with full canopy, and the
+  wind body **x0.21**, i.e. the windbreak is real and measured.
+- **water**: standing 25 m from a 60 m waterfall against 5 km away - **x62 in the
+  low band**, and the gains are *exactly* 0 at 5 km rather than merely small.
+- **weather**: rain **x81** in its own band; falling snow cuts 6-10 kHz to **43%**.
+- **calls**: a marmot at 30 m is **x59** in the 2.6-3.8 kHz band; an ibex at 30 m
+  plays nothing (no call for the species); a marmot at 900 m plays nothing (out of
+  earshot); a call from the right lands **118:1** right-to-left and from the left
+  **1:100**; four animals bolting on the same frame play **one** call, not a chord.
+- **mute** is silence, not "quiet": rms 0.0.
+- **cost**: the earshot query, the only new per-tick data structure, is
+  **0.0026 ms** and runs 8 times a second. The five height samples are the same
+  call `wildlife.js` already makes dozens of times per frame.
+
+Then the same test drives **the real page with a real `AudioContext`**, because
+the offline render deliberately bypasses the two things only a live context has -
+the autoplay policy and `main.js`'s wiring. It confirms: no context exists before
+the first click; after it the graph is running at 44.1 kHz; at the Le Pont spawn
+the viewer is driving wind 0.29 and water 0.113/0.148 from **the Savara 96 m
+away**; walking three seconds moves that to 83 m and changes the water gains; and
+'M' mutes with the checkbox following.
+
+That last one is the nicest thing about where the spawn ended up: the trailhead
+the viewer opens at is 80 m from a torrent, so the first thing you hear is the
+Savara.
+
+### A landmine, of a shape this project has hit before
+**An `AudioParam`'s `.value` ignores scheduled events until they are processed.**
+The first version of the diagnostics read the gains back off the params, and in
+an offline render - where nothing has been processed yet - they all read **0.00**
+for a graph that then rendered water perfectly audibly. The rendered audio was
+right and the number was wrong, which is the same failure mode as the
+`onBeforeCompile` shader patch that reported nothing amiss for five phases. Fixed
+by recording the gains we *asked for*. The general lesson is the one already in
+this file: a readback is not evidence unless you know when it is sampled.
+
+### What the user gets in the UI
+"Ambient sound (M)" sits with Time of day and Weather in `#env-controls`, because
+like them it changes what the park is like rather than how the app is used. It is
+**on by default** but silent until the first click anywhere - the browser will not
+allow otherwise, and that click already exists to grab pointer lock, so the
+ambience starts with the first look around instead of needing its own "enable
+sound" step. `M` toggles it, and the checkbox blurs itself on change for the same
+reason the credits button does: `controls.js` ignores movement keys while a form
+control has focus, so a focused checkbox would silently stop W/S working.
+
+There is a dev-only third HUD line showing what the ambience is being driven by
+(wind strength and its inputs, canopy, water gains, distances, call count).
+Audio is the first feature here with no visual at all, so without it there is no
+way to tell a layer that is correctly silent from one that is broken.
+
+### Next steps
+1. **Ask the user to listen** - the mix is the open question: wind level high up,
+   river level at the trailhead, whether the marmot whistle startles or charms,
+   and whether default-on is right. Every number worth tuning is a named constant
+   at the top of `src/audio.js` (`WATER_KINDS`, `CALLS`, `MASTER_GAIN`) or one of
+   the six gain expressions in `tick()`.
+2. **Discuss save/autosave of the position**, then **birds** - unchanged from
+   yesterday, both still the user's to open, both still recorded in the
+   2026-08-04 section below with the technical context worth having first.
+3. **Phase 7 polish** is now the only phase left: LOD popping/geomorphing,
+   one-texel normals at any depth, the >500 kB bundle (now 767 kB / 213 kB
+   gzipped; `audio.js` minifies to 7.3 kB of that, measured with esbuild), and the
+   mobile pass - pointer lock + WASD has no touch equivalent, and neither does a
+   keyboard mute.
+4. **Republish when wanted** - the live site is well behind `main` now.
+   `tools/dev/deploy.sh` does the whole thing.
+5. Deferred by the user, do not re-raise unprompted: the satellite/orthophoto
+   basemap.
+
+Possible follow-ups nobody has asked for, listed so they are not mistaken for
+gaps: cowbells and church bells in the inhabited valleys, wind direction from the
+camera's heading rather than an ambient bed, and katabatic valley wind at night
+(real, but probably too subtle to hear).
+
+### How to resume
+Everything from 2026-08-05 is committed on `main`. Run the tests - they are quick,
+and `test-audio` needs a **dev** server like the others (`tools/dev/start-dev.sh`):
+
+- `node tools/test-audio.mjs` after touching `src/audio.js`, the hydrology
+  manifest's shape, or `wildlife.js`'s alarm event.
+- `node tools/test-wildlife.mjs` after touching the animals - it also now reports
+  `alarmed` per animal in `snapshot()`.
+- the rest of the list in the 2026-08-04 section below is unchanged.
+
+The three landmines listed at the end of that section (`onBeforeCompile` gets
+unresolved includes, albedo is not appearance, headless is SwiftShader) all still
+apply, and the `AudioParam.value` one above joins them.
+
 ## Status as of 2026-08-04
 
 **Session ended with a clean working tree and every test passing. "Next steps" and
-"How to resume" near the end of this section are current as of the close; everything
-between here and them is the day in order.**
+"How to resume" near the end of this section were current as of that close - they
+are superseded by the 2026-08-05 section above, except where it says otherwise
+(the deferred save/autosave and birds notes below are still the live version).
+Everything between here and them is that day in order.**
 
 Headline: **the mouse-look jump is fixed and confirmed**, and **phase 6's wildlife
 is done and accepted** - five species, not three, because the user asked for foxes

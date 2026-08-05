@@ -8,6 +8,7 @@ import { loadWater } from './water.js';
 import { loadForest, createCoverageSampler } from './forest.js';
 import { createVegetation } from './vegetation.js';
 import { createWildlife } from './wildlife.js';
+import { createAudio } from './audio.js';
 import { installAtmosphere } from './atmosphere.js';
 import { Lighting } from './lighting.js';
 import { Weather } from './weather.js';
@@ -54,6 +55,13 @@ document.body.appendChild(labelRenderer.domElement);
 // default is walking at eye height, 'F' toggles a faster free-fly mode, no
 // scroll/zoom in either (see src/controls.js).
 const controls = new WalkFlyControls(camera, renderer.domElement);
+
+// Procedural ambient audio (phase 6, src/audio.js). Created now but silent: a
+// browser will not let an AudioContext start outside a user gesture, so the
+// graph is built by the first audio.start() call below. Its inputs (ground
+// height, canopy, hydrology) are attached as each loader lands, exactly like the
+// forest mask is - so load order does not matter here either.
+const audio = createAudio();
 
 // Real lights, moved/recolored per time-of-day preset by lighting.js below -
 // unlike the reference project's unlit/baked-tint terrain, ours uses a real
@@ -126,6 +134,9 @@ const terrainPromise = loadTerrain().then((result) => {
   // fly-to on it) must use the height the mesh actually draws, or it ends up
   // under the ground or floating above it - see terrain.js for why they differ.
   controls.getGroundHeight = sampleRenderedHeight;
+  // Same sampler the walking camera stands on: the wind is driven by the height
+  // and the exposure of the ground you are actually on (src/audio.js).
+  audio.setSamplers({ sampleGroundHeight: sampleRenderedHeight });
   // DEM is a multi-source mosaic (docs/ARCHITECTURE.md §3). All three sources
   // are CC BY 4.0 and all three attributions now ship - the VDA and Piemonte
   // licences were verified from their own licence documents on 2026-08-03,
@@ -174,11 +185,20 @@ Promise.all([terrainPromise, forestPromise]).then(([terrain, forest]) => {
   // stand in JavaScript, then keeps moving those animals from frame to frame.
   // sampleRenderedHeight for the same reason the walking camera uses it - an
   // animal has to stand on the surface that is actually drawn.
+  const canopyAt = createCoverageSampler({ manifest: forest.manifest, texture: forest.texture });
   wildlife = createWildlife({
     sampleGroundHeight: terrain.sampleRenderedHeight,
-    canopyAt: createCoverageSampler({ manifest: forest.manifest, texture: forest.texture }),
+    canopyAt,
+    // An alarm whistle is the one wildlife sound that carries (src/audio.js):
+    // wildlife.js reports the event, audio.js decides which species has a call
+    // and whether it is within earshot.
+    onAlarm: (event) => audio.alarm(event),
   });
   scene.add(wildlife.object);
+
+  // The same canopy sampler drives the leaf-rustle layer - standing in a wood
+  // sounds different from standing on the ridge above it.
+  audio.setSamplers({ canopyAt });
 });
 
 const trailsPromise = loadTrails().then((result) => {
@@ -312,6 +332,9 @@ let waterUpdate = null;
 loadWater().then(({ group, manifest, update }) => {
   scene.add(group);
   waterUpdate = update;
+  // Lakes, rivers and waterfalls become audible from the same geometry that
+  // draws them - see buildWaterEarshot() in src/audio.js.
+  audio.setWater(manifest);
   creditLines.osm =
     `${manifest.source.attribution} ` +
     `<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">${manifest.source.license}</a>`;
@@ -326,6 +349,11 @@ loadWater().then(({ group, manifest, update }) => {
 // re-engaging pointer lock.
 renderer.domElement.addEventListener('click', () => {
   document.getElementById('poi-info').style.display = 'none';
+  // The gesture the autoplay policy asks for. This click already exists and is
+  // already the first thing anyone does (it grabs pointer lock), so the ambience
+  // starts with the first look around rather than needing its own "enable sound"
+  // step. audio.start() is idempotent.
+  if (audio.enabled) audio.start();
 });
 
 // Dev-only handle for the test tools. Nothing in the app reads this, and Vite
@@ -335,7 +363,7 @@ renderer.domElement.addEventListener('click', () => {
 // re-deriving the whole scene in a test page, which stops testing the real one.
 if (import.meta.env.DEV) {
   window.__pngp = {
-    camera, controls, scene, renderer, lighting,
+    camera, controls, scene, renderer, lighting, audio,
     getPoiIndex: () => poiIndex,
     getWildlife: () => wildlife, // loads late, so a getter rather than the value
   };
@@ -389,6 +417,27 @@ envWeather.addEventListener('change', () => {
   weather?.set(Number(envWeather.value)); // no-op if terrain (and so weather's cloud deck sizing) hasn't loaded yet
 });
 
+// Ambient sound: the checkbox and 'M' are two views of the same state, so both
+// paths go through here.
+const envAudio = document.getElementById('env-audio');
+function setAudioEnabled(on) {
+  audio.setEnabled(on);
+  envAudio.checked = on;
+}
+envAudio.addEventListener('change', () => {
+  setAudioEnabled(envAudio.checked);
+  // Same reason the credits toggle blurs itself: controls.js ignores the
+  // movement keys while a form control has focus, so leaving this checked box
+  // focused would silently stop W/S working.
+  envAudio.blur();
+});
+window.addEventListener('keydown', (event) => {
+  if (event.code !== 'KeyM') return;
+  const el = document.activeElement;
+  if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA')) return;
+  setAudioEnabled(!audio.enabled);
+});
+
 const timer = new THREE.Timer();
 
 const fpsEl = document.getElementById('fps');
@@ -406,6 +455,7 @@ let fpsAccum = 0;
 // index.html so it cannot reach a production build at all.
 let lookDiagEl = null;
 let devNoteEl = null; // separate from the peaks line, which is rewritten at 4 Hz
+let audioDiagEl = null;
 if (import.meta.env.DEV) {
   lookDiagEl = document.createElement('div');
   lookDiagEl.id = 'look-diag';
@@ -421,6 +471,19 @@ if (import.meta.env.DEV) {
     + 'font:11px/1.4 -apple-system,system-ui,sans-serif;pointer-events:none;';
   devNoteEl.textContent = 'G: go to the next species';
   lookDiagEl.after(devNoteEl);
+
+  // What the ambience is currently being driven by. Audio is the one feature so
+  // far with no visual at all, so without this there is no way to tell a layer
+  // that is correctly silent from one that is broken - and "I can't hear
+  // anything" is not a diagnosis (docs/PROGRESS.md's standing rule about
+  // measuring instead of trusting).
+  audioDiagEl = document.createElement('div');
+  audioDiagEl.id = 'audio-diag';
+  audioDiagEl.style.cssText = 'position:fixed;top:74px;right:10px;padding:3px 7px;'
+    + 'background:rgba(10,14,20,0.55);border-radius:4px;color:#9fd0ff;'
+    + 'font:11px/1.4 -apple-system,system-ui,sans-serif;pointer-events:none;'
+    + 'text-align:right;white-space:pre;'; // two lines, laid out by hand
+  devNoteEl.after(audioDiagEl);
 }
 
 // Phase 5 nav HUD (docs/ARCHITECTURE.md §7): heading compass, live lat/lon +
@@ -473,6 +536,24 @@ renderer.setAnimationLoop(() => {
         + ` · warps ${controls.spikesRejected} (worst ${d.spikePx.value.toFixed(0)} px)`;
     }
 
+    if (audioDiagEl) {
+      const a = audio.diag;
+      if (!a.started) {
+        audioDiagEl.textContent = `sound: ${a.enabled ? 'click to start' : 'off'}`;
+      } else {
+        const near = (kind) => {
+          const d = a.water?.[kind]?.distanceM;
+          return d != null && Number.isFinite(d) ? `${Math.round(d)} m` : '-';
+        };
+        audioDiagEl.textContent = `wind ${a.strength.toFixed(2)}`
+          + ` (alt ${a.altitude.toFixed(2)} exp ${a.exposure.toFixed(2)} gust ${a.gust.toFixed(2)})`
+          + ` · canopy ${a.canopy.toFixed(2)}`
+          + `\nwater ${a.gains.waterLow?.toFixed(2)}/${a.gains.waterHigh?.toFixed(2)}`
+          + ` · fall ${near('waterfall')} river ${near('river')} lake ${near('lake')}`
+          + ` · calls ${audio.callsPlayed}`;
+      }
+    }
+
     if (originReady) {
       const { lat, lon } = localToWGS84(camera.position.x, camera.position.z);
       const ground = controls.getGroundHeight?.(camera.position.x, camera.position.z);
@@ -511,6 +592,10 @@ renderer.setAnimationLoop(() => {
     }
   }
   controls.update(timer.getDelta());
+  // After controls: the soundscape is driven by where the camera ended up this
+  // frame and how fast it got there. Self-throttling internally (src/audio.js),
+  // and a no-op until the first click starts the context.
+  audio.update(timer.getDelta(), camera, weather);
   // After controls, before render: the tile set must match where the camera
   // actually ended up this frame, or a fast move shows a hole at its edge.
   terrainUpdate?.(camera);

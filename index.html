@@ -227,7 +227,7 @@
       <div id="poi-info"></div>
     </div>
     <div id="fps"></div>
-    <div id="controls-hint">Click to look around · Esc to release · W/S walk · A/D turn · Q/E sidestep · Shift run · F toggle walk/fly · Space/C up/down while flying · click a name to go there</div>
+    <div id="controls-hint">Click to look around · Esc to release · W/S walk · A/D turn · Q/E sidestep · Shift run · F toggle walk/fly · Space/C up/down while flying · M sound · click a name to go there</div>
     <div id="nav-hud">
       <div id="compass">
         <div class="compass-label n">N</div>
@@ -252,6 +252,11 @@
           <option value="3">Snowfall</option>
         </select>
       </label>
+      <!-- Ambient sound belongs with the other environment controls rather than
+           in its own corner: like time of day and weather it changes what the
+           park is like, not how the app is used. It cannot actually make a sound
+           until the first click anywhere (browser autoplay policy, src/audio.js). -->
+      <label><input id="env-audio" type="checkbox" checked /> Ambient sound (M)</label>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>

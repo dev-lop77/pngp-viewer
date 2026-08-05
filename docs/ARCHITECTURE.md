@@ -573,7 +573,7 @@ user's stated priorities; can reshuffle as we learn more.
 | 3 — Water & animation | **Done, 2026-07-30.** Rivers (main watercourses only, not minor streams — logged scope cut), lakes (≥20m across), waterfalls (hand-curated allowlist incl. Cascate di Lillaz) with shader animation + mist, glaciers as a distinct draped surface. See §4's fetch-hydrology.mjs/build-hydrology.mjs entries and docs/PROGRESS.md for the sizing/decisions behind the scope |
 | 4 — Environment | **Done, 2026-07-31.** Time-of-day slider driving sun position/sky/fog/exposure; weather states (clear → clouds → rain → snow). See §8's lighting.js/atmosphere.js/weather.js entries and docs/PROGRESS.md |
 | 5 — Navigation aids | **Done, 2026-07-31.** Compass HUD, live position readout (lat/lon, elevation, nearest place name). See §8's nav.js entry and docs/PROGRESS.md. **Follow-up the same day**: testing this in a real browser led the user to ask for a bigger change - walk/fly navigation (WASD + pointer-lock mouselook) replacing OrbitControls as the default, since a ground-level "elevation" readout only makes sense once you're actually standing at ground level. See §8's controls.js/poi.js entries |
-| 6 — Life & atmosphere (stretch) | Wildlife (Alpine ibex, chamois, marmots — the park's founding species), procedural ambient audio, huts/hydrology from OSM, treeline vegetation. **Started 2026-08-03, opened with the vegetation at the user's choice** (deferring the imagery question in §12): §5's altitude bands now colour the terrain, and trees are placed from a real OSM canopy mask — see §8's forest.js/vegetation.js and §4's fetch-forest.mjs/build-forest.mjs. Huts landed earlier, with the trailhead allowlist |
+| 6 — Life & atmosphere (stretch) | **Done, 2026-08-05.** Wildlife (Alpine ibex, chamois, marmots — the park's founding species — plus foxes and squirrels, added 2026-08-04 at the user's request), procedural ambient audio, huts/hydrology from OSM, treeline vegetation. **Started 2026-08-03, opened with the vegetation at the user's choice** (deferring the imagery question in §12): §5's altitude bands now colour the terrain, and trees are placed from a real OSM canopy mask — see §8's forest.js/vegetation.js and §4's fetch-forest.mjs/build-forest.mjs. Huts landed earlier, with the trailhead allowlist. Closed by the audio on 2026-08-05 — see §8's audio.js |
 | 7 — Polish | Tune/extend the LOD-tiled terrain from phase 1 if draw distance needs more than one tile (§10: LOD itself is a standing principle from phase 1 on, not deferred - phase 7 is refinement, not the first attempt), mobile pass, optional automated screenshot QA |
 
 ## 8. Module layout
@@ -735,7 +735,35 @@ pngp-viewer/
 │                              camera. Legs swing about the hip in the vertex shader,
 │                              driven by one per-instance float the CPU sets from distance
 │                              travelled, so the gait cannot skate. ~0.026 ms/frame for a
-│                              50-animal population (measured, tools/dev/shoot-wildlife.mjs)
+│                              50-animal population (measured, tools/dev/shoot-wildlife.mjs).
+│                              Reports an onAlarm event when a fleeing animal takes fright,
+│                              which audio.js turns into a whistle - the event is raised
+│                              here because only this module knows the moment, and played
+│                              there because only that one knows which species has a call
+│   ├── audio.js            Done, 2026-08-05 (phase 6, the piece that closes it). Procedural
+│                              ambient soundscape: one shared pink-noise buffer read at six
+│                              different rates through six filter/gain chains, plus
+│                              oscillator alarm whistles. No audio assets at all - a field
+│                              recording would be one more licence to clear (§9) and
+│                              megabytes on a deploy whose bundle is already a phase-7 item.
+│                              Every gain is driven by something real in the scene, which is
+│                              what stops ambience reading as a loop: wind from the DRAWN
+│                              ground's altitude and from exposure (the ground 90 m away
+│                              compared with the ground you are on - the same 2,800 m is a
+│                              sheltered basin or a col), leaf rustle from the OSM canopy
+│                              mask (a wood is also a windbreak, so wind drops as rustle
+│                              rises), water from a spatial-hash "earshot" index built from
+│                              the same hydrology manifest water.js draws, rain and a
+│                              snow-muffling master lowpass from weather.js's mode. The
+│                              water index resamples rivers/shores to 40 m before indexing:
+│                              OSM river vertices are a median 19 m apart but reach 242 m,
+│                              so nearest-vertex would report a stream 120 m away while you
+│                              stand on its bank. Mixing is entirely native nodes on the
+│                              browser's audio thread; our cost is one tick at 8 Hz (a
+│                              canopy lookup, five height samples, one 3x3 hash query at
+│                              0.003 ms). Nothing exists until start() is called from a
+│                              real user gesture, per the autoplay policy - main.js uses
+│                              the click that already grabs pointer lock
 │   └── ui/                 Still not created - phase 4's and phase 5's HUD controls
 │                              (time-of-day slider, weather select, compass/position
 │                              readout) all turned out small enough to wire directly in

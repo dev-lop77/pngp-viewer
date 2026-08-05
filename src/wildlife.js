@@ -534,7 +534,11 @@ function speciesMesh(spec) {
   return mesh;
 }
 
-export function createWildlife({ sampleGroundHeight, canopyAt }) {
+// onAlarm is optional: src/audio.js turns a flee reaction into an actual alarm
+// whistle. It is reported here rather than played here because only this module
+// knows the moment an animal takes fright, and only audio.js knows which species
+// has a call and whether it is within earshot.
+export function createWildlife({ sampleGroundHeight, canopyAt, onAlarm = null }) {
   const group = new THREE.Group();
   group.name = 'wildlife';
 
@@ -664,6 +668,19 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
     const fromCamZ = a.z - camZ;
     const unit = camDist > 1e-3 ? 1 / camDist : 0;
     a.watching = false;
+
+    // Taking fright is an EVENT, not a state: an alarm call happens once, at the
+    // moment the animal bolts, and re-arms only after it has been left alone.
+    // Reported for every fleeing species; audio.js gives marmots and chamois a
+    // whistle and lets the rest flee in silence.
+    if (spec.reaction === 'flee') {
+      if (!a.alarmed && camDist < spec.alertM) {
+        a.alarmed = true;
+        onAlarm?.({ species: spec.name, x: a.x, z: a.z, distanceM: camDist });
+      } else if (a.alarmed && camDist > spec.alertM * 1.4) {
+        a.alarmed = false;
+      }
+    }
 
     // Foxes: the bold ones close the distance instead of opening it - but they
     // MAINTAIN a distance rather than merely arriving at one. The user's verdict on
@@ -906,6 +923,7 @@ export function createWildlife({ sampleGroundHeight, canopyAt }) {
             swing: a.swing,
             bold: a.bold,
             watching: a.watching,
+            alarmed: !!a.alarmed,
             drawn: mesh.count,
           };
           if (spec.reaction === 'hide') {
