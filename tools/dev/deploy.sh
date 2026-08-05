@@ -40,14 +40,33 @@ fi
 find "$WORKTREE" -mindepth 1 -maxdepth 1 ! -name .git ! -name .nojekyll -exec rm -rf {} +
 cp -r dist/. "$WORKTREE"/
 touch "$WORKTREE/.nojekyll"
+# The README ships with the site (user's decision, 2026-08-05). It is the only
+# document that does: gh-pages is the repository's default branch, so this is what
+# makes the GitHub page say what the project is and link to the live viewer,
+# without reopening the "sources stay local" decision.
+cp README.md "$WORKTREE"/
 
-# Refuse to publish anything that isn't the built site. Cheap insurance against
-# a future change to dist/ or a stray copy landing in the worktree.
+# Refuse to publish anything that isn't the built site. Two independent checks,
+# because the single extension blacklist this replaces had already gone wrong:
+# it refused every *.png, and the OSM canopy mask (data/forest.<hash>.png) is a
+# legitimate data asset - so from the moment the vegetation landed the guard would
+# have blocked every deploy, which is exactly the wrong failure direction for
+# insurance. A whitelist of what the build produces cannot rot that way.
+ALLOWED_TOP='index\.html|assets|data|\.nojekyll|README\.md|\.git'
+unexpected="$(find "$WORKTREE" -mindepth 1 -maxdepth 1 -printf '%f\n' | grep -Ev "^($ALLOWED_TOP)$" || true)"
+if [ -n "$unexpected" ]; then
+  echo "REFUSING TO DEPLOY: unexpected entries at the site root - a stray copy of the sources?" >&2
+  echo "$unexpected" >&2
+  exit 1
+fi
+# And nothing that carries source code may appear anywhere inside it. *.map is in
+# the list deliberately: a sourcemap publishes the sources it maps back to, so
+# turning on build.sourcemap would quietly undo the whole decision.
 if find "$WORKTREE" -path "$WORKTREE/.git" -prune -o \
-     \( -name '*.mjs' -o -name '*.sh' -o -name '*.md' -o -name '*.png' \) -print | grep -q .; then
-  echo "REFUSING TO DEPLOY: found sources/docs in the site payload:" >&2
+     \( -name '*.mjs' -o -name '*.sh' -o -name '*.map' \) -print | grep -q .; then
+  echo "REFUSING TO DEPLOY: found sources in the site payload:" >&2
   find "$WORKTREE" -path "$WORKTREE/.git" -prune -o \
-    \( -name '*.mjs' -o -name '*.sh' -o -name '*.md' -o -name '*.png' \) -print >&2
+    \( -name '*.mjs' -o -name '*.sh' -o -name '*.map' \) -print >&2
   exit 1
 fi
 
