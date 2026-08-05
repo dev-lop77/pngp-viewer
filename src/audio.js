@@ -69,10 +69,27 @@ const WATER_STEP_M = 40;
 // lower version of the same thing. Ibex, foxes and squirrels stay silent: an ibex
 // snorts too quietly to carry, and a curious fox approaching in silence is the
 // point of it (src/wildlife.js).
+// A marmot facing a walker gives a SERIES of whistles, not one note - the single
+// sharp whistle is its aerial-predator alarm - and the user asked for exactly
+// that after hearing the first version (2026-08-05): "può essere anche un po' più
+// lungo e ripetuto più volte (random)". Volume and pitch they approved, so those
+// are unchanged.
 const CALLS = {
-  marmot: { f0: 3500, f1: 2700, durS: 0.16, gain: 0.5, bandQ: 5, earshotM: 240, repeatChance: 0.5 },
-  chamois: { f0: 2200, f1: 1900, durS: 0.1, gain: 0.3, bandQ: 7, earshotM: 180, repeatChance: 0.2 },
+  marmot: {
+    // 0.3 s against the 0.16 s the user heard first, of which ~0.21 s is the
+    // sustained part - a real marmot whistle runs 0.1-0.3 s, so this is at the
+    // long end of honest rather than past it.
+    f0: 3500, f1: 2750, durS: 0.3, gain: 0.5, bandQ: 5, earshotM: 240,
+    notesMin: 2, notesMax: 5, gapS: [0.45, 0.85],
+  },
+  chamois: {
+    // Kept shorter and sharper than the marmot, which is what a chamois sounds
+    // like - one or two notes rather than a colony's chorus.
+    f0: 2200, f1: 1900, durS: 0.14, gain: 0.3, bandQ: 7, earshotM: 180,
+    notesMin: 1, notesMax: 3, gapS: [0.5, 0.9],
+  },
 };
+const CALL_ATTACK_S = 0.012; // near-instant, which is what makes a whistle carry
 // One animal taking fright usually means several: without a floor the whole herd
 // would call on the same frame and read as a chord rather than an alarm.
 const CALL_MIN_GAP_S = 0.35;
@@ -441,12 +458,12 @@ export function createAudio({
     tick(tickDt, camera, weather);
   }
 
-  // One alarm whistle, from src/wildlife.js's onAlarm. Returns whether it was
-  // actually played, which is what a test can assert on.
+  // One alarm call, from src/wildlife.js's onAlarm. Returns how many notes were
+  // scheduled - 0 when nothing was played, which is what a test can assert on.
   function alarm({ species, x, z } = {}) {
-    if (!layers || !enabled || !cameraRef) return false;
+    if (!layers || !enabled || !cameraRef) return 0;
     const cfg = CALLS[species];
-    if (!cfg) return false;
+    if (!cfg) return 0; // this species has no call, and that is deliberate
 
     // Read the camera NOW, not the position the last tick happened to see. This
     // is not a micro-optimisation, it is the whole bug the first version had
@@ -460,8 +477,8 @@ export function createAudio({
     const camX = cameraRef.position.x;
     const camZ = cameraRef.position.z;
     const distanceM = Math.hypot(x - camX, z - camZ);
-    if (distanceM > cfg.earshotM) return false;
-    if (ctx.currentTime - lastCallAt < CALL_MIN_GAP_S) return false;
+    if (distanceM > cfg.earshotM) return 0;
+    if (ctx.currentTime - lastCallAt < CALL_MIN_GAP_S) return 0;
     lastCallAt = ctx.currentTime;
     callsPlayed++;
 
@@ -479,27 +496,36 @@ export function createAudio({
     const d = Math.max(distanceM, 1e-3);
     const pan = clamp(((x - camX) / d) * -fwdZ + ((z - camZ) / d) * fwdX, -1, 1);
     const peak = cfg.gain * (1 - distanceM / cfg.earshotM) ** 1.5;
-    // Marmots rarely whistle once. A second note at a plausible interval is the
-    // difference between "a sound played" and "something over there saw me".
-    const notes = random() < cfg.repeatChance ? 2 : 1;
+    // A random-length series, and deliberately not a metronome: each note varies
+    // in pitch, loudness and spacing, because a fixed interval is what makes a
+    // repeated sample sound like a repeated sample.
+    const notes = cfg.notesMin + Math.floor(random() * (cfg.notesMax - cfg.notesMin + 1));
+    let when = ctx.currentTime + 0.01;
     for (let i = 0; i < notes; i++) {
-      whistle(cfg, peak * (i === 0 ? 1 : 0.6), pan, ctx.currentTime + 0.01 + i * (0.42 + 0.2 * random()));
+      whistle(cfg, peak * (i === 0 ? 1 : 0.7 + 0.3 * random()), pan, when, 0.97 + 0.06 * random());
+      when += cfg.gapS[0] + (cfg.gapS[1] - cfg.gapS[0]) * random();
     }
-    return true;
+    return notes;
   }
 
-  function whistle(cfg, peak, pan, at) {
+  function whistle(cfg, peak, pan, at, detune = 1) {
+    const f0 = cfg.f0 * detune;
+    const f1 = cfg.f1 * detune;
     const osc = ctx.createOscillator();
     osc.type = 'triangle'; // more edge than a sine, which is what makes it carry
-    osc.frequency.setValueAtTime(cfg.f0, at);
-    osc.frequency.exponentialRampToValueAtTime(cfg.f1, at + cfg.durS);
+    osc.frequency.setValueAtTime(f0, at);
+    osc.frequency.exponentialRampToValueAtTime(f1, at + cfg.durS);
     const band = ctx.createBiquadFilter();
     band.type = 'bandpass';
-    band.frequency.value = (cfg.f0 + cfg.f1) / 2;
+    band.frequency.value = (f0 + f1) / 2;
     band.Q.value = cfg.bandQ;
     const gain = ctx.createGain();
+    const top = Math.max(peak, 2e-4);
     gain.gain.setValueAtTime(1e-4, at);
-    gain.gain.exponentialRampToValueAtTime(Math.max(peak, 2e-4), at + 0.012); // near-instant attack
+    gain.gain.exponentialRampToValueAtTime(top, at + CALL_ATTACK_S);
+    // Held most of the way through, then let go. The extra length the user asked
+    // for has to be a sustained note - a longer decay alone just sounds smeared.
+    gain.gain.exponentialRampToValueAtTime(top * 0.8, at + cfg.durS * 0.7);
     gain.gain.exponentialRampToValueAtTime(1e-4, at + cfg.durS);
     const panner = ctx.createStereoPanner();
     panner.pan.value = pan;

@@ -139,10 +139,37 @@ position now serves airspeed only, which is the one thing it is correct for. Aft
 it: the chamois press plays one call, the marmot press plays one, and ibex, fox
 and squirrel stay silent as designed. 22 checks passing.
 
-**Still to re-listen**: whether the whistle itself reads well. Note it fires once,
-on arrival - after that everything nearby is already alarmed and fleeing, and the
-flag only re-arms past 1.4x the alert radius, so hearing it again means walking
-~40 m off and back.
+### Second verdict: the whistle is a series now
+Once they could hear it: **"il fischio della marmotta può essere anche un po' più
+lungo e ripetuto più volte (random), volume ed intensità paiono ok."** So volume
+and pitch are settled, and the shape changed.
+
+This is also the more accurate animal, which is worth knowing before tuning it
+again: a marmot's *single* sharp whistle is its aerial-predator alarm, and what it
+gives a walker is a **series**. Now: a random 2-5 notes (chamois 1-3, kept shorter
+and sharper - it is not a colony), each note 0.3 s against the 0.16 s they first
+heard, spaced a random 0.45-0.85 s, and deliberately not a metronome - each note
+varies in pitch, loudness and spacing, because a fixed interval is exactly what
+makes a repeat sound like a repeated sample. The note is also *held* rather than
+just decaying longer, which is the difference between a longer whistle and a
+smeared one.
+
+Measured on the rendered audio rather than on the intention, by counting envelope
+onsets - six seeds gave **4, 5, 3, 2, 2, 3 notes**, rendered count matching
+scheduled count every time, first note 0.21 s sustained, series spanning
+0.67-2.26 s. `alarm()` now returns the number of notes rather than a boolean,
+which is what let the test compare "scheduled" against "came out of the render".
+27 checks passing.
+
+One thing the test caught and is worth remembering as a method note: the first
+attempt asserted a note length of 0.2 s and measured 0.17 s, because the metric
+was "time above 35% of peak" (the sustained part) while the constant was the whole
+note including its decay. The answer was to make the note genuinely longer, not to
+lower the threshold - but only after working out which quantity the number was.
+
+Note the call fires **once, on arrival** - after that everything nearby is already
+alarmed and fleeing, and the flag only re-arms past 1.4x the alert radius, so
+hearing it again means walking ~40 m off and back.
 
 ### A landmine, of a shape this project has hit before
 **An `AudioParam`'s `.value` ignores scheduled events until they are processed.**
@@ -170,12 +197,13 @@ Audio is the first feature here with no visual at all, so without it there is no
 way to tell a layer that is correctly silent from one that is broken.
 
 ### Next steps
-1. ~~Ask the user to listen~~ - **mostly CLOSED 2026-08-05**: default-on approved,
-   wind and water approved. Left open: **the alarm whistle, which they could not
-   hear at all until the fix above** - so it still needs one real listen, and it is
-   the only part of the mix nobody has judged. Every number worth tuning is a named
-   constant at the top of `src/audio.js` (`WATER_KINDS`, `CALLS`, `MASTER_GAIN`) or
-   one of the six gain expressions in `tick()`.
+1. ~~Ask the user to listen~~ - **CLOSED 2026-08-05**: default-on approved, wind
+   and water approved, whistle volume and pitch approved, and the two changes they
+   asked for (audible at all, then a longer random series) are both in. Only a
+   confirmation listen on the series is left, and nothing is blocked on it. Every
+   number worth tuning is a named constant at the top of `src/audio.js`
+   (`WATER_KINDS`, `CALLS`, `MASTER_GAIN`) or one of the six gain expressions in
+   `tick()`.
 2. **Discuss save/autosave of the position**, then **birds** - unchanged from
    yesterday, both still the user's to open, both still recorded in the
    2026-08-04 section below with the technical context worth having first.

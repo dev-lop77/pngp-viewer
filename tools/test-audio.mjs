@@ -115,6 +115,49 @@ const result = await page.evaluate(async () => {
     return frames ? acc / frames : 0;
   }
 
+  // Counts the notes actually rendered, from the amplitude envelope: the whistles
+  // peak near 0.45 while the noise bed sits below 0.1, so a threshold on the
+  // envelope separates them cleanly. This measures the audio, not the intention -
+  // the alarm() return value says what was scheduled, this says what came out.
+  function noteOnsets(samples, thresholdFrac = 0.35) {
+    const W = Math.floor(SR * 0.01); // 10 ms
+    const env = [];
+    for (let i = 0; i + W <= samples.length; i += W) {
+      let peak = 0;
+      for (let j = i; j < i + W; j++) {
+        const v = Math.abs(samples[j]);
+        if (v > peak) peak = v;
+      }
+      env.push(peak);
+    }
+    let max = 0;
+    for (const v of env) if (v > max) max = v;
+    const threshold = max * thresholdFrac;
+    const onsets = [];
+    const durations = [];
+    let above = false;
+    let runStart = 0;
+    for (let k = 0; k < env.length; k++) {
+      if (!above && env[k] > threshold) {
+        above = true;
+        runStart = k;
+        // Notes are 0.45 s apart at the closest, so 0.2 s of separation cannot
+        // merge two of them - but it does stop one note's envelope dipping mid-way
+        // from being counted twice.
+        if (!onsets.length || k * 0.01 - onsets[onsets.length - 1] > 0.2) onsets.push(k * 0.01);
+      } else if (above && env[k] <= threshold) {
+        above = false;
+        durations.push((k - runStart) * 0.01);
+      }
+    }
+    return {
+      count: onsets.length,
+      firstDurationS: durations[0] ?? 0,
+      spanS: onsets.length > 1 ? onsets[onsets.length - 1] - onsets[0] : 0,
+      peak: max,
+    };
+  }
+
   function rms(samples) {
     let sum = 0;
     for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
@@ -149,8 +192,11 @@ const result = await page.evaluate(async () => {
   async function render({
     ground = GROUND.flat, canopy = 0, weather = null, waterManifest = null,
     at = { x: 0, z: 0 }, facing = [0, -1], enabled = true, alarms = [], seed = 12345,
+    // Alarm cases need a longer render than the steady-state ones: a marmot's
+    // series can run to five notes ~0.65 s apart.
+    renderS = DUR_S,
   }) {
-    const ctx = new OfflineAudioContext(2, Math.floor(SR * DUR_S), SR);
+    const ctx = new OfflineAudioContext(2, Math.floor(SR * renderS), SR);
     const audio = createAudio({
       context: ctx,
       immediate: true, // no time constants: the whole render is the steady state
@@ -183,10 +229,12 @@ const result = await page.evaluate(async () => {
         high: bandPower(steady, 2400, 4200), // rustle, and the alarm whistles
         veryHigh: bandPower(steady, 6000, 10000), // what the snow muffle removes
       },
-      // Whole-buffer bands, for the one-shot calls that live in the first 0.6 s.
-      callBand: bandPower(left.subarray(0, Math.floor(SR * 0.8)), 2600, 3800),
-      callBandRight: bandPower(right.subarray(0, Math.floor(SR * 0.8)), 2600, 3800),
-      callBandLeft: bandPower(left.subarray(0, Math.floor(SR * 0.8)), 2600, 3800),
+      // Whole-buffer, for the calls. bandPower is a mean over segments, so a
+      // longer render is directly comparable with a shorter one.
+      callBand: bandPower(left, 2600, 3800),
+      callBandRight: bandPower(right, 2600, 3800),
+      callBandLeft: bandPower(left, 2600, 3800),
+      notes: noteOnsets(left),
       callsPlayed: audio.callsPlayed,
     };
   }
@@ -220,10 +268,33 @@ const result = await page.evaluate(async () => {
 
   // 6. Alarm calls: only the species that have one, only within earshot, and on
   //    the side they came from.
-  cases.noCall = await render({ ground: GROUND.flat });
-  cases.marmotCall = await render({ ground: GROUND.flat, alarms: [{ species: 'marmot', x: 0, z: -30 }] });
+  const CALL_RENDER_S = 5;
+  cases.noCall = await render({ ground: GROUND.flat, renderS: CALL_RENDER_S });
+  cases.marmotCall = await render({
+    ground: GROUND.flat, renderS: CALL_RENDER_S, alarms: [{ species: 'marmot', x: 0, z: -30 }],
+  });
+  cases.chamoisCall = await render({
+    ground: GROUND.flat, renderS: CALL_RENDER_S, alarms: [{ species: 'chamois', x: 0, z: -30 }],
+  });
   cases.ibexCall = await render({ ground: GROUND.flat, alarms: [{ species: 'ibex', x: 0, z: -30 }] });
   cases.farCall = await render({ ground: GROUND.flat, alarms: [{ species: 'marmot', x: 0, z: -900 }] });
+
+  // The series has to be a random LENGTH, not a fixed repeat - which means
+  // measuring several seeds and seeing different answers come out.
+  const series = [];
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    const shot = await render({
+      ground: GROUND.flat, renderS: CALL_RENDER_S, seed,
+      alarms: [{ species: 'marmot', x: 0, z: -30 }],
+    });
+    series.push({
+      seed,
+      scheduled: shot.fired[0],
+      rendered: shot.notes.count,
+      firstNoteS: Number(shot.notes.firstDurationS.toFixed(2)),
+      spanS: Number(shot.notes.spanS.toFixed(2)),
+    });
+  }
   // Facing north (0, -1): +X is the camera's right.
   cases.callRight = await render({ ground: GROUND.flat, alarms: [{ species: 'marmot', x: 30, z: 0 }] });
   cases.callLeft = await render({ ground: GROUND.flat, alarms: [{ species: 'marmot', x: -30, z: 0 }] });
@@ -255,6 +326,7 @@ const result = await page.evaluate(async () => {
 
   return {
     cases,
+    series,
     earshot: { points: earshot.count, cells: earshot.cells, perQueryMs },
     spawn: {
       x: Math.round(lePont.local.x), z: Math.round(lePont.local.z),
@@ -335,7 +407,7 @@ const afterM = await page.evaluate(() => ({
 
 await browser.close();
 
-const { cases, earshot, spawn } = result;
+const { cases, series, earshot, spawn } = result;
 const e = (v) => v.toExponential(2);
 const ratio = (a, b) => (b > 0 ? a / b : Infinity);
 
@@ -373,12 +445,18 @@ console.log(`  snow  : 6-10k ${e(cases.snowy.bands.veryHigh)}`
 console.log('\nAlarm calls:');
 console.log(`  quiet scene      : 2.6-3.8k ${e(cases.noCall.callBand)}`);
 console.log(`  marmot at 30 m   : 2.6-3.8k ${e(cases.marmotCall.callBand)}`
-  + ` (x${ratio(cases.marmotCall.callBand, cases.noCall.callBand).toFixed(0)}), played=${cases.marmotCall.fired}`);
-console.log(`  ibex at 30 m     : played=${cases.ibexCall.fired} (no call for this species)`);
-console.log(`  marmot at 900 m  : played=${cases.farCall.fired} (out of earshot)`);
+  + ` (x${ratio(cases.marmotCall.callBand, cases.noCall.callBand).toFixed(0)}), notes=${cases.marmotCall.fired}`);
+console.log(`  chamois at 30 m  : 2.6-3.8k ${e(cases.chamoisCall.callBand)}, notes=${cases.chamoisCall.fired}`);
+console.log(`  ibex at 30 m     : notes=${cases.ibexCall.fired} (no call for this species)`);
+console.log(`  marmot at 900 m  : notes=${cases.farCall.fired} (out of earshot)`);
 console.log(`  from the right   : R/L ${ratio(cases.callRight.callBandRight, cases.callRight.callBandLeft).toFixed(1)}`);
 console.log(`  from the left    : R/L ${ratio(cases.callLeft.callBandRight, cases.callLeft.callBandLeft).toFixed(2)}`);
 console.log(`  4 bolting at once: ${cases.herdCall.callsPlayed} call(s) played`);
+console.log('  the marmot series, one row per seed (scheduled / rendered / first note / span):');
+for (const s of series) {
+  console.log(`    seed ${s.seed}: ${s.scheduled} notes scheduled, ${s.rendered} rendered,`
+    + ` first ${s.firstNoteS.toFixed(2)} s, span ${s.spanS.toFixed(2)} s`);
+}
 
 console.log('\nAt the Le Pont spawn, with the real hydrology:');
 console.log(`  (${spawn.x}, ${spawn.z}) · nearest river ${spawn.river} m`
@@ -427,10 +505,26 @@ check(cases.awayFromFall.diag.gains.waterLow < 1e-6,
 check(ratio(cases.rainy.bands.rain, cases.dry.bands.rain) > 2, 'rain is inaudible');
 check(cases.snowy.bands.veryHigh < cases.dry.bands.veryHigh * 0.5,
   'falling snow did not muffle the high end');
-check(cases.marmotCall.fired[0] === true && ratio(cases.marmotCall.callBand, cases.noCall.callBand) > 5,
+check(cases.marmotCall.fired[0] > 0 && ratio(cases.marmotCall.callBand, cases.noCall.callBand) > 5,
   'a marmot alarm whistle was not audible');
-check(cases.ibexCall.fired[0] === false, 'an ibex produced a call it does not have');
-check(cases.farCall.fired[0] === false, 'a marmot 900 m away was still audible');
+check(cases.ibexCall.fired[0] === 0, 'an ibex produced a call it does not have');
+check(cases.farCall.fired[0] === 0, 'a marmot 900 m away was still audible');
+// The user's request (2026-08-05): longer, and repeated a random number of times.
+check(series.every((s) => s.rendered >= 2),
+  'a marmot alarm was a single note somewhere - it should always be a series');
+check(series.every((s) => s.rendered === s.scheduled),
+  'the notes that came out of the render do not match the notes scheduled');
+check(new Set(series.map((s) => s.rendered)).size >= 2,
+  'every seed produced the same number of notes - the series length is not random');
+// firstNoteS is the SUSTAINED part of a note - the time its envelope stays above
+// 35% of peak, so ~0.21 s of a 0.3 s whistle, against ~0.05 s of the 0.16 s
+// version the user asked to lengthen.
+check(series.every((s) => s.firstNoteS >= 0.18),
+  'the notes are still as short as the version the user asked to lengthen');
+check(series.every((s) => s.spanS > 0.4),
+  'the notes are not spread out in time - a series has to read as separate whistles');
+check(cases.chamoisCall.fired[0] > 0 && cases.chamoisCall.notes.firstDurationS < 0.2,
+  'the chamois call is missing, or no longer shorter than the marmot series');
 check(ratio(cases.callRight.callBandRight, cases.callRight.callBandLeft) > 2,
   'a call from the right did not come from the right');
 check(ratio(cases.callLeft.callBandRight, cases.callLeft.callBandLeft) < 0.5,
