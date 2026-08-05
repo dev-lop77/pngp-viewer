@@ -111,6 +111,39 @@ That last one is the nicest thing about where the spawn ended up: the trailhead
 the viewer opens at is 80 m from a torrent, so the first thing you hear is the
 Savara.
 
+### The user's first verdict, and the one real fault in it
+Same shape as every round on this project: build, measure, hand it over, fix what
+they find. Their verdict: **"acceso di default è ok"**, **"il vento e l'acqua mi
+paiono ok"**, and **"non sento il fischio della marmotta usando il comando di DEV
+'G'"**. Two approvals and one genuine bug - the whistle never played at all, and
+the cause is worth reading because the code looked right.
+
+`alarm()` measured the distance to the animal from the camera position **the last
+audio tick had seen**. That is fine while walking - one frame of a 4 m/s walk is
+7 cm - and completely wrong for an instant camera move. The dev 'G' key teleports
+the camera 18 m from an animal and then steps the wildlife *in the same handler*,
+so every animal that suddenly finds the camera 18 m away raises its alarm before
+`audio.update()` has seen the move at all.
+
+Reproduced first, then diagnosed, then fixed - and the reproduction is now part of
+`tools/test-audio.mjs`, which presses 'G' through all five species on the real
+page: **0 calls out of 5 presses** before, marmot included. Wrapping `alarm()` in
+the page showed why: **12 of 12 events, real distances 5-43 m, every one rejected
+as out of earshot** against a remembered position 0.6-1.9 km away. (It also showed
+something the design had not made obvious: a whole herd raises its alarms inside
+that one synchronous update, which is exactly what `CALL_MIN_GAP_S` is for.)
+
+The fix is to stop remembering: `audio.js` holds the camera reference and reads
+its position *and* its look direction at the moment of the call. The remembered
+position now serves airspeed only, which is the one thing it is correct for. After
+it: the chamois press plays one call, the marmot press plays one, and ibex, fox
+and squirrel stay silent as designed. 22 checks passing.
+
+**Still to re-listen**: whether the whistle itself reads well. Note it fires once,
+on arrival - after that everything nearby is already alarmed and fleeing, and the
+flag only re-arms past 1.4x the alert radius, so hearing it again means walking
+~40 m off and back.
+
 ### A landmine, of a shape this project has hit before
 **An `AudioParam`'s `.value` ignores scheduled events until they are processed.**
 The first version of the diagnostics read the gains back off the params, and in
@@ -137,11 +170,12 @@ Audio is the first feature here with no visual at all, so without it there is no
 way to tell a layer that is correctly silent from one that is broken.
 
 ### Next steps
-1. **Ask the user to listen** - the mix is the open question: wind level high up,
-   river level at the trailhead, whether the marmot whistle startles or charms,
-   and whether default-on is right. Every number worth tuning is a named constant
-   at the top of `src/audio.js` (`WATER_KINDS`, `CALLS`, `MASTER_GAIN`) or one of
-   the six gain expressions in `tick()`.
+1. ~~Ask the user to listen~~ - **mostly CLOSED 2026-08-05**: default-on approved,
+   wind and water approved. Left open: **the alarm whistle, which they could not
+   hear at all until the fix above** - so it still needs one real listen, and it is
+   the only part of the mix nobody has judged. Every number worth tuning is a named
+   constant at the top of `src/audio.js` (`WATER_KINDS`, `CALLS`, `MASTER_GAIN`) or
+   one of the six gain expressions in `tick()`.
 2. **Discuss save/autosave of the position**, then **birds** - unchanged from
    yesterday, both still the user's to open, both still recorded in the
    2026-08-04 section below with the technical context worth having first.

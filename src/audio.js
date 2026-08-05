@@ -228,13 +228,16 @@ export function createAudio({
   let lapPhase = 0;
   let tickAccum = 1 / UPDATE_HZ; // so the first update() applies a real state, not silence
   let speedMps = 0;
+  // Previous camera position, for airspeed only - never for judging a distance to
+  // something, see alarm().
   let lastX = null;
   let lastY = 0;
   let lastZ = 0;
-  let fwdX = 0;
-  let fwdZ = -1;
   let lastCallAt = -Infinity;
   let callsPlayed = 0;
+  // The live camera, kept so alarm() can read where it is NOW - see the comment
+  // there for why a remembered position was not good enough.
+  let cameraRef = null;
 
   const diag = {
     started: false, enabled, strength: 0, altitude: 0, exposure: 0, canopy: 0,
@@ -417,6 +420,7 @@ export function createAudio({
 
   function update(dt, camera, weather = null) {
     if (!layers || !camera) return;
+    cameraRef = camera;
 
     const x = camera.position.x;
     const y = camera.position.y;
@@ -429,12 +433,6 @@ export function createAudio({
     lastX = x;
     lastY = y;
     lastZ = z;
-    if (camera.getWorldDirection) {
-      camera.getWorldDirection(_dir);
-      const len = Math.hypot(_dir.x, _dir.z) || 1;
-      fwdX = _dir.x / len;
-      fwdZ = _dir.z / len;
-    }
 
     tickAccum += dt;
     if (tickAccum < 1 / UPDATE_HZ) return;
@@ -446,19 +444,40 @@ export function createAudio({
   // One alarm whistle, from src/wildlife.js's onAlarm. Returns whether it was
   // actually played, which is what a test can assert on.
   function alarm({ species, x, z } = {}) {
-    if (!layers || !enabled) return false;
+    if (!layers || !enabled || !cameraRef) return false;
     const cfg = CALLS[species];
-    if (!cfg || lastX == null) return false;
-    const distanceM = Math.hypot(x - lastX, z - lastZ);
+    if (!cfg) return false;
+
+    // Read the camera NOW, not the position the last tick happened to see. This
+    // is not a micro-optimisation, it is the whole bug the first version had
+    // (found 2026-08-05, reported by the user as "I never hear the marmot"): the
+    // dev 'G' key teleports the camera and then steps the wildlife in the SAME
+    // handler, so every animal that suddenly finds the camera 18 m away raises
+    // its alarm before audio.update() has seen the move. Measured: 12 of 12
+    // events, real distances 5-43 m, all rejected as out of earshot against a
+    // remembered position 0.6-1.9 km away. Any instant camera move has the same
+    // shape, so the fix is to stop remembering.
+    const camX = cameraRef.position.x;
+    const camZ = cameraRef.position.z;
+    const distanceM = Math.hypot(x - camX, z - camZ);
     if (distanceM > cfg.earshotM) return false;
     if (ctx.currentTime - lastCallAt < CALL_MIN_GAP_S) return false;
     lastCallAt = ctx.currentTime;
     callsPlayed++;
 
-    // Which side it came from. The camera's right in this frame is (-fz, fx),
-    // with +X east and +Z south (docs/ARCHITECTURE.md §6).
+    // Which side it came from. The camera's right is (-fz, fx), with +X east and
+    // +Z south (docs/ARCHITECTURE.md §6) - and taken from the live look
+    // direction, for the same reason as the position above.
+    let fwdX = 0;
+    let fwdZ = -1;
+    if (cameraRef.getWorldDirection) {
+      cameraRef.getWorldDirection(_dir);
+      const len = Math.hypot(_dir.x, _dir.z) || 1;
+      fwdX = _dir.x / len;
+      fwdZ = _dir.z / len;
+    }
     const d = Math.max(distanceM, 1e-3);
-    const pan = clamp(((x - lastX) / d) * -fwdZ + ((z - lastZ) / d) * fwdX, -1, 1);
+    const pan = clamp(((x - camX) / d) * -fwdZ + ((z - camZ) / d) * fwdX, -1, 1);
     const peak = cfg.gain * (1 - distanceM / cfg.earshotM) ** 1.5;
     // Marmots rarely whistle once. A second note at a plausible interval is the
     // difference between "a sound played" and "something over there saw me".

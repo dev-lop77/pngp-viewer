@@ -310,6 +310,21 @@ const walked = await page.evaluate(() => {
   return { gains: d.gains, riverM: d.water?.river?.distanceM ?? null };
 });
 
+// The dev 'G' key, which is how the animals are actually inspected: it teleports
+// the camera 18 m from the nearest animal of the next species and steps the
+// wildlife in the same handler. That is inside the alert radius of every fleeing
+// species, so the marmot and chamois presses must produce a whistle - the user
+// reported on 2026-08-05 that they never did, and this is the reproduction.
+const gPresses = [];
+for (let i = 0; i < 5; i++) {
+  await page.keyboard.press('KeyG');
+  await page.waitForTimeout(600);
+  gPresses.push(await page.evaluate(() => ({
+    note: document.getElementById('dev-note')?.textContent ?? '',
+    calls: window.__pngp.audio.callsPlayed,
+  })));
+}
+
 // 'M' and the checkbox are two views of one state.
 await page.keyboard.press('KeyM');
 await page.waitForTimeout(200);
@@ -382,6 +397,10 @@ console.log(`  driven at the spawn   : wind ${live.strength?.toFixed(2)}`
 console.log(`  gains                 : ${Object.entries(live.gains ?? {}).map(([k, v]) => `${k} ${v.toFixed(3)}`).join(', ')}`);
 console.log(`  after walking 3 s     : river ${walked.riverM != null && Number.isFinite(walked.riverM) ? `${Math.round(walked.riverM)} m` : '-'}`
   + `, water ${walked.gains.waterLow.toFixed(3)}/${walked.gains.waterHigh.toFixed(3)}`);
+console.log('  dev \'G\' walk-up:');
+for (const [i, g] of gPresses.entries()) {
+  console.log(`    ${i + 1}. ${g.note || '(no note)'} -> ${g.calls} call(s) played so far`);
+}
 console.log(`  'M'                   : enabled=${afterM.enabled}, checkbox=${afterM.checkbox}`);
 
 const failures = [];
@@ -433,6 +452,13 @@ check(walked.riverM !== live.riverM || walked.gains.waterLow !== beforeWalk.wate
   'walking for three seconds changed nothing about the soundscape');
 check(afterM.enabled === false && afterM.checkbox === false,
   "'M' did not mute, or left the checkbox out of step");
+// Standing 18 m from a marmot or a chamois has to whistle. Asserted over the
+// whole G sweep rather than one press, because which species is reachable from
+// wherever the walk ended is not the point being tested.
+const gReached = gPresses.filter((g) => /^(marmot|chamois):/.test(g.note));
+check(gReached.length > 0, "the dev 'G' key never reached a species that has a call");
+check(gPresses[gPresses.length - 1].calls > 0,
+  "walking up to a marmot with 'G' played no alarm whistle at all");
 
 if (problems.length) console.log(`\nPage problems:\n  ${problems.join('\n  ')}`);
 if (failures.length) {
