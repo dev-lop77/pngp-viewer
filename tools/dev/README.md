@@ -62,10 +62,25 @@ Both start scripts:
 `gh-pages` worktree, commit, push. Safe to re-run — it reuses a stale
 worktree, and says "nothing changed" instead of pushing an empty commit.
 
-Only the built site is published (decided 2026-08-03): no sources, docs or
-tools, and none of the main history. The script *refuses to push* if it finds
-`.mjs`/`.sh`/`.md`/`.png` in the payload, so that decision can't be undone by
-accident later.
+Only the built site is published (decided 2026-08-03): no sources, no design
+docs, no tools, and none of the main history. **The one exception, added
+2026-08-05 at the user's request: `README.md` ships with the site.** `gh-pages` is
+the repository's default branch, so the README in the payload is what GitHub shows
+on the repository page — a README on `main` would be invisible, since `main` has
+never been pushed.
+
+The script *refuses to push* anything else, so that decision can't be undone by
+accident: the site root must contain only what the build produces
+(`index.html`, `assets`, `data`, `.nojekyll`, `README.md`), and no `.mjs`, `.sh` or
+`.map` may appear anywhere inside it — a sourcemap would publish the sources it
+maps back to.
+
+That guard used to be an extension blacklist including `*.png`, and it had
+silently rotted: `data/forest.<hash>.png` (the OSM canopy mask) is a legitimate
+data asset, so from the vegetation landing on 2026-08-03 until 2026-08-05 it would
+have refused every deploy. Prefer a whitelist of what the build produces when
+adding to this — insurance that fails closed on legitimate content is worse than
+none, because it gets disabled in a hurry.
 
 Pages needs no setup — GitHub enables it automatically for a branch named
 `gh-pages`. Two things that cost time the first time round:

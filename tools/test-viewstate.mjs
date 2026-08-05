@@ -20,6 +20,12 @@
 // so the test reports the actual metres of round-trip error.
 //
 // Usage: tools/dev/start-dev.sh && node tools/test-viewstate.mjs
+//
+// A DEV server, not preview and not the live site: this reads window.__pngp, which
+// only exists under import.meta.env.DEV, so pointing it at the deployed viewer
+// fails with "Cannot read properties of undefined". To check the deployed site,
+// drive the UI instead - the HUD position readout, the copy-link and back-to-Le-Pont
+// buttons and a reload are enough to cover the whole contract without the handle.
 
 import { chromium } from 'playwright';
 

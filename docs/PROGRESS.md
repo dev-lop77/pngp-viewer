@@ -268,6 +268,52 @@ to restore altitude; and it reloaded the page after clicking "copy link", so the
 hash was still in the address bar and the *link* path answered a question about the
 *storage* path. Both are now explicit in the test.
 
+### Published, and the deploy guard had rotted
+The user asked for a README and then for a republish - the live site was still the
+2026-08-03 build, eight commits behind.
+
+Their warning was the right one to give ("il repository non contiene tutti i
+sorgenti per il momento"), and it is worth spelling out because it is not obvious:
+GitHub has **only** `gh-pages`, an orphan branch holding the built site, so it is
+also the repository's **default branch** - which means the README that GitHub shows
+on the repository page has to be the one *in the site payload*. A README on `main`
+would be invisible to everyone. Their call: **ship the README with the site**, with
+a narrow exception in the deploy guard, rather than reopening the "sources stay
+local" decision.
+
+Testing that guard before trusting it found a latent bug that had nothing to do
+with the README: it refused every `*.png`, and `data/forest.<hash>.png` - the OSM
+canopy mask - is a legitimate data asset. **From the moment the vegetation landed
+on 2026-08-03, every deploy would have been refused.** Insurance that fails closed
+on legitimate content is the wrong failure direction, so it is now:
+
+- a **whitelist** of what the build produces (`index.html`, `assets`, `data`,
+  `.nojekyll`, `README.md`), which cannot rot as `dist/` grows and still catches a
+  stray `src/`, `tools/` or `docs/` copy - the actual risk;
+- plus a scripts-anywhere refusal that now also covers **`*.map`**: a sourcemap
+  publishes the sources it maps back to, so switching on `build.sourcemap` would
+  quietly undo the whole decision.
+
+Published, Pages rebuilt, and then verified rather than trusted - `built` is not
+evidence:
+
+- `node tools/verify.mjs https://dev-lop77.github.io/pngp-viewer/`: WebGL2 alive, no
+  console or page errors;
+- the canopy mask and the README both serve 200 from the live site, and GitHub
+  reports `README.md` as the repository's README;
+- the two features from today, driven **through the UI only** because
+  `window.__pngp` does not exist in a production build: opened at Le Pont, flew for
+  6 s with the real controls, reloaded and came back to the same coordinates;
+  *copy link* produced `#at=45.52674,7.20721,2106&look=103,0&mode=fly&time=0.150&sky=clear`,
+  which a **separate browser context** (no shared storage) opened at the same spot,
+  with the hash consumed afterwards; *back to Le Pont* returned and survived a
+  reload. No errors anywhere.
+
+One thing that reads oddly in that log and is correct: flying forward from the
+valley put the camera 149 m *below* the ground - fly mode passes through terrain by
+design - and the restore lifted it to ground + 2 m. The floor is deliberate: a
+saved position may not strand you inside a mountain.
+
 ### Next steps
 1. ~~Ask the user to listen~~ - **CLOSED 2026-08-05**: default-on approved, wind
    and water approved, whistle volume and pitch approved, and the two changes they
@@ -286,8 +332,10 @@ hash was still in the address bar and the *link* path answered a question about 
    gzipped; `audio.js` minifies to 7.3 kB of that, measured with esbuild), and the
    mobile pass - pointer lock + WASD has no touch equivalent, and neither does a
    keyboard mute.
-4. **Republish when wanted** - the live site is well behind `main` now.
-   `tools/dev/deploy.sh` does the whole thing.
+4. ~~Republish~~ - **DONE 2026-08-05**: the live site is now the current build,
+   including the audio and the saved/shared view, and it carries the README.
+   `tools/dev/deploy.sh` does the whole thing; re-run it after any change worth
+   showing.
 5. Deferred by the user, do not re-raise unprompted: the satellite/orthophoto
    basemap.
 
