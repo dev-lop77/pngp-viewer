@@ -32,6 +32,11 @@ const MODES = [
   },
 ];
 
+// Exported for src/viewstate.js: a saved state and a shareable link store the
+// weather by KEY, not by index - an index would silently mean something else if
+// MODES were ever reordered, and a link is meant to outlive that.
+export const WEATHER_KEYS = MODES.map((m) => m.key);
+
 const LERP_KEYS = ['cover', 'dark', 'hazeMul', 'vfAdd', 'exposureMul', 'grey', 'glowMul', 'starsMul', 'wet', 'rain'];
 const WHITE = new THREE.Color(1, 1, 1);
 

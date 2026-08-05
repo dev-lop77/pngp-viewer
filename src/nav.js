@@ -28,6 +28,20 @@ export function pitchDegrees(camera) {
   return (Math.asin(THREE.MathUtils.clamp(_dir.y, -1, 1)) * 180) / Math.PI;
 }
 
+// The inverse of the two functions above, added 2026-08-05 for src/viewstate.js:
+// a restored or shared view carries a compass heading and a view pitch, and the
+// camera needs a point to look at. Kept next to its counterparts deliberately, so
+// the two directions of the same conversion cannot drift apart - and
+// tools/test-viewstate.mjs round-trips them against each other.
+export function directionFromHeadingPitch(headingDeg, pitchDeg, out = new THREE.Vector3()) {
+  const heading = (headingDeg * Math.PI) / 180;
+  const pitch = (pitchDeg * Math.PI) / 180;
+  const horizontal = Math.cos(pitch);
+  // North is -Z and East is +X (docs/ARCHITECTURE.md §6), which is exactly what
+  // headingDegrees() reads back with atan2(x, -z).
+  return out.set(Math.sin(heading) * horizontal, Math.sin(pitch), -Math.cos(heading) * horizontal);
+}
+
 // Closest POI to a local (x, z) position, horizontal distance only (real
 // "nearest place" is a ground-distance notion, not line-of-sight through a
 // mountain) - linear scan over ~400 POIs, cheap enough to call every HUD

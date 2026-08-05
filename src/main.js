@@ -11,10 +11,15 @@ import { createWildlife } from './wildlife.js';
 import { createAudio } from './audio.js';
 import { installAtmosphere } from './atmosphere.js';
 import { Lighting } from './lighting.js';
-import { Weather } from './weather.js';
-import { localToWGS84 } from './geo.js';
-import { headingDegrees, compassLabel, pitchDegrees, nearestPOI } from './nav.js';
+import { Weather, WEATHER_KEYS } from './weather.js';
+import { localToWGS84, wgs84ToLocal } from './geo.js';
+import {
+  headingDegrees, compassLabel, pitchDegrees, nearestPOI, directionFromHeadingPitch,
+} from './nav.js';
 import { WalkFlyControls, EYE_HEIGHT_M } from './controls.js';
+import {
+  buildHash, parseHash, load as loadViewState, save as saveViewState,
+} from './viewstate.js';
 
 installAtmosphere(); // patch the fog chunks before any material compiles (phase 4, docs/ARCHITECTURE.md §7)
 
@@ -62,6 +67,22 @@ const controls = new WalkFlyControls(camera, renderer.domElement);
 // height, canopy, hydrology) are attached as each loader lands, exactly like the
 // forest mask is - so load order does not matter here either.
 const audio = createAudio();
+
+// Saved and shared view state (src/viewstate.js, decided with the user
+// 2026-08-05). Read now, applied once the terrain is up because a position needs
+// a ground height to be seated on. A hash beats the stored state - an explicit
+// link must win - and is then stripped from the URL, so a later reload follows
+// the autosave again instead of staying pinned to that link forever.
+const linkedView = parseHash(window.location.hash);
+const storedState = loadViewState();
+let pendingView = linkedView ?? storedState;
+if (linkedView) history.replaceState(null, '', window.location.pathname + window.location.search);
+// Half-extent of the DEM in local metres, filled in when the terrain manifest
+// lands. Needed to reject an out-of-map restore: the height sampler CLAMPS to the
+// grid edge rather than returning NaN (verified in src/heightfield.js), so a
+// hand-edited link pointing at Milan would otherwise "work" and put you on a
+// smeared copy of the bbox border.
+let worldHalf = null;
 
 // Real lights, moved/recolored per time-of-day preset by lighting.js below -
 // unlike the reference project's unlit/baked-tint terrain, ours uses a real
@@ -155,6 +176,7 @@ const terrainPromise = loadTerrain().then((result) => {
   }
 
   const { xmin, ymin, xmax, ymax } = manifest.bboxCrsUnits;
+  worldHalf = { x: (xmax - xmin) / 2, z: (ymax - ymin) / 2 };
   weather = new Weather(scene, { worldWidth: xmax - xmin, worldDepth: ymax - ymin });
   lighting.weather = weather;
   return result;
@@ -285,31 +307,28 @@ const poiPromise = loadPOI(undefined, { onSelect: selectPoi }).then((index) => {
   return index;
 });
 
-// Spawn once both terrain (for ground height) and POI (for a real landmark
-// to start near) are ready - avoids an intermediate wrong-looking position.
-// Gran Paradiso itself if present, else any peak, else just the first POI.
-Promise.all([terrainPromise, poiPromise, trailsPromise]).then(([{ sampleRenderedHeight }, index, trails]) => {
-  // Both were built from true heightfield elevations, which is not quite the
-  // surface the terrain draws - re-seat them on it (see each module's
-  // alignToGround) so markers plant in the ground and trails lie on the path.
-  index.alignToGround(sampleRenderedHeight);
-  trails.alignToGround(sampleRenderedHeight);
+// Where the viewer opens on a FIRST visit - the user's call (2026-08-04): Le
+// Pont, at the head of Valsavarenche, 1,950 m. It is where the walk to Rifugio
+// Vittorio Emanuele II and Gran Paradiso itself actually starts, so the viewer
+// opens where a visitor would open the day, at walking scale, instead of on top
+// of the mountain looking down at it. Since 2026-08-05 it is also what the
+// "back to Le Pont" button does, which is why it is a function - and that button
+// doubles as the way out if a restored position ever turns out to be somewhere
+// useless.
+//
+// Falls back through any trailhead, then the peak the park is named for, then
+// whatever is first: a missing POI must not leave the camera at the placeholder
+// 3,000 m with nothing under it.
+function goToDefaultSpawn() {
+  const sampleRenderedHeight = controls.getGroundHeight;
+  const pois = poiIndex?.manifest.pois;
+  if (!sampleRenderedHeight || !pois?.length) return false;
 
-  const pois = index.manifest.pois;
-  // Start at a real trailhead rather than on a summit - the user's call
-  // (2026-08-04): Le Pont, at the head of Valsavarenche, 1,950 m. It is where the
-  // walk to Rifugio Vittorio Emanuele II and Gran Paradiso itself actually starts,
-  // so the viewer opens where a visitor would open the day, at walking scale,
-  // instead of on top of the mountain looking down at it.
-  //
-  // Falls back through any trailhead, then the peak the park is named for, then
-  // whatever is first: a missing POI must not leave the camera at the placeholder
-  // 3,000 m with nothing under it.
   const spawn = pois.find((p) => p.name === 'Le Pont' && p.category === 'trailhead')
     ?? pois.find((p) => p.category === 'trailhead')
     ?? pois.find((p) => p.name === 'Gran Paradiso')
     ?? pois[0];
-  if (!spawn) return;
+  if (!spawn) return false;
 
   // Face Gran Paradiso, ~5.2 km ESE of Le Pont - the view that gives the place its
   // point - and stand back along that same line so the trailhead's own marker is
@@ -326,6 +345,122 @@ Promise.all([terrainPromise, poiPromise, trailsPromise]).then(([{ sampleRendered
   // Level with the eye rather than down at the ground: from a valley floor the
   // interesting half of the view is up the valley.
   camera.lookAt(sx + toTarget.x * 400, eyeY, sz + toTarget.y * 400);
+  controls.mode = 'walk';
+  return true;
+}
+
+const lookDir = new THREE.Vector3();
+
+// Everything the viewer restores or shares, read off the live objects. Position
+// goes out as real lat/lon rather than local metres - see src/viewstate.js for why
+// that choice is about links outliving a data rebuild.
+function captureViewState() {
+  if (!originReady) return null;
+  const { lat, lon } = localToWGS84(camera.position.x, camera.position.z);
+  return {
+    lat,
+    lon,
+    alt: camera.position.y,
+    heading: headingDegrees(camera),
+    pitch: pitchDegrees(camera),
+    mode: controls.mode,
+    time: lighting.fraction,
+    sky: weather ? weather.current : null,
+    sound: audio.enabled,
+  };
+}
+
+// Put the camera and the environment back. Returns false if the state cannot be
+// honoured, so the caller can fall through to the default spawn rather than
+// leaving the camera at the 3,000 m placeholder.
+function applyViewState(state) {
+  if (!state) return false;
+  const sampleRenderedHeight = controls.getGroundHeight;
+  if (!sampleRenderedHeight || !worldHalf) return false;
+
+  let local;
+  try {
+    local = wgs84ToLocal(state.lat, state.lon);
+  } catch {
+    return false; // origin not set yet, or an unprojectable coordinate
+  }
+  // The bbox test the height sampler cannot give us (it clamps, see worldHalf).
+  if (Math.abs(local.x) > worldHalf.x || Math.abs(local.z) > worldHalf.z) return false;
+
+  const ground = sampleRenderedHeight(local.x, local.z);
+  if (!Number.isFinite(ground)) return false;
+
+  controls.mode = state.mode;
+  // Walking is ground-clamped anyway, so the stored altitude only matters in fly
+  // mode - and even there it is floored to just above the terrain, which is what
+  // makes a stale save or a hand-edited link unable to strand the camera inside a
+  // mountain.
+  const y = state.mode === 'fly'
+    ? Math.max(state.alt, ground + 2)
+    : ground + EYE_HEIGHT_M;
+  camera.position.set(local.x, y, local.z);
+  directionFromHeadingPitch(state.heading, state.pitch, lookDir);
+  camera.lookAt(camera.position.x + lookDir.x * 100, camera.position.y + lookDir.y * 100, camera.position.z + lookDir.z * 100);
+
+  if (state.time != null) {
+    lighting.setTime(state.time);
+    envTime.value = String(state.time);
+    envTimeLabel.textContent = lighting.label;
+  }
+  if (state.sky && weather) {
+    const index = WEATHER_KEYS.indexOf(state.sky);
+    if (index >= 0) {
+      weather.set(index);
+      envWeather.value = String(index);
+    }
+  }
+  return true;
+}
+
+// Autosave. Throttled, and only written when the serialised state actually
+// changes - the quantisation in viewstate.js (5 decimals of latitude, whole
+// degrees of heading) doubles as the change detector, so standing still writes
+// nothing at all no matter how much the camera jitters.
+const SAVE_INTERVAL_S = 2;
+let saveAccum = 0;
+let lastSaved = '';
+let spawnSettled = false;
+
+function saveNow() {
+  // Nothing before the spawn is real: until the restore-or-Le-Pont decision has
+  // run, the camera is still at the 3,000 m placeholder, and saving that would
+  // overwrite a perfectly good stored position with a fake one if the page were
+  // closed while loading.
+  if (!spawnSettled) return;
+  const state = captureViewState();
+  if (!state) return;
+  const signature = buildHash(state) + (state.sound ? '&s=1' : '&s=0');
+  if (signature === lastSaved) return;
+  lastSaved = signature;
+  saveViewState(state);
+}
+
+// Belt and braces on the way out: 'hidden' fires when a tab is switched, closed
+// or backgrounded, including on mobile where 'unload' is simply never delivered.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveNow();
+});
+window.addEventListener('pagehide', saveNow);
+
+// Spawn once both terrain (for ground height) and POI (for a real landmark
+// to start near) are ready - avoids an intermediate wrong-looking position.
+Promise.all([terrainPromise, poiPromise, trailsPromise]).then(([{ sampleRenderedHeight }, index, trails]) => {
+  // Both were built from true heightfield elevations, which is not quite the
+  // surface the terrain draws - re-seat them on it (see each module's
+  // alignToGround) so markers plant in the ground and trails lie on the path.
+  index.alignToGround(sampleRenderedHeight);
+  trails.alignToGround(sampleRenderedHeight);
+
+  // A shared link first, then where you left off, then Le Pont (src/viewstate.js).
+  if (!applyViewState(pendingView)) goToDefaultSpawn();
+  pendingView = null;
+  spawnSettled = true;
+  saveNow(); // baseline, so the first autosave tick has something to compare against
 });
 
 let waterUpdate = null;
@@ -437,6 +572,45 @@ window.addEventListener('keydown', (event) => {
   if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA')) return;
   setAudioEnabled(!audio.enabled);
 });
+// The sound setting is a preference, not part of the view: it is restored from
+// storage even when a shared link decides everything else, and it deliberately
+// never travels in a link (src/viewstate.js).
+if (storedState && typeof storedState.sound === 'boolean') setAudioEnabled(storedState.sound);
+
+// Copy a link to exactly this view. It also puts the hash in the address bar, so
+// the link is available even if the clipboard is refused (permission, insecure
+// context) - which is why the two happen together rather than one or the other.
+const copyLinkButton = document.getElementById('copy-link');
+copyLinkButton.addEventListener('click', async (event) => {
+  event.stopPropagation();
+  copyLinkButton.blur();
+  const state = captureViewState();
+  if (!state) return;
+  const hash = buildHash(state);
+  history.replaceState(null, '', hash);
+  const url = window.location.href;
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(url);
+    copied = true;
+  } catch {
+    copied = false;
+  }
+  copyLinkButton.textContent = copied ? 'link copied' : 'link in the address bar';
+  setTimeout(() => { copyLinkButton.textContent = 'copy link'; }, 2000);
+});
+
+// Back to the default spawn - and the way out if a restored position is ever
+// somewhere useless. Saves immediately so the autosave cannot put you straight
+// back where you were.
+const resetViewButton = document.getElementById('reset-view');
+resetViewButton.addEventListener('click', (event) => {
+  event.stopPropagation();
+  resetViewButton.blur();
+  if (!goToDefaultSpawn()) return;
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+  saveNow();
+});
 
 const timer = new THREE.Timer();
 
@@ -514,6 +688,12 @@ renderer.setAnimationLoop(() => {
     fpsEl.textContent = `${Math.round(fpsFrames / fpsAccum)} fps`;
     fpsFrames = 0;
     fpsAccum = 0;
+  }
+
+  saveAccum += timer.getDelta();
+  if (saveAccum >= SAVE_INTERVAL_S) {
+    saveAccum = 0;
+    saveNow();
   }
 
   navAccum += timer.getDelta();

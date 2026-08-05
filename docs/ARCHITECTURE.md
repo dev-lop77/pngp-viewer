@@ -574,6 +574,7 @@ user's stated priorities; can reshuffle as we learn more.
 | 4 — Environment | **Done, 2026-07-31.** Time-of-day slider driving sun position/sky/fog/exposure; weather states (clear → clouds → rain → snow). See §8's lighting.js/atmosphere.js/weather.js entries and docs/PROGRESS.md |
 | 5 — Navigation aids | **Done, 2026-07-31.** Compass HUD, live position readout (lat/lon, elevation, nearest place name). See §8's nav.js entry and docs/PROGRESS.md. **Follow-up the same day**: testing this in a real browser led the user to ask for a bigger change - walk/fly navigation (WASD + pointer-lock mouselook) replacing OrbitControls as the default, since a ground-level "elevation" readout only makes sense once you're actually standing at ground level. See §8's controls.js/poi.js entries |
 | 6 — Life & atmosphere (stretch) | **Done, 2026-08-05.** Wildlife (Alpine ibex, chamois, marmots — the park's founding species — plus foxes and squirrels, added 2026-08-04 at the user's request), procedural ambient audio, huts/hydrology from OSM, treeline vegetation. **Started 2026-08-03, opened with the vegetation at the user's choice** (deferring the imagery question in §12): §5's altitude bands now colour the terrain, and trees are placed from a real OSM canopy mask — see §8's forest.js/vegetation.js and §4's fetch-forest.mjs/build-forest.mjs. Huts landed earlier, with the trailhead allowlist. Closed by the audio on 2026-08-05 — see §8's audio.js |
+| Saving & sharing the view (outside the phase table) | **Done, 2026-08-05**, from a discussion the user asked to have rather than a roadmap item: autosave/restore of the camera and environment, a shareable URL hash, and the ambient-sound preference. See §8's viewstate.js, plus `wgs84ToLocal()` in geo.js and `directionFromHeadingPitch()` in nav.js — both are the inverses of conversions that already lived there, kept beside their counterparts so the two directions cannot drift apart |
 | 7 — Polish | Tune/extend the LOD-tiled terrain from phase 1 if draw distance needs more than one tile (§10: LOD itself is a standing principle from phase 1 on, not deferred - phase 7 is refinement, not the first attempt), mobile pass, optional automated screenshot QA |
 
 ## 8. Module layout
@@ -679,6 +680,32 @@ pngp-viewer/
 │                              make keyboard-only navigation complete. Built on three's own PointerLockControls addon (not
 │                              hand-rolled mouselook) - see §7 for why and the real bug this
 │                              exposed in the old POI marker sizing
+│   ├── viewstate.js        Done, 2026-08-05. Saving, restoring and sharing where you
+│                              are - agreed with the user in the discussion they asked
+│                              for, and deliberately THREE mechanisms rather than one:
+│                              (1) autosave to localStorage, so reopening the page puts
+│                              you back where you left off with the same time, weather
+│                              and walk/fly mode - no backend needed for ~120 bytes,
+│                              which matters given §9 is static hosting only;
+│                              (2) a shareable URL hash carrying the same view, which is
+│                              the one that is for other people; (3) preferences
+│                              (ambient sound on/off), stored but NEVER put in a link -
+│                              a link that switches on a stranger's speakers is hostile.
+│                              A hash BEATS the stored state (an explicit link must win)
+│                              and is then consumed - main.js strips it - so a later
+│                              reload follows the autosave again instead of being pinned
+│                              to that link forever. The format stores real lat/lon
+│                              rather than local scene metres, because local metres are
+│                              relative to the bbox centre and that bbox has already
+│                              been rebuilt once (§3's DEM mosaic) - every old link
+│                              would have broken. Key=value fields rather than a
+│                              positional list, so a field can be added later without
+│                              changing what the ones already out there in saved links
+│                              mean. Everything read back is untrusted and validated
+│                              whole-or-nothing: a bad restore would break the app on
+│                              every load with no visible way out, so the fallback is
+│                              always the Le Pont spawn, and "back to Le Pont" in the UI
+│                              is the deliberate escape hatch
 │   ├── nav.js              Done, 2026-07-31 (phase 5). Pure logic, no DOM: compass
 │                              bearing from the camera's view direction, 8-point compass
 │                              label, nearest-POI lookup (linear scan over the ~400-POI

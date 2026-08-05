@@ -4,12 +4,16 @@ Read this first at the start of each session. Update it before ending one.
 
 ## Status as of 2026-08-05
 
-**Phase 6 is closed.** The user picked ambient audio out of the four things left
-open at the last session's end (the other three: the save/autosave discussion,
-the birds, and phase-7 polish - all still open, and the first two are still
-theirs to open). Audio was the last item phase 6 needed, so with it done the
-roadmap in `docs/ARCHITECTURE.md` §7 has phases 0-6 complete and only phase 7
-remaining.
+**Phase 6 is closed, and so is the save/autosave topic.** The user picked ambient
+audio out of the four things left open at the last session's end; audio was the
+last item phase 6 needed, so `docs/ARCHITECTURE.md` §7 now has phases 0-6
+complete. They then opened the save/autosave discussion, decided it, and it is
+built (`src/viewstate.js`, section below). **Birds** are the one deferred topic
+left, plus phase 7.
+
+Order of the day, all of it committed: the audio (`c72c071`), the whistle the
+user could not hear (`e5c2b08`), the whistle as a series (`715c0de`), then
+saving/restoring/sharing the view.
 
 **Not yet judged by the user.** Everything below is measured, but how a mix
 *sounds* is exactly the class of question headless has been wrong about four
@@ -196,6 +200,74 @@ There is a dev-only third HUD line showing what the ambience is being driven by
 Audio is the first feature here with no visual at all, so without it there is no
 way to tell a layer that is correctly silent from one that is broken.
 
+### Done: saving, restoring and sharing the view (`src/viewstate.js`)
+The user then opened the first of their two deferred topics - and it was a
+discussion first, as they had asked. What came out of it, with their choices in
+bold:
+
+- **autosave/restore** and **a shareable link**, not named bookmarks (they took
+  the two recommended ones and dropped the third as too much UI for the value);
+- **the ambient-sound setting persists too** - their own addition to the list;
+- on return, **restore silently plus a "back to Le Pont" button**, rather than
+  asking every time or expiring old saves;
+- the save carries **everything**: position, look direction, walk/fly mode, time of
+  day and weather.
+
+Four things I decided and put to them rather than asked, all standing:
+
+1. **A hash beats the stored state, and is then consumed.** An explicit link has to
+   win, or sharing is unreliable; but it is stripped from the URL after being
+   applied, so a later reload follows the autosave again instead of being pinned to
+   a link forever. Without that, moving and reloading would silently drop you back
+   at the old link's spot.
+2. **The sound setting never travels in a link.** A link that switches on a
+   stranger's speakers is hostile. It is a preference, so it is restored from
+   storage even when a link decides everything else.
+3. **Real lat/lon in the link, not local scene metres.** Local metres are relative
+   to the bbox centre and that bbox has already been rebuilt once (the DEM mosaic),
+   which would have broken every link ever shared. `#at=45.60523,7.24285,3135&look=121,-2&mode=fly&time=0.620&sky=storm`
+   is also readable, and key=value means a field can be added later without
+   changing what today's links mean.
+4. **Autosave on a 2 s tick plus `visibilitychange: hidden`**, not `unload` (never
+   delivered on mobile). The write only happens when the serialised state actually
+   changes, and the quantisation *is* the change detector - standing still writes
+   nothing however much the camera jitters.
+
+**One assumption worth having checked rather than trusted**: I was going to detect
+an out-of-map restore by testing the sampled ground height for NaN.
+`sampleRenderedHeightfield()` **clamps to the grid edge** instead (read, not
+guessed), so a hand-edited link pointing at Milan would have "worked" and put the
+camera on a smeared copy of the bbox border. It needs an explicit bbox test, which
+is what it now has - and the test proves it with a stored record at Milan's real
+coordinates.
+
+`tools/test-viewstate.mjs` tests the contract end to end rather than the
+serialisation, and measured:
+
+- move somewhere, change every field, reload: back within **0.00 m**, altitude,
+  heading, mode, time, weather and sound all restored, and **9.2 km** from the
+  default spawn (i.e. it really did not just fall back);
+- a copied link opens a fresh tab **0.03 m** from where it was made - that is the
+  5-decimal quantisation, and it is sub-metre as designed - while the stored
+  position was 15.6 km away, so the link genuinely won;
+- the hash is empty after being applied (consumed);
+- no sound field in the link, and the fresh tab still honours the stored sound
+  preference;
+- a corrupt record and a well-formed off-map record both land at Le Pont, with no
+  page errors;
+- "back to Le Pont" goes back, in walk mode, and **survives a reload** - the
+  autosave does not drag you back to where you were.
+
+Note the storage keeps full precision while only the link quantises, which is why
+the reload round-trip is exact and the link is ~1 m.
+
+Two test bugs worth recording, because both looked like product bugs for a minute:
+the first version flew to a fixed 2,600 m at a spot where the ground is 2,835 m and
+read the restore's "never strand the camera inside a mountain" floor as a failure
+to restore altitude; and it reloaded the page after clicking "copy link", so the
+hash was still in the address bar and the *link* path answered a question about the
+*storage* path. Both are now explicit in the test.
+
 ### Next steps
 1. ~~Ask the user to listen~~ - **CLOSED 2026-08-05**: default-on approved, wind
    and water approved, whistle volume and pitch approved, and the two changes they
@@ -204,9 +276,11 @@ way to tell a layer that is correctly silent from one that is broken.
    number worth tuning is a named constant at the top of `src/audio.js`
    (`WATER_KINDS`, `CALLS`, `MASTER_GAIN`) or one of the six gain expressions in
    `tick()`.
-2. **Discuss save/autosave of the position**, then **birds** - unchanged from
-   yesterday, both still the user's to open, both still recorded in the
-   2026-08-04 section below with the technical context worth having first.
+2. ~~Discuss save/autosave~~ - **CLOSED 2026-08-05**: discussed, decided and built,
+   see the section above. **Birds** are the remaining deferred topic and still the
+   user's to open; the technical context worth having first is in the 2026-08-04
+   section below (a bird's Y is free, so the ground clamp every current species
+   relies on does not transfer).
 3. **Phase 7 polish** is now the only phase left: LOD popping/geomorphing,
    one-texel normals at any depth, the >500 kB bundle (now 767 kB / 213 kB
    gzipped; `audio.js` minifies to 7.3 kB of that, measured with esbuild), and the
@@ -228,6 +302,10 @@ and `test-audio` needs a **dev** server like the others (`tools/dev/start-dev.sh
 
 - `node tools/test-audio.mjs` after touching `src/audio.js`, the hydrology
   manifest's shape, or `wildlife.js`'s alarm event.
+- `node tools/test-viewstate.mjs` after touching `src/viewstate.js`, the spawn, the
+  environment controls, or anything about the camera's heading/pitch conversions.
+  It is the slowest of the tools - it loads the viewer six times - but it is the
+  only one that covers a reload at all.
 - `node tools/test-wildlife.mjs` after touching the animals - it also now reports
   `alarmed` per animal in `snapshot()`.
 - the rest of the list in the 2026-08-04 section below is unchanged.

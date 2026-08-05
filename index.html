@@ -88,6 +88,27 @@
       #poi-search input::placeholder {
         color: rgba(255, 255, 255, 0.55);
       }
+      /* "Copy link" and "back to Le Pont" (2026-08-05). They live with the search
+         box rather than with the environment controls because all three answer
+         the same question - where am I, and where do I want to be. */
+      #view-actions {
+        display: flex;
+        gap: 6px;
+      }
+      #view-actions button {
+        padding: 4px 9px;
+        border: 0;
+        border-radius: 6px;
+        background: rgba(10, 14, 20, 0.75);
+        color: rgba(255, 255, 255, 0.85);
+        font: 11px/1.4 -apple-system, system-ui, sans-serif;
+        cursor: pointer;
+      }
+      #view-actions button:hover,
+      #view-actions button:focus-visible {
+        background: rgba(10, 14, 20, 0.95);
+        color: #fff;
+      }
       #poi-info {
         padding: 10px 14px;
         background: rgba(10, 14, 20, 0.75);
@@ -223,6 +244,10 @@
       <div id="poi-search">
         <input type="text" id="poi-search-input" list="poi-search-list" placeholder="Cerca un luogo..." autocomplete="off" />
         <datalist id="poi-search-list"></datalist>
+      </div>
+      <div id="view-actions">
+        <button id="copy-link" type="button" title="Copy a link that opens this exact view">copy link</button>
+        <button id="reset-view" type="button" title="Back to the Le Pont trailhead, where the viewer opens by default">back to Le Pont</button>
       </div>
       <div id="poi-info"></div>
     </div>

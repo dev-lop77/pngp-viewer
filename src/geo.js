@@ -36,3 +36,13 @@ export function localToWGS84(x, z) {
   const [lon, lat] = proj4('EPSG:23032', 'WGS84', [e, n]);
   return { lon, lat };
 }
+
+// The inverse, added 2026-08-05 for src/viewstate.js: a shareable link stores real
+// lat/lon rather than local scene metres, because local metres are relative to
+// the bbox centre and that bbox has already been rebuilt once (the DEM mosaic,
+// §3) - every old link would have broken. Same reason this file exists at all:
+// the conversion lives here, once.
+export function wgs84ToLocal(lat, lon) {
+  const [e, n] = proj4('WGS84', 'EPSG:23032', [lon, lat]);
+  return worldToLocal(e, n);
+}
