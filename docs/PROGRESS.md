@@ -4,16 +4,18 @@ Read this first at the start of each session. Update it before ending one.
 
 ## Status as of 2026-08-05
 
-**Phase 6 is closed, and so is the save/autosave topic.** The user picked ambient
-audio out of the four things left open at the last session's end; audio was the
-last item phase 6 needed, so `docs/ARCHITECTURE.md` §7 now has phases 0-6
-complete. They then opened the save/autosave discussion, decided it, and it is
-built (`src/viewstate.js`, section below). **Birds** are the one deferred topic
-left, plus phase 7.
+**Phase 6 is closed, both deferred topics are closed, and the site is republished.**
+The user picked ambient audio out of the four things left open at the last session's
+end; audio was the last item phase 6 needed, so `docs/ARCHITECTURE.md` §7 now has
+phases 0-6 complete. They then opened both of the topics they had deferred on
+2026-08-04 - saving/autosaving the position, and birds - discussed each, decided
+each, and both are built. **Nothing they deferred is still outstanding; phase 7 is
+the only phase left.**
 
-Order of the day, all of it committed: the audio (`c72c071`), the whistle the
-user could not hear (`e5c2b08`), the whistle as a series (`715c0de`), then
-saving/restoring/sharing the view.
+Order of the day, all of it committed: the audio (`c72c071`), the whistle the user
+could not hear (`e5c2b08`), the whistle as a series (`715c0de`), saving and sharing
+the view (`b2043fd`), the README and the deploy-guard fix (`4190e2b`, `b84140c`,
+and the site republished), then the birds.
 
 **Not yet judged by the user.** Everything below is measured, but how a mix
 *sounds* is exactly the class of question headless has been wrong about four
@@ -268,6 +270,87 @@ to restore altitude; and it reloaded the page after clicking "copy link", so the
 hash was still in the address bar and the *link* path answered a question about the
 *storage* path. Both are now explicit in the test.
 
+### Done: the birds (`src/birds.js`) - the last deferred topic
+The user opened their second deferred topic, and it was a discussion first again.
+Their choices: **all four species** (golden eagle, alpine chough, bearded vulture,
+nutcracker - I had expected them to drop the nutcracker as the most work for the
+least visibility), **rare, like a sighting**, and **chough flocks on the real
+passes and huts** rather than on a blind lattice. 151 POI qualify (passes and huts
+above 1,900 m).
+
+**The design decision was where to put it, and the note left for this session was
+wrong.** It said the `SPECIES` table "should extend to birds; the ground clamp will
+not". Reading `wildlife.js` again with that in mind, the clamp is not a line to
+skip - it is the spine: `rescan()`'s habitat test, the orientation basis built from
+the surface normal, `stepAnimal()`'s two-dimensional targets and the leg-swing
+shader all assume something standing on the drawn surface. A `flight` flag would
+have put a branch in every one of them. So: a separate module, the same *shape* as
+its sibling (one InstancedMesh per species, one per-instance animation float,
+deterministic hash lattice, distance fade, the audio event hook), and things that
+walk stay separate from things that fly.
+
+What replaces the ground clamp is still terrain-derived, and different per species:
+
+- **Raptors circle a thermal**, sited on a ridge by the same four-sample exposure
+  test `audio.js` uses to decide how windy it is where you stand. They climb at
+  2 m/s to a ceiling, then trade the height for distance on a glide. The roll is a
+  **real coordinated turn**, `atan(v^2 / (r g))` - about 24 degrees for an eagle in
+  a 45 m thermal - which means it is checkable rather than tuned: measured against
+  the formula to **0.0002 degrees**.
+- **A chough flock is anchored on a named place**, orbits it, and closes to ~15 m
+  when you arrive, because that is exactly what choughs do at a col. Nothing else
+  in this project puts life on a named POI.
+- **A nutcracker undulates over the canopy**, with one phase driving both its
+  height and its wingbeat - that is the actual mechanism of undulating flight, not
+  two effects that happen to look related.
+
+The raptors are **silent on purpose**, which is the one piece of restraint in here:
+a golden eagle is very nearly silent, and the screaming eagle everyone can hear in
+their head is a red-tailed hawk. The chough and the nutcracker do have calls - and
+the nutcracker needed a new timbre in `audio.js`, because a rattle is amplitude
+modulation (a sawtooth chopped at 30 Hz), not a pitch you can choose.
+
+Three bugs, all found by running the thing rather than by reading it:
+
+1. **`Cannot access 'poiPromise' before initialization`.** The birds need the POI
+   list, so I added `poiPromise` to a `Promise.all` written *above* where that const
+   is declared - and a const is not hoisted. Now awaited inside the callback, which
+   also means a slow POI load cannot hold up the trees and the animals.
+2. **`mergeGeometries()` refuses a mix of indexed and non-indexed geometry.** The
+   wings and tails were four raw triangles; the capsules and cones are indexed. Not
+   a single bird was built. The panels are indexed now.
+3. **Raptors were not rare, they were absent**: 0 of 40 viewpoints across the park
+   had one within draw distance. The ridge and elevation tests throw away far more
+   cells than a presence figure suggests, so presence had to go from 0.22 to 0.6 to
+   land at the intended few-tenths-of-a-bird. Now **3/40 viewpoints, mean 0.07 in
+   range, never more than 1 at once** - which is the "rare, like a sighting" the
+   user asked for, and it is a measured number rather than a hope.
+
+And two measurements that were the *test's* fault, worth recording because both
+looked like product bugs:
+
+- the eagle's bank appeared to miss the formula by 0.13 deg, because the test
+  predicted from the 3-D airspeed while the code uses the horizontal speed - a
+  climb plays no part in balancing a turn. The snapshot now reports both.
+- the thermal's ridge exposure "did not survive re-derivation" (0.67 against 0.92),
+  because `findNearest` returns the *bird*, which is up to 115 m from the ridge it
+  is circling. The snapshot now reports the site's own position.
+
+Also tuned on evidence rather than taste: the first soaring numbers (1.1 m/s to a
+620 m ceiling) took **eight minutes** to complete one climb-and-glide cycle, so the
+glide - half of what soaring looks like - was never seen. 2 m/s to 450 m gives a
+four-minute cycle and is still inside what real birds do.
+
+`tools/test-birds.mjs` measures all of it, plus the cost: **93 birds at 0.292
+ms/frame**. That number is also why sites beyond 2.5x the draw distance are now
+evicted - before that, one test sweep across the park had accumulated **799 birds
+and ~1 ms/frame**, because every site ever passed was still being simulated. The
+sites are deterministic, so coming back rebuilds exactly the same ones.
+
+There is a dev-only **'B' key**, the sibling of 'G': it stands you 70 m from the
+nearest bird of the next species and looks up at it. The raptors are rare by
+design, so hunting one on foot to judge how it reads would be absurd.
+
 ### Published, and the deploy guard had rotted
 The user asked for a README and then for a republish - the live site was still the
 2026-08-03 build, eight commits behind.
@@ -322,11 +405,13 @@ saved position may not strand you inside a mountain.
    number worth tuning is a named constant at the top of `src/audio.js`
    (`WATER_KINDS`, `CALLS`, `MASTER_GAIN`) or one of the six gain expressions in
    `tick()`.
-2. ~~Discuss save/autosave~~ - **CLOSED 2026-08-05**: discussed, decided and built,
-   see the section above. **Birds** are the remaining deferred topic and still the
-   user's to open; the technical context worth having first is in the 2026-08-04
-   section below (a bird's Y is free, so the ground clamp every current species
-   relies on does not transfer).
+2. ~~Discuss save/autosave, then birds~~ - **BOTH CLOSED 2026-08-05**: discussed,
+   decided and built, see the sections above. Nothing the user deferred is still
+   outstanding. Left unjudged and worth asking about: how the birds READ in a real
+   browser (silhouette against sky, the size of the raptors at distance, whether
+   0.07 raptors in view feels rare-but-present or just absent), and how the two new
+   calls sound. `tools/dev/shoot.mjs` can frame a place, and the dev 'B' key stands
+   you under the nearest bird of each species.
 3. **Phase 7 polish** is now the only phase left: LOD popping/geomorphing,
    one-texel normals at any depth, the >500 kB bundle (now 767 kB / 213 kB
    gzipped; `audio.js` minifies to 7.3 kB of that, measured with esbuild), and the
@@ -350,6 +435,10 @@ and `test-audio` needs a **dev** server like the others (`tools/dev/start-dev.sh
 
 - `node tools/test-audio.mjs` after touching `src/audio.js`, the hydrology
   manifest's shape, or `wildlife.js`'s alarm event.
+- `node tools/test-birds.mjs` after touching `src/birds.js`, the POI categories the
+  choughs are placed on, or anything about the terrain samplers. It drives the
+  simulation with a fixed step rather than waiting on frames, so it is fast and
+  exactly reproducible.
 - `node tools/test-viewstate.mjs` after touching `src/viewstate.js`, the spawn, the
   environment controls, or anything about the camera's heading/pitch conversions.
   It is the slowest of the tools - it loads the viewer six times - but it is the

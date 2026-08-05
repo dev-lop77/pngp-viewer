@@ -45,7 +45,7 @@ async function waitForSpawn(target = page) {
   await target.waitForFunction(() => {
     const text = document.getElementById('nav-position')?.textContent ?? '';
     return /alt \d+ m/.test(text) && !text.includes('alt 3000 m');
-  }, { timeout: 120000 });
+  }, null, { timeout: 120000 });
   // One more frame so the HUD and the autosave baseline have both run.
   await target.waitForTimeout(300);
 }

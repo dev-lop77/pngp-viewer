@@ -8,6 +8,7 @@ import { loadWater } from './water.js';
 import { loadForest, createCoverageSampler } from './forest.js';
 import { createVegetation } from './vegetation.js';
 import { createWildlife } from './wildlife.js';
+import { createBirds } from './birds.js';
 import { createAudio } from './audio.js';
 import { installAtmosphere } from './atmosphere.js';
 import { Lighting } from './lighting.js';
@@ -195,32 +196,62 @@ const forestPromise = loadForest().catch((err) => {
 });
 
 let wildlife = null; // animals carry state between frames, so they need the loop
+let birds = null; // same, and they need the POI list too (see below)
 
 // Trees need the terrain's height texture (they displace onto the same surface)
 // but NOT the mask, thanks to the shared holder.
-Promise.all([terrainPromise, forestPromise]).then(([terrain, forest]) => {
-  if (!forest) return;
-  const vegetation = createVegetation({ manifest: terrain.manifest, heightTexture: terrain.heightTexture });
-  scene.add(vegetation.object);
+Promise.all([terrainPromise, forestPromise]).then(async ([terrain, forest]) => {
+  // ONE coverage sampler for all three consumers. It decodes the mask at half
+  // resolution into a 2.4 MB array (src/forest.js), so building a second one for
+  // the birds would be pure waste - and they have to agree about where the wood is
+  // anyway.
+  const canopyAt = forest
+    ? createCoverageSampler({ manifest: forest.manifest, texture: forest.texture })
+    : () => 0;
 
-  // Wildlife needs the same mask, but on the CPU: it decides where a herd can
-  // stand in JavaScript, then keeps moving those animals from frame to frame.
-  // sampleRenderedHeight for the same reason the walking camera uses it - an
-  // animal has to stand on the surface that is actually drawn.
-  const canopyAt = createCoverageSampler({ manifest: forest.manifest, texture: forest.texture });
-  wildlife = createWildlife({
-    sampleGroundHeight: terrain.sampleRenderedHeight,
-    canopyAt,
-    // An alarm whistle is the one wildlife sound that carries (src/audio.js):
-    // wildlife.js reports the event, audio.js decides which species has a call
-    // and whether it is within earshot.
-    onAlarm: (event) => audio.alarm(event),
-  });
-  scene.add(wildlife.object);
+  if (forest) {
+    const vegetation = createVegetation({ manifest: terrain.manifest, heightTexture: terrain.heightTexture });
+    scene.add(vegetation.object);
+
+    // Wildlife needs the same mask on the CPU: it decides where a herd can stand
+    // in JavaScript, then keeps moving those animals from frame to frame.
+    // sampleRenderedHeight for the same reason the walking camera uses it - an
+    // animal has to stand on the surface that is actually drawn.
+    wildlife = createWildlife({
+      sampleGroundHeight: terrain.sampleRenderedHeight,
+      canopyAt,
+      // An alarm whistle is the one wildlife sound that carries (src/audio.js):
+      // wildlife.js reports the event, audio.js decides which species has a call
+      // and whether it is within earshot.
+      onAlarm: (event) => audio.call(event),
+    });
+    scene.add(wildlife.object);
+  }
 
   // The same canopy sampler drives the leaf-rustle layer - standing in a wood
   // sounds different from standing on the ridge above it.
   audio.setSamplers({ canopyAt });
+
+  // Birds last, and the POI list is awaited HERE rather than in the Promise.all
+  // above for a reason worth stating: poiPromise is declared further down this
+  // file, and a const is not hoisted, so naming it at module-evaluation time
+  // throws "Cannot access 'poiPromise' before initialization" - which it did.
+  // Awaiting it inside the callback also means a slow POI load cannot hold up the
+  // trees and the animals, and .catch means a failed one cannot cost them at all.
+  //
+  // Birds do not need the canopy mask (only the nutcracker uses it, and without one
+  // it simply finds nowhere to live), so they are created either way.
+  const index = await poiPromise.catch(() => null);
+  birds = createBirds({
+    sampleGroundHeight: terrain.sampleRenderedHeight,
+    canopyAt,
+    // Choughs live on real passes and huts - the user's decision (2026-08-05).
+    pois: index?.manifest.pois ?? [],
+    // A chough flock chatters and a nutcracker rattles as it goes. Same split as
+    // the mammals: this module knows when, audio.js knows what it sounds like.
+    onCall: (event) => audio.call(event),
+  });
+  scene.add(birds.object);
 });
 
 const trailsPromise = loadTrails().then((result) => {
@@ -501,6 +532,7 @@ if (import.meta.env.DEV) {
     camera, controls, scene, renderer, lighting, audio,
     getPoiIndex: () => poiIndex,
     getWildlife: () => wildlife, // loads late, so a getter rather than the value
+    getBirds: () => birds,
   };
 
   // 'G' stands next to the nearest animal, cycling species on each press. Purely
@@ -529,6 +561,35 @@ if (import.meta.env.DEV) {
     camera.lookAt(found.x, (controls.getGroundHeight?.(found.x, found.z) ?? ground) + 0.7, found.z);
     wildlife.update(1 / 60, camera); // materialise the herd before the next frame draws
     devNoteEl.textContent = `${name}: 18 m ahead (it was ${(found.distanceM / 1000).toFixed(1)} km away)`;
+  });
+
+  // 'B' does the same for the birds, and needs to: the whole point of the raptors
+  // is that they are rare, so hunting one on foot to judge how it reads would be
+  // absurd. It stands you 70 m to one side and looks up, because straight
+  // underneath is the one angle from which a soaring bird is just a dot.
+  let birdSpecies = 0;
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'KeyB' || !birds) return;
+    const el = document.activeElement;
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA')) return;
+    const name = birds.species[birdSpecies % birds.species.length];
+    birdSpecies += 1;
+    const found = birds.findNearest(name, camera.position.x, camera.position.z);
+    if (!found) {
+      devNoteEl.textContent = `no ${name} found within reach`;
+      return;
+    }
+    const bearing = Math.atan2(camera.position.x - found.x, camera.position.z - found.z);
+    const standX = found.x + Math.sin(bearing) * 70;
+    const standZ = found.z + Math.cos(bearing) * 70;
+    const ground = controls.getGroundHeight?.(standX, standZ) ?? 0;
+    camera.position.set(standX, ground + EYE_HEIGHT_M, standZ);
+    camera.lookAt(found.x, found.y, found.z);
+    birds.update(1 / 60, camera); // materialise it before the next frame draws
+    const agl = Math.round(found.y - ground);
+    devNoteEl.textContent = `${name}: 70 m off, ${agl} m up`
+      + `${found.site ? ` at ${found.site}` : ''}`
+      + ` (it was ${(found.distanceM / 1000).toFixed(1)} km away)`;
   });
 }
 
@@ -643,7 +704,7 @@ if (import.meta.env.DEV) {
   devNoteEl.style.cssText = 'position:fixed;top:52px;right:10px;padding:3px 7px;'
     + 'background:rgba(10,14,20,0.55);border-radius:4px;color:#9fe0a0;'
     + 'font:11px/1.4 -apple-system,system-ui,sans-serif;pointer-events:none;';
-  devNoteEl.textContent = 'G: go to the next species';
+  devNoteEl.textContent = 'G: next mammal · B: next bird';
   lookDiagEl.after(devNoteEl);
 
   // What the ambience is currently being driven by. Audio is the one feature so
@@ -680,6 +741,7 @@ renderer.setAnimationLoop(() => {
   waterUpdate?.(timer.getElapsed());
   weather?.update(timer.getDelta(), camera);
   wildlife?.update(timer.getDelta(), camera);
+  birds?.update(timer.getDelta(), camera);
   lighting.applyState(); // re-grades every frame so an in-progress weather transition stays live
 
   fpsFrames += 1;

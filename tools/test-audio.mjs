@@ -209,7 +209,7 @@ const result = await page.evaluate(async () => {
     if (!enabled) audio.setEnabled(false);
     const camera = makeCamera({ ...at, ground, facing });
     audio.update(1 / 8, camera, weather);
-    const fired = alarms.map((a) => audio.alarm(a));
+    const fired = alarms.map((a) => audio.call(a));
     const diag = JSON.parse(JSON.stringify(audio.diag));
     const buffer = await ctx.startRendering();
     const left = buffer.getChannelData(0);
@@ -228,6 +228,7 @@ const result = await page.evaluate(async () => {
         rain: bandPower(steady, 1400, 2600), // rain, and water's splash
         high: bandPower(steady, 2400, 4200), // rustle, and the alarm whistles
         veryHigh: bandPower(steady, 6000, 10000), // what the snow muffle removes
+        lowMid: bandPower(left, 700, 1200), // where a corvid's rattle sits
       },
       // Whole-buffer, for the calls. bandPower is a mean over segments, so a
       // longer render is directly comparable with a shorter one.
@@ -307,6 +308,23 @@ const result = await page.evaluate(async () => {
     ],
   });
 
+  // 6b. The bird calls (2026-08-05, src/birds.js). Two things worth measuring: a
+  //     chough answers itself, so it must be a series; and a nutcracker is a RATTLE,
+  //     which means its energy has to sit low and broad rather than in a narrow
+  //     whistle band - a rattle is amplitude modulation, not a pitch choice.
+  //     Both on flat ground, and compared against cases.noCall on the same ground.
+  //     The first version put them on a RIDGE, where the wind is at full strength -
+  //     which broke both measurements at once: the noise bed crossed the envelope
+  //     threshold 22 times (counting gusts as notes) and windHigh sits at 700-1600
+  //     Hz, exactly the band a corvid rattle occupies. The reference has to be quiet
+  //     in the band under test.
+  cases.choughCall = await render({
+    ground: GROUND.flat, renderS: CALL_RENDER_S, alarms: [{ species: 'chough', x: 0, z: -40 }],
+  });
+  cases.nutcrackerCall = await render({
+    ground: GROUND.flat, renderS: CALL_RENDER_S, alarms: [{ species: 'nutcracker', x: 0, z: -30 }],
+  });
+
   // 7. The real hydrology, at the real spawn point: is the Savara audible from
   //    the Le Pont trailhead the viewer opens at?
   const earshot = buildWaterEarshot(water);
@@ -347,7 +365,7 @@ const result = await page.evaluate(async () => {
 await page.waitForFunction(() => {
   const text = document.getElementById('nav-position')?.textContent ?? '';
   return /alt \d+ m/.test(text) && !text.includes('alt 3000 m');
-}, { timeout: 120000 });
+}, null, { timeout: 120000 });
 
 const beforeClick = await page.evaluate(() => ({
   started: window.__pngp.audio.diag.started,
@@ -458,6 +476,13 @@ for (const s of series) {
     + ` first ${s.firstNoteS.toFixed(2)} s, span ${s.spanS.toFixed(2)} s`);
 }
 
+console.log('\nBird calls:');
+console.log(`  chough at 40 m   : ${cases.choughCall.fired} notes scheduled,`
+  + ` ${cases.choughCall.notes.count} rendered, span ${cases.choughCall.notes.spanS.toFixed(2)} s`);
+console.log(`  nutcracker 30 m  : ${cases.nutcrackerCall.fired} notes,`
+  + ` 0.7-1.2k ${e(cases.nutcrackerCall.bands.lowMid)} (x${ratio(cases.nutcrackerCall.bands.lowMid, cases.noCall.bands.lowMid).toFixed(0)} over the same scene silent),`
+  + ` and ${(cases.nutcrackerCall.bands.lowMid / Math.max(cases.nutcrackerCall.bands.high, 1e-12)).toFixed(1)}x more energy low than at 2.4-4.2k`);
+
 console.log('\nAt the Le Pont spawn, with the real hydrology:');
 console.log(`  (${spawn.x}, ${spawn.z}) · nearest river ${spawn.river} m`
   + ` · lake ${spawn.lake ?? '-'} m · waterfall ${spawn.waterfall ?? '-'} m`);
@@ -530,6 +555,14 @@ check(ratio(cases.callRight.callBandRight, cases.callRight.callBandLeft) > 2,
 check(ratio(cases.callLeft.callBandRight, cases.callLeft.callBandLeft) < 0.5,
   'a call from the left did not come from the left');
 check(cases.herdCall.callsPlayed === 1, 'a whole herd bolting played more than one call at once');
+check(cases.choughCall.fired[0] >= 2 && cases.choughCall.notes.count === cases.choughCall.fired[0],
+  'a chough call is not the series it should be - a flock answers itself');
+check(cases.nutcrackerCall.fired[0] > 0,
+  'the nutcracker call did not play');
+check(ratio(cases.nutcrackerCall.bands.lowMid, cases.noCall.bands.lowMid) > 20,
+  'the nutcracker rattle is inaudible in its own band');
+check(cases.nutcrackerCall.bands.lowMid > cases.nutcrackerCall.bands.high,
+  'the nutcracker call is not a low harsh rattle - it has more energy up where the whistles live');
 check(spawn.river < 250, 'the Savara is no longer within earshot of the spawn point');
 check(cases.atSpawn.diag.gains.waterLow > 0.01,
   'the river at the spawn point is not audible');

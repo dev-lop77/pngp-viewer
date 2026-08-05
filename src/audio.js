@@ -88,6 +88,28 @@ const CALLS = {
     f0: 2200, f1: 1900, durS: 0.14, gain: 0.3, bandQ: 7, earshotM: 180,
     notesMin: 1, notesMax: 3, gapS: [0.5, 0.9],
   },
+  // Birds (2026-08-05, src/birds.js). Note the raptors are absent on purpose: a
+  // golden eagle is very nearly silent, and the screaming eagle is the single most
+  // common mistake made about this bird - the sound in everyone's head is a
+  // red-tailed hawk. Silence is the accurate choice here, not a missing feature.
+  //
+  // An alpine chough is the sound of a high col: a rippling, slightly descending
+  // whistle, and never once - a flock answers itself, which is what the short gaps
+  // and the note count are for. Audible a long way, because a flock is loud.
+  chough: {
+    f0: 2600, f1: 1850, durS: 0.2, gain: 0.32, bandQ: 4, earshotM: 380,
+    notesMin: 2, notesMax: 4, gapS: [0.22, 0.5],
+  },
+  // A nutcracker does not whistle at all: it is a dry, harsh rattle. A sawtooth
+  // through a wide filter with its amplitude chopped at 30 Hz is what "harsh"
+  // actually is - a pure tone cannot be made to sound like this by choosing a
+  // frequency.
+  nutcracker: {
+    // Louder than a chamois and not far off a marmot: a nutcracker is a genuinely
+    // noisy bird and its rattle carries across a whole stand of pines.
+    f0: 950, f1: 780, durS: 0.34, gain: 0.38, bandQ: 1.6, earshotM: 240,
+    notesMin: 1, notesMax: 3, gapS: [0.3, 0.62], wave: 'sawtooth', rattleHz: 30,
+  },
 };
 const CALL_ATTACK_S = 0.012; // near-instant, which is what makes a whistle carry
 // One animal taking fright usually means several: without a floor the whole herd
@@ -458,9 +480,11 @@ export function createAudio({
     tick(tickDt, camera, weather);
   }
 
-  // One alarm call, from src/wildlife.js's onAlarm. Returns how many notes were
-  // scheduled - 0 when nothing was played, which is what a test can assert on.
-  function alarm({ species, x, z } = {}) {
+  // One vocalisation, from src/wildlife.js's onAlarm (an animal taking fright) or
+  // src/birds.js's onCall (a chough flock chattering, a nutcracker rattling as it
+  // goes). Returns how many notes were scheduled - 0 when nothing was played,
+  // which is what a test can assert on.
+  function call({ species, x, z } = {}) {
     if (!layers || !enabled || !cameraRef) return 0;
     const cfg = CALLS[species];
     if (!cfg) return 0; // this species has no call, and that is deliberate
@@ -512,13 +536,37 @@ export function createAudio({
     const f0 = cfg.f0 * detune;
     const f1 = cfg.f1 * detune;
     const osc = ctx.createOscillator();
-    osc.type = 'triangle'; // more edge than a sine, which is what makes it carry
+    // Triangle by default - more edge than a sine, which is what makes a whistle
+    // carry. A species can ask for something richer (the nutcracker's sawtooth).
+    osc.type = cfg.wave ?? 'triangle';
     osc.frequency.setValueAtTime(f0, at);
     osc.frequency.exponentialRampToValueAtTime(f1, at + cfg.durS);
     const band = ctx.createBiquadFilter();
     band.type = 'bandpass';
     band.frequency.value = (f0 + f1) / 2;
     band.Q.value = cfg.bandQ;
+
+    // A rattle is amplitude, not pitch: chopping the tone at a few dozen Hz is
+    // what makes a corvid's call harsh rather than musical. The base gain stays
+    // above zero so it reads as a rattle and not as a stutter.
+    const extras = [];
+    let chain = band;
+    if (cfg.rattleHz) {
+      const chop = ctx.createGain();
+      chop.gain.value = 0.45;
+      const lfo = ctx.createOscillator();
+      lfo.type = 'square';
+      lfo.frequency.value = cfg.rattleHz;
+      const depth = ctx.createGain();
+      depth.gain.value = 0.55;
+      lfo.connect(depth).connect(chop.gain);
+      lfo.start(at);
+      lfo.stop(at + cfg.durS + 0.02);
+      band.connect(chop);
+      chain = chop;
+      extras.push(chop, lfo, depth);
+    }
+
     const gain = ctx.createGain();
     const top = Math.max(peak, 2e-4);
     gain.gain.setValueAtTime(1e-4, at);
@@ -529,7 +577,8 @@ export function createAudio({
     gain.gain.exponentialRampToValueAtTime(1e-4, at + cfg.durS);
     const panner = ctx.createStereoPanner();
     panner.pan.value = pan;
-    osc.connect(band).connect(gain).connect(panner).connect(muffle);
+    osc.connect(band);
+    chain.connect(gain).connect(panner).connect(muffle);
     osc.start(at);
     osc.stop(at + cfg.durS + 0.02);
     osc.onended = () => {
@@ -537,6 +586,7 @@ export function createAudio({
       band.disconnect();
       gain.disconnect();
       panner.disconnect();
+      for (const node of extras) node.disconnect();
     };
   }
 
@@ -556,7 +606,7 @@ export function createAudio({
       return earshot;
     },
     update,
-    alarm,
+    call,
     get diag() { return diag; },
     get callsPlayed() { return callsPlayed; },
     get context() { return ctx; },

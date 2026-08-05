@@ -574,6 +574,7 @@ user's stated priorities; can reshuffle as we learn more.
 | 4 — Environment | **Done, 2026-07-31.** Time-of-day slider driving sun position/sky/fog/exposure; weather states (clear → clouds → rain → snow). See §8's lighting.js/atmosphere.js/weather.js entries and docs/PROGRESS.md |
 | 5 — Navigation aids | **Done, 2026-07-31.** Compass HUD, live position readout (lat/lon, elevation, nearest place name). See §8's nav.js entry and docs/PROGRESS.md. **Follow-up the same day**: testing this in a real browser led the user to ask for a bigger change - walk/fly navigation (WASD + pointer-lock mouselook) replacing OrbitControls as the default, since a ground-level "elevation" readout only makes sense once you're actually standing at ground level. See §8's controls.js/poi.js entries |
 | 6 — Life & atmosphere (stretch) | **Done, 2026-08-05.** Wildlife (Alpine ibex, chamois, marmots — the park's founding species — plus foxes and squirrels, added 2026-08-04 at the user's request), procedural ambient audio, huts/hydrology from OSM, treeline vegetation. **Started 2026-08-03, opened with the vegetation at the user's choice** (deferring the imagery question in §12): §5's altitude bands now colour the terrain, and trees are placed from a real OSM canopy mask — see §8's forest.js/vegetation.js and §4's fetch-forest.mjs/build-forest.mjs. Huts landed earlier, with the trailhead allowlist. Closed by the audio on 2026-08-05 — see §8's audio.js |
+| Birds (outside the phase table) | **Done, 2026-08-05**, from the second discussion the user asked for: golden eagle, alpine chough, bearded vulture and nutcracker, rare by their choice. See §8's birds.js — a separate module from wildlife.js, because a bird's height is free where every mammal here is clamped to the ground. Their calls are in audio.js's `CALLS`; the two raptors are silent on purpose |
 | Saving & sharing the view (outside the phase table) | **Done, 2026-08-05**, from a discussion the user asked to have rather than a roadmap item: autosave/restore of the camera and environment, a shareable URL hash, and the ambient-sound preference. See §8's viewstate.js, plus `wgs84ToLocal()` in geo.js and `directionFromHeadingPitch()` in nav.js — both are the inverses of conversions that already lived there, kept beside their counterparts so the two directions cannot drift apart |
 | 7 — Polish | Tune/extend the LOD-tiled terrain from phase 1 if draw distance needs more than one tile (§10: LOD itself is a standing principle from phase 1 on, not deferred - phase 7 is refinement, not the first attempt), mobile pass, optional automated screenshot QA |
 
@@ -767,6 +768,37 @@ pngp-viewer/
 │                              which audio.js turns into a whistle - the event is raised
 │                              here because only this module knows the moment, and played
 │                              there because only that one knows which species has a call
+│   ├── birds.js            Done, 2026-08-05. Golden eagle, alpine chough, bearded
+│                              vulture, nutcracker - the user's four, from the
+│                              discussion they asked for. A SEPARATE module from
+│                              wildlife.js on purpose: the ground clamp there is not a
+│                              line to skip but the spine of the file (the habitat test,
+│                              the orientation basis from the surface normal, the 2-D
+│                              targets and the leg-swing shader all assume something
+│                              standing on the drawn surface), so a `flight` flag would
+│                              have put a branch in every one of them. What replaces the
+│                              clamp is still terrain-derived, and differs per species:
+│                              a raptor circles a THERMAL sited on a ridge (the same
+│                              four-sample exposure test audio.js uses for wind), gaining
+│                              height at 2 m/s to a ceiling and then trading it for
+│                              distance on a glide - and its roll is a real coordinated
+│                              turn, atan(v^2/(r g)), which is checkable rather than
+│                              tuned (measured to 0.0002 deg). A chough flock is anchored
+│                              on a REAL pass or hut from poi.json (the user's choice -
+│                              151 of them qualify), orbits it, and comes to look at you
+│                              at ~15 m because that is exactly what they do at a col. A
+│                              nutcracker undulates over the canopy, one phase driving
+│                              both its height and its wingbeat, because that is the
+│                              actual mechanism. Reuses wildlife.js's shape throughout:
+│                              one InstancedMesh per species, one per-instance animation
+│                              float (aFlap here, and a soaring raptor simply passes 0),
+│                              a deterministic hash lattice, distance fade, and the
+│                              audio event hook. Raptors are silent by design - the
+│                              screaming eagle everyone hears in films is a red-tailed
+│                              hawk. Sites beyond 2.5x the draw distance are evicted, or
+│                              a flight across the park accumulates every one it passed
+│                              (measured: 799 birds and ~1 ms/frame before, 93 and
+│                              0.29 ms after)
 │   ├── audio.js            Done, 2026-08-05 (phase 6, the piece that closes it). Procedural
 │                              ambient soundscape: one shared pink-noise buffer read at six
 │                              different rates through six filter/gain chains, plus
