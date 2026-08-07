@@ -9,8 +9,14 @@ The user picked ambient audio out of the four things left open at the last sessi
 end; audio was the last item phase 6 needed, so `docs/ARCHITECTURE.md` §7 now has
 phases 0-6 complete. They then opened both of the topics they had deferred on
 2026-08-04 - saving/autosaving the position, and birds - discussed each, decided
-each, and both are built. **Nothing they deferred is still outstanding; phase 7 is
-the only phase left.**
+each, and both are built and accepted. **Phase 7 is the only phase left**, and two
+new discussion topics were recorded at the user's request on the way out: ambient
+animal audio, and footstep sound while walking (see the section on them below).
+
+**Working tree at the close**: everything up to and including the birds is
+committed (`f295f30`). The user asked to hold off on further commits, so this
+section's last two additions - the birds being accepted and the two new topics -
+may still be sitting uncommitted; commit them whenever the next session starts.
 
 Order of the day, all of it committed: the audio (`c72c071`), the whistle the user
 could not hear (`e5c2b08`), the whistle as a series (`715c0de`), saving and sharing
@@ -176,6 +182,9 @@ lower the threshold - but only after working out which quantity the number was.
 Note the call fires **once, on arrival** - after that everything nearby is already
 alarmed and fleeing, and the flag only re-arms past 1.4x the alert radius, so
 hearing it again means walking ~40 m off and back.
+
+**Confirmed by the user on 2026-08-07**: they had already listened to the series
+and it is fine as it stands. Nothing about the alarm calls is open any more.
 
 ### A landmine, of a shape this project has hit before
 **An `AudioParam`'s `.value` ignores scheduled events until they are processed.**
@@ -351,6 +360,55 @@ There is a dev-only **'B' key**, the sibling of 'G': it stands you 70 m from the
 nearest bird of the next species and looks up at it. The raptors are rare by
 design, so hunting one on foot to judge how it reads would be absurd.
 
+**Accepted by the user the same day**: "ho guardato, mi piacciono, sono
+sufficientemente realistici." Nothing about the birds is left open. Worth keeping in
+mind if they are ever revisited: at their honest distances the raptors are only a
+handful of pixels (measured ~7 px for an eagle 270 m off), so what carries them is
+the motion, and the levers are `aglMin`/`aglMax` and the scale range at the top of
+`src/birds.js` - not a change anyone should make without being asked.
+
+### Two new topics the user asked to record for next time
+Their words: "segnati per la prossima volta che parliamo anche di audio animale
+ambientale e rumore durante il camminamento." Both are **discussions to open, not
+tasks** - the same shape as the two topics that were deferred on 2026-08-04, and
+both of those went well precisely because the context was written down first. So:
+
+**1. Ambient animal audio.** What exists today is strictly *event*-driven: `CALLS` in
+`src/audio.js` fires a one-shot burst when something happens - a marmot or chamois
+takes fright (`wildlife.js`'s `onAlarm`), a chough flock chatters or a nutcracker
+rattles as it goes (`birds.js`'s `onCall`). What does **not** exist is animal sound
+as part of the *bed*: the idle noise a place makes because animals live there. The
+questions that are actually decisions:
+  - which of the silent species get a voice at all. Ibex, foxes and squirrels are
+    silent **on purpose** today (an ibex snort does not carry, and a fox arriving in
+    silence is the point of it) - so this would be revisiting a deliberate choice,
+    not filling a gap;
+  - whether it is per-animal (a timer per individual within earshot, which is what
+    the chough flock already does and is cheap) or a per-region bed keyed to
+    habitat, which is a different mechanism;
+  - whether it should react to time of day, which is real - marmots are diurnal and
+    silent at night, and `lighting.fraction` is right there.
+  The plumbing is all in place: an event hook per module, one `CALLS` table, a
+  rate limit, distance attenuation and stereo panning from the live camera.
+
+**2. Footstep sound while walking.** Deliberately left out of the audio round, and
+the reason is worth stating because it is the crux of the discussion: **it is the
+first sound in this project tied to the user's own action rather than to the
+scene**, which is a different category from ambience - and a footstep loop is the
+single easiest way to make a viewer tiring to use. What is already available to
+build it well, if they want it:
+  - cadence from the real speed in `src/controls.js` (4 m/s walking, x2.5 with
+    Shift), and it must be silent in fly mode - `controls.mode` says which;
+  - the surface from signals the terrain already computes: the altitude band and
+    slope say rock or scree or grass, the OSM canopy mask says forest floor, and
+    `weather.mod.snow`/`wet` say snow or mud. So "what am I walking on" needs no new
+    data at all;
+  - the same synthesis approach as everything else in `audio.js`: a filtered noise
+    burst with a fast envelope per step, no assets.
+  The real questions: does the user want it at all, should it be defeatable
+  separately from the ambience, and how loud relative to a scene whose whole point
+  is that it is quiet.
+
 ### Published, and the deploy guard had rotted
 The user asked for a README and then for a republish - the live site was still the
 2026-08-03 build, eight commits behind.
@@ -398,20 +456,18 @@ design - and the restore lifted it to ground + 2 m. The floor is deliberate: a
 saved position may not strand you inside a mountain.
 
 ### Next steps
-1. ~~Ask the user to listen~~ - **CLOSED 2026-08-05**: default-on approved, wind
-   and water approved, whistle volume and pitch approved, and the two changes they
-   asked for (audible at all, then a longer random series) are both in. Only a
-   confirmation listen on the series is left, and nothing is blocked on it. Every
+1. ~~Ask the user to listen~~ - **CLOSED 2026-08-05, fully signed off 2026-08-07**:
+   default-on approved, wind and water approved, whistle volume and pitch approved,
+   and the two changes they asked for (audible at all, then a longer random series)
+   are both in and both listened to. Every
    number worth tuning is a named constant at the top of `src/audio.js`
    (`WATER_KINDS`, `CALLS`, `MASTER_GAIN`) or one of the six gain expressions in
    `tick()`.
 2. ~~Discuss save/autosave, then birds~~ - **BOTH CLOSED 2026-08-05**: discussed,
-   decided and built, see the sections above. Nothing the user deferred is still
-   outstanding. Left unjudged and worth asking about: how the birds READ in a real
-   browser (silhouette against sky, the size of the raptors at distance, whether
-   0.07 raptors in view feels rare-but-present or just absent), and how the two new
-   calls sound. `tools/dev/shoot.mjs` can frame a place, and the dev 'B' key stands
-   you under the nearest bird of each species.
+   decided, built and accepted ("mi piacciono, sono sufficientemente realistici").
+   **Two new topics took their place, both the user's to open**: ambient animal
+   audio, and footstep sound while walking - the context worth having before either
+   conversation is written up in the section above.
 3. **Phase 7 polish** is now the only phase left: LOD popping/geomorphing,
    one-texel normals at any depth, the >500 kB bundle (now 767 kB / 213 kB
    gzipped; `audio.js` minifies to 7.3 kB of that, measured with esbuild), and the
