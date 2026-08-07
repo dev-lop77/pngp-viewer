@@ -248,19 +248,42 @@ low down, which is what a footfall on needles should be.
 **Nothing the user has ever deferred is outstanding any more.**
 
 ### How to resume
+
+**Session closed 2026-08-07 with a clean working tree**, everything committed
+through `e452e0e`, and all four test tools passing. **Open the next session by
+asking the user to listen to the footsteps** - it is the only thing left on them,
+and the site has not been republished since 2026-08-05, so it is several commits
+behind whenever they want that done.
+
 Run the tests - they need a **dev** server (`tools/dev/start-dev.sh`):
 
 - `node tools/test-audio.mjs` after touching `src/audio.js`, `src/lighting.js`'s
-  time cycle, the hydrology manifest's shape, or `wildlife.js`'s alarm event. It
-  is the slowest it has been (it now walks the live viewer for 45 s), and its
-  songbird cases are the ones that catch a habitat or a day/night mistake.
-- the rest of the list in the 2026-08-05 section below is unchanged, and all of
-  `test-birds`, `test-wildlife` and `test-viewstate` were passing at the close.
+  time cycle, `src/controls.js`'s speeds or mode, the hydrology manifest's shape,
+  or `wildlife.js`'s alarm event. It is much the slowest it has been (77 checks,
+  and it walks the live viewer for 45 s); its songbird cases catch a habitat or a
+  day/night mistake and its footstep cases catch a surface or a gating one.
+- the rest of the list in the 2026-08-05 section below is unchanged, and
+  `test-birds`, `test-wildlife` and `test-viewstate` were all passing at the close.
 
-The landmines in the sections below all still apply. Add one from this session,
-of a shape already familiar here: **a deterministic lattice sampled from one
-fixed point is not a measurement of the lattice** - it is one draw of it, and
-three species reported zero from habitat that has them.
+The landmines in the sections below all still apply. Three from this session, and
+all three are about the MEASUREMENT rather than the code - which is the pattern
+worth carrying, since in each case the tempting fix was to relax the assertion:
+
+1. **A deterministic lattice sampled from one fixed point is not a measurement of
+   the lattice** - it is one draw of it. Three species reported zero from habitat
+   that has them, and the rescan never ran at all. Walk the camera.
+2. **A mean cannot see a brief event, and nor can p95.** A chaffinch sings 1.5 s
+   in every 90: mean x1.5, p95 x1.1, max **x45**. Pick the statistic that matches
+   the shape of the thing.
+3. **A reference has to be the same scene.** Reading a forest footstep against
+   open ground made it the brightest of the five surfaces - that was the wood's
+   own leaf rustle. And relatedly, `noteOnsets()` thresholds against the loudest
+   thing in its buffer, so it counts the noise bed when nothing is loud: 87
+   "onsets" for a case with zero footfalls.
+
+Plus one about the code, in the same family as the shader landmines: **a
+noise-buffer source and an oscillator are not on the same scale** (`+-0.1` against
+`+-1.0`), so gains are not comparable between them.
 
 ## Status as of 2026-08-05
 
