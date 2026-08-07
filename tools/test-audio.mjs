@@ -94,14 +94,20 @@ const result = await page.evaluate(async () => {
   const window = new Float64Array(N);
   for (let i = 0; i < N; i++) window[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / N);
 
-  // Mean power in [loHz, hiHz], averaged over overlapping Hann-windowed
-  // segments (Welch) so a noise bed gives a stable number rather than one
-  // segment's luck.
-  function bandPower(samples, loHz, hiHz) {
+  // Power in [loHz, hiHz] for every overlapping Hann-windowed segment (Welch).
+  // The mean is what a steady bed needs - it gives a stable number rather than
+  // one segment's luck. A BRIEF event needs the other end of the distribution,
+  // and by more than seemed likely: a chaffinch sings for 1.5 s out of every 90,
+  // so a loud phrase barely moves the mean - measured x1.5 for a wood that is
+  // demonstrably full of birds. p95 was not enough either (x1.1), because a wood
+  // has one or two singers near enough to carry and the rest at 100-200 m, so
+  // even the top 5% of ninety seconds is mostly faint song over leaf rustle. The
+  // max is the statistic that answers the question actually being asked - does
+  // this band light up when the nearest bird sings - and it reads x45.
+  function bandProfile(samples, loHz, hiHz) {
     const k0 = Math.max(1, Math.floor((loHz * N) / SR));
     const k1 = Math.min(N / 2 - 1, Math.ceil((hiHz * N) / SR));
-    let acc = 0;
-    let frames = 0;
+    const vals = [];
     for (let start = 0; start + N <= samples.length; start += N / 2) {
       const re = new Float64Array(N);
       const im = new Float64Array(N);
@@ -109,10 +115,20 @@ const result = await page.evaluate(async () => {
       fft(re, im);
       let p = 0;
       for (let k = k0; k <= k1; k++) p += re[k] * re[k] + im[k] * im[k];
-      acc += p / (N * N);
-      frames++;
+      vals.push(p / (N * N));
     }
-    return frames ? acc / frames : 0;
+    if (!vals.length) return { mean: 0, p95: 0, max: 0 };
+    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const sorted = [...vals].sort((a, b) => a - b);
+    return {
+      mean,
+      p95: sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))],
+      max: sorted[sorted.length - 1],
+    };
+  }
+
+  function bandPower(samples, loHz, hiHz) {
+    return bandProfile(samples, loHz, hiHz).mean;
   }
 
   // Counts the notes actually rendered, from the amplitude envelope: the whistles
@@ -325,6 +341,108 @@ const result = await page.evaluate(async () => {
     ground: GROUND.flat, renderS: CALL_RENDER_S, alarms: [{ species: 'nutcracker', x: 0, z: -30 }],
   });
 
+  // 6c. Songbirds (2026-08-07). These need TIME, not one tick: a singer's clock
+  //     runs in tens of seconds, so the only honest measurement is to drive the
+  //     real update loop at the real tick rate for minutes of simulated time and
+  //     count what came out. Nothing is rendered for the rate cases - "how often
+  //     does a wood sing" is a count, and a 4-minute buffer to answer it would be
+  //     40 MB of silence with a dozen notes in it.
+  const SONG_GROUND = {
+    forest: () => 1500, // montane wood: chaffinch, coal tit, cuckoo, and the owl at night
+    alpine: () => 2400, // above the treeline: the pipit's ground and nobody else's
+    glacier: () => 3600, // above everything that sings
+  };
+
+  // The camera WALKS through every one of these. Two reasons, and the first is a
+  // fault the standing-still version had: the lattice is deterministic, so
+  // whether a low-density species happens to have anyone within earshot of one
+  // fixed point is a coin flip fixed by the hash - the first run measured "does
+  // the origin sing", not "does a wood sing", and reported zero cuckoos from a
+  // wood that has them. The second is that a static camera never makes
+  // rescanSingers() find anything, so half the code under test never ran.
+  const WALK_MPS = 4; // src/controls.js's real walking speed
+
+  function songRun({
+    ground, canopy, minutes = 4, weather = null, night = 0, seed = 4242, at = { x: 0, z: 0 },
+  }) {
+    // A short context: it is never rendered, and scheduling a note past the end
+    // of an OfflineAudioContext is legal and simply never sounds.
+    const ctx = new OfflineAudioContext(2, Math.floor(SR * 0.2), SR);
+    const audio = createAudio({
+      context: ctx, immediate: true, random: mulberry32(seed),
+      canopyAt: () => canopy, sampleGroundHeight: ground,
+    });
+    audio.start();
+    const camera = makeCamera({ ...at, ground });
+    const dt = 1 / 8; // the audio tick rate itself, so every update() is a tick
+    const steps = Math.round((minutes * 60) / dt);
+    const t = performance.now();
+    for (let i = 0; i < steps; i++) {
+      camera.position.x = at.x + i * dt * WALK_MPS;
+      audio.update(dt, camera, weather, { night });
+    }
+    const msPerTick = (performance.now() - t) / steps;
+    return {
+      minutes,
+      songs: audio.songsPlayed,
+      perMinute: audio.songsPlayed / minutes,
+      by: audio.songsBySpecies,
+      singers: audio.diag.singers,
+      night: audio.diag.night,
+      msPerTick,
+    };
+  }
+
+  const song = {
+    forest: songRun({ ground: SONG_GROUND.forest, canopy: 0.7 }),
+    alpine: songRun({ ground: SONG_GROUND.alpine, canopy: 0 }),
+    glacier: songRun({ ground: SONG_GROUND.glacier, canopy: 0 }),
+    forestNight: songRun({ ground: SONG_GROUND.forest, canopy: 0.7, night: 1 }),
+    forestDusk: songRun({ ground: SONG_GROUND.forest, canopy: 0.7, night: 0.45 }),
+    forestRain: songRun({ ground: SONG_GROUND.forest, canopy: 0.7, weather: { mod: { rain: 1 } } }),
+  };
+
+  // And then the sound itself. Day and night in the SAME wood is the controlled
+  // comparison: identical canopy, identical wind bed, and the only difference is
+  // who is awake - so the song band has to rise by day and the owl's band by
+  // night. Comparing a wood against a glacier would confound the birds with the
+  // leaf rustle that only one of them has.
+  //
+  // Closed canopy (0.9), deliberately: it is past the cuckoo's canopyMax, and a
+  // cuckoo's lower note is 581 Hz through a Q of 2.2, which spills straight into
+  // the window the owl is measured in. So the day render is chaffinch and coal
+  // tit only, and the night render is owl only, with nothing shared between the
+  // two bands under test.
+  const RENDER_CANOPY = 0.9;
+  async function songRender({ ground, canopy, night, seconds = 90, seed = 4242 }) {
+    const ctx = new OfflineAudioContext(2, Math.floor(SR * seconds), SR);
+    const audio = createAudio({
+      context: ctx, immediate: true, random: mulberry32(seed),
+      canopyAt: () => canopy, sampleGroundHeight: ground,
+    });
+    audio.start();
+    const camera = makeCamera({ x: 0, z: 0, ground });
+    const dt = 1 / 8;
+    for (let i = 0; i < Math.round(seconds / dt); i++) {
+      camera.position.x = i * dt * WALK_MPS;
+      audio.update(dt, camera, null, { night });
+    }
+    const buffer = await ctx.startRendering();
+    const left = buffer.getChannelData(0);
+    return {
+      songs: audio.songsPlayed,
+      by: audio.songsBySpecies,
+      // 2.4-5.5k is where the chaffinch and the coal tit live; 400-540 is the
+      // owl's hoot, more than two octaves below anything else in this scene.
+      songBand: bandProfile(left, 2400, 5500),
+      owlBand: bandProfile(left, 400, 540),
+      notes: noteOnsets(left, 0.45),
+      rms: rms(left),
+    };
+  }
+  const songDay = await songRender({ ground: SONG_GROUND.forest, canopy: RENDER_CANOPY, night: 0 });
+  const songNight = await songRender({ ground: SONG_GROUND.forest, canopy: RENDER_CANOPY, night: 1 });
+
   // 7. The real hydrology, at the real spawn point: is the Savara audible from
   //    the Le Pont trailhead the viewer opens at?
   const earshot = buildWaterEarshot(water);
@@ -345,6 +463,9 @@ const result = await page.evaluate(async () => {
   return {
     cases,
     series,
+    song,
+    songDay,
+    songNight,
     earshot: { points: earshot.count, cells: earshot.cells, perQueryMs },
     spawn: {
       x: Math.round(lePont.local.x), z: Math.round(lePont.local.z),
@@ -400,6 +521,50 @@ const walked = await page.evaluate(() => {
   return { gains: d.gains, riverM: d.water?.river?.distanceM ?? null };
 });
 
+// Songbirds against the REAL heightfield and the REAL canopy mask, which is the
+// one thing the offline cases cannot cover - every one of them samples a stub.
+// Placed HERE, before the 'G' sweep: after five teleports the camera is 18 m
+// from a squirrel, which lives in canopy >= 0.9, so measuring afterwards would
+// be measuring a wood and calling it Le Pont. Walking throughout, both because
+// that is how anyone uses the viewer and because a stationary camera only ever
+// samples one draw of a deterministic lattice.
+// Le Pont is 1,950 m of open valley floor (canopy 0.00 in the readout above), so
+// it is pipit ground - but a chaffinch is expected too, and the first version of
+// this asserted it must not be. Habitat is tested at the SINGER's position, not
+// the listener's, which is the right way round: Valsavarenche has larch on both
+// valley sides, and standing on open ground a couple of hundred metres from a
+// wood you hear the wood. What can be asserted from the shift alone is that
+// nothing NOCTURNAL sings in the daylight the viewer opens in.
+await page.keyboard.down('KeyW');
+const liveSong = await page.evaluate(async () => {
+  const audio = window.__pngp.audio;
+  await new Promise((r) => setTimeout(r, 45000));
+  return {
+    singers: audio.diag.singers,
+    songs: audio.songsPlayed,
+    by: audio.songsBySpecies,
+  };
+});
+await page.keyboard.up('KeyW');
+
+// Time of day reaches the audio at all: the slider moves the same `night` weight
+// the lights use, and audio.js reads it from lighting rather than re-deriving it.
+const liveNight = await page.evaluate(() => {
+  const el = document.getElementById('env-time');
+  el.value = '0.8'; // the night preset itself
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  return new Promise((r) => setTimeout(() => r({
+    night: window.__pngp.audio.diag.night,
+    label: document.getElementById('env-time-label')?.textContent ?? '',
+  }), 400));
+});
+// Put it back, so the 'G' sweep below runs in the daylight it was written for.
+await page.evaluate(() => {
+  const el = document.getElementById('env-time');
+  el.value = '0.15';
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+});
+
 // The dev 'G' key, which is how the animals are actually inspected: it teleports
 // the camera 18 m from the nearest animal of the next species and steps the
 // wildlife in the same handler. That is inside the alert radius of every fleeing
@@ -425,7 +590,7 @@ const afterM = await page.evaluate(() => ({
 
 await browser.close();
 
-const { cases, series, earshot, spawn } = result;
+const { cases, series, song, songDay, songNight, earshot, spawn } = result;
 const e = (v) => v.toExponential(2);
 const ratio = (a, b) => (b > 0 ? a / b : Infinity);
 
@@ -483,6 +648,25 @@ console.log(`  nutcracker 30 m  : ${cases.nutcrackerCall.fired} notes,`
   + ` 0.7-1.2k ${e(cases.nutcrackerCall.bands.lowMid)} (x${ratio(cases.nutcrackerCall.bands.lowMid, cases.noCall.bands.lowMid).toFixed(0)} over the same scene silent),`
   + ` and ${(cases.nutcrackerCall.bands.lowMid / Math.max(cases.nutcrackerCall.bands.high, 1e-12)).toFixed(1)}x more energy low than at 2.4-4.2k`);
 
+console.log('\nSongbirds (4 simulated minutes each, driven at the real 8 Hz tick):');
+const who = (r) => Object.entries(r.by).filter(([, n]) => n > 0)
+  .map(([k, n]) => `${k} ${n}`).join(', ') || 'nobody';
+for (const [name, r] of Object.entries(song)) {
+  console.log(`  ${name.padEnd(12)}: ${r.perMinute.toFixed(1)} songs/min`
+    + ` · ${r.singers} singers in earshot · ${who(r)}`);
+}
+console.log(`  cost         : ${song.forest.msPerTick.toFixed(4)} ms per audio tick (8 Hz), forest`);
+
+console.log('\nThe same closed wood, 90 s rendered, walking, by day and by night');
+console.log('(max across Welch segments - see the comment on bandProfile for why not the mean):');
+const band3 = (b) => `mean ${e(b.mean)} p95 ${e(b.p95)} max ${e(b.max)}`;
+console.log(`  day   : ${songDay.songs} songs (${who(songDay)}) · ${songDay.notes.count} onsets`);
+console.log(`          2.4-5.5k ${band3(songDay.songBand)} · 400-540 ${band3(songDay.owlBand)}`);
+console.log(`  night : ${songNight.songs} songs (${who(songNight)}) · ${songNight.notes.count} onsets`);
+console.log(`          2.4-5.5k ${band3(songNight.songBand)} · 400-540 ${band3(songNight.owlBand)}`);
+console.log(`  day/night : song band max x${ratio(songDay.songBand.max, songNight.songBand.max).toFixed(1)},`
+  + ` owl band max x${ratio(songNight.owlBand.max, songDay.owlBand.max).toFixed(1)} the other way`);
+
 console.log('\nAt the Le Pont spawn, with the real hydrology:');
 console.log(`  (${spawn.x}, ${spawn.z}) · nearest river ${spawn.river} m`
   + ` · lake ${spawn.lake ?? '-'} m · waterfall ${spawn.waterfall ?? '-'} m`);
@@ -504,6 +688,11 @@ console.log('  dev \'G\' walk-up:');
 for (const [i, g] of gPresses.entries()) {
   console.log(`    ${i + 1}. ${g.note || '(no note)'} -> ${g.calls} call(s) played so far`);
 }
+console.log('  songbirds, 45 s walking from Le Pont (real terrain + real canopy mask):');
+console.log(`    ${liveSong.singers} singers tracked (some out of earshot, some nocturnal),`
+  + ` ${liveSong.songs} songs`
+  + ` (${Object.entries(liveSong.by).filter(([, n]) => n > 0).map(([k, n]) => `${k} ${n}`).join(', ') || 'nobody'})`);
+console.log(`  time slider to night  : audio night ${liveNight.night.toFixed(2)}, label "${liveNight.label}"`);
 console.log(`  'M'                   : enabled=${afterM.enabled}, checkbox=${afterM.checkbox}`);
 
 const failures = [];
@@ -563,6 +752,50 @@ check(ratio(cases.nutcrackerCall.bands.lowMid, cases.noCall.bands.lowMid) > 20,
   'the nutcracker rattle is inaudible in its own band');
 check(cases.nutcrackerCall.bands.lowMid > cases.nutcrackerCall.bands.high,
   'the nutcracker call is not a low harsh rattle - it has more energy up where the whistles live');
+// Songbirds. Habitat first: each of these is a species that must NOT be there,
+// which is the assertion a total song count would hide.
+check(song.forest.by.chaffinch > 0 && song.forest.by.coaltit > 0,
+  'a montane wood at 1,500 m produced no chaffinch or no coal tit');
+check(song.forest.by.pipit === 0, 'a water pipit sang inside a closed wood at 1,500 m');
+check(song.alpine.by.pipit > 0, 'alpine grassland at 2,400 m produced no pipit');
+check(song.alpine.by.chaffinch === 0 && song.alpine.by.coaltit === 0,
+  'a forest bird sang above the treeline');
+check(song.glacier.songs === 0, 'something sang at 3,600 m, above everything that sings');
+// Day and night. The gate is on whether a bird sings at all, not on how loud.
+check(song.forestNight.by.chaffinch === 0 && song.forestNight.by.coaltit === 0
+  && song.forestNight.by.cuckoo === 0,
+  'the day birds were still singing at night');
+check(song.forestNight.by.tawnyowl > 0, 'the night wood is silent - no tawny owl');
+check(song.forest.by.tawnyowl === 0, 'a tawny owl hooted at midday');
+check(song.forestDusk.songs > 0 && song.forestDusk.by.tawnyowl > 0,
+  'dusk is not a crossover - it should have both the last song and the first owl');
+// The user asked for "discreto - si nota se ascolti". A wood that sings less
+// than once a minute is indistinguishable from the silence this replaced; one
+// that sings every few seconds is the soundtrack they did not ask for.
+check(song.forest.perMinute >= 1.5 && song.forest.perMinute <= 20,
+  `a wood sings ${song.forest.perMinute.toFixed(1)} times a minute - not the "discreet" density asked for`);
+check(song.alpine.perMinute >= 1 && song.alpine.perMinute <= 20,
+  `alpine grassland sings ${song.alpine.perMinute.toFixed(1)} times a minute`);
+// Rain does not stop the clocks, it drops the level - so the far singers fall
+// under the audibility floor and fewer songs are actually played.
+check(song.forestRain.songs < song.forest.songs,
+  'heavy rain did not quieten the wood at all');
+// And the sound itself, in the one controlled comparison available: the same
+// wood, same canopy, same wind bed, different hour.
+// Asserted on the loudest segment, not the mean or even p95. A wood has one or
+// two singers close enough to carry and the rest at 100-200 m, so 5% of ninety
+// seconds is still mostly faint song plus leaf rustle. The question worth
+// asking is whether the band lights up when the NEAREST bird sings, and that is
+// the maximum. Measured 45x and 10x against thresholds of 3 - this asserts the
+// effect exists, not the mix.
+check(ratio(songDay.songBand.max, songNight.songBand.max) > 3,
+  'the wood does not sound different at 2.4-5.5 kHz by day than by night');
+check(ratio(songNight.owlBand.max, songDay.owlBand.max) > 3,
+  'the owl is not audible in its own band at night');
+check(songDay.notes.count >= songDay.songs,
+  'fewer note onsets rendered than songs scheduled - the phrases are not coming out');
+check(song.forest.msPerTick < 0.5,
+  'the songbird lattice is too slow to run on the audio tick');
 check(spawn.river < 250, 'the Savara is no longer within earshot of the spawn point');
 check(cases.atSpawn.diag.gains.waterLow > 0.01,
   'the river at the spawn point is not audible');
@@ -579,6 +812,14 @@ check(walked.riverM !== live.riverM || walked.gains.waterLow !== beforeWalk.wate
   'walking for three seconds changed nothing about the soundscape');
 check(afterM.enabled === false && afterM.checkbox === false,
   "'M' did not mute, or left the checkbox out of step");
+// The real heightfield and the real canopy mask, which no offline case touches.
+check(liveSong.singers > 0,
+  'the running viewer has no singers anywhere near it - the lattice found nothing on the real terrain');
+check(liveSong.songs > 0, 'nothing sang in 45 seconds of walking in the running viewer');
+check(liveSong.by.tawnyowl === 0,
+  'a tawny owl hooted in the running viewer, which opens in daylight');
+check(liveNight.night > 0.9,
+  'moving the time slider to the night preset did not reach the audio');
 // Standing 18 m from a marmot or a chamois has to whistle. Asserted over the
 // whole G sweep rather than one press, because which species is reachable from
 // wherever the walk ended is not the point being tested.

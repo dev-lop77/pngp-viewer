@@ -836,8 +836,10 @@ renderer.setAnimationLoop(() => {
   controls.update(timer.getDelta());
   // After controls: the soundscape is driven by where the camera ended up this
   // frame and how fast it got there. Self-throttling internally (src/audio.js),
-  // and a no-op until the first click starts the context.
-  audio.update(timer.getDelta(), camera, weather);
+  // and a no-op until the first click starts the context. Lighting goes in for
+  // its `night` weight alone - the songbirds roost after dusk and the tawny owl
+  // takes over, and that weight is the one the lights are themselves using.
+  audio.update(timer.getDelta(), camera, weather, lighting);
   // After controls, before render: the tile set must match where the camera
   // actually ended up this frame, or a fast move shows a hole at its edge.
   terrainUpdate?.(camera);

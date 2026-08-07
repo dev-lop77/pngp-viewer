@@ -2,6 +2,182 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## Status as of 2026-08-07
+
+**The first of the two topics the user left open is now closed: ambient animal
+audio is built.** They opened it, it was discussed before anything was written -
+which is how they asked for these to go - and the discussion changed the answer,
+so it is worth recording what it changed.
+
+They also confirmed on the way in that they had already listened to the marmot's
+whistle series and it is fine, which closes the last thing hanging over the audio
+from 2026-08-05. The closing doc edits from that session were committed first
+(`7cda371`), so the working tree started clean.
+
+**Still open, and still theirs to open: footstep sound while walking.** Nothing
+else is outstanding except phase 7.
+
+### The discussion, and the thing it changed
+
+The proposal that went to the user was not the obvious one. "Ambient animal
+audio" reads like "give the silent animals a voice", and that is what the
+2026-08-05 note listed as the first decision - but working out what those animals
+actually sound like turned it around:
+
+- a marmot's whistle **is** its alarm. It has no idle call at all, so a resting
+  marmot voice would be invented;
+- ibex and chamois are near silent by nature - a snort that does not carry;
+- a fox barks, but at night and in January.
+
+So the honest ambient animal sound of these mountains is **birdsong**, and that is
+a gap rather than a revision: a wood at 1,600 m sounded like leaves and nothing
+alive. Birdsong had been deliberately left out of the phase-6 audio round for a
+reason that no longer applies - the birds were still an unopened topic then, and
+pre-empting them with sound would have been the wrong order.
+
+The user chose, out of the options put to them:
+
+1. **birdsong**, not voices for the silent mammals;
+2. **a simple day/night gate** rather than a full dawn-chorus curve: the day birds
+   go quiet in the dark and an owl takes over;
+3. **discreet** density - "si nota se ascolti" - rather than rare-like-the-raptors
+   or a full spring wood.
+
+### Done: songbirds (`src/audio.js`)
+
+Five voices, each keyed to habitat the terrain already knows about (§5's altitude
+bands and the OSM canopy mask):
+
+| where | who | what it is |
+|---|---|---|
+| montane/subalpine wood, 700-2,100 m | chaffinch | a descending accelerating run and a terminal flourish - the commonest song in an Alpine forest, so the one that had to be right |
+| conifer belt, canopy >= 0.35 | coal tit | a two-note couplet, repeated a random 3-6 times |
+| forest edge, 800-1,900 m | cuckoo | two notes a major third apart, a hollow sine rather than the triangle the alarms use |
+| above the treeline, 1,900-2,900 m | water pipit | thin high chips over open ground, and quiet - a small bird in a lot of wind |
+| wooded valley, **at night** | tawny owl | a long hoot, a pause, then the stuttered phrase, with a shallow tremolo |
+
+A **singer** is a position, a species and a clock. It has no visual counterpart
+and no simulation state, which is why it lives in `audio.js` rather than in a
+module of its own beside `wildlife.js` and `birds.js`: nothing about it is
+stepped while the sound is off. Placement is the same deterministic hash lattice
+as `wildlife.js`'s herds, and for the same reason - the bird that answers from
+the same tree each time is what makes somewhere read as inhabited, where a call
+arriving from a fresh random bearing reads as a sound effect.
+
+Everything else it reacts to was already being computed for the wind bed:
+
+- **wind takes the level down** (it masks song) and **rain stops the singing**
+  (birds shelter and shut up). Each does the one thing it really does - and the
+  rain version is the only one a listener could tell apart from the weather
+  simply getting louder;
+- **day and night gate whether a bird sings, not how loudly**: a bird that has
+  gone to roost is silent, not quiet. The gate is probabilistic, so dusk thins the
+  chorus rather than switching it off between two frames;
+- the **`night` weight comes from `lighting.js`**, which now exposes the weight of
+  its own night preset. That is deliberately not a second set of time thresholds
+  in `audio.js` - the one in `lighting.js` is the number the lights are already
+  blending with, so the ear and the eye cannot drift apart.
+
+Three phrase-level details, because "a series of the same note" was not enough
+for a song: a phrase declares its **pitch shape** (`[pitch multiplier, note
+length, time to the next note]`), `whistle()` gained a per-note duration, and the
+rattle gained a **depth** so a tawny owl's tremolo and a nutcracker's harsh
+rattle can be the same mechanism at different strengths.
+
+### Measured
+
+`tools/test-audio.mjs` grew a songbird section, and its numbers are the ones to
+argue with, not the intentions:
+
+- a wood sings **8.0 times a minute**, alpine grassland **3.3**, a glacier at
+  3,600 m **never**; at night the wood drops to **1.0** (all of it owl) and dusk
+  is a genuine crossover, **4.5** with both the last chaffinch and the first owl;
+- heavy rain takes the wood from 8.0 to **0.3**;
+- the forest birds never sing above the treeline and the pipit never sings inside
+  the wood - asserted per species, because a total would hide exactly that;
+- cost **0.10 ms per 8 Hz tick**, one lattice rescan every 2 s;
+- bundle 767 -> **772 kB** raw, still **213 kB gzipped**; `audio.js` minifies to
+  11.5 kB, up from 7.3.
+
+58 checks pass, and `test-birds`, `test-wildlife` and `test-viewstate` still do.
+
+### Two method notes, both from the test being wrong before the code was
+
+Worth keeping, because both are the shape of mistake this project keeps making.
+
+**A stationary camera measured nothing.** The first run reported zero cuckoos,
+zero pipits and zero owls from habitat that has all three. The lattice is
+deterministic, so whether a low-density species happens to have anyone within
+earshot of one fixed point is a coin flip fixed by the hash - the test was
+measuring "does the origin sing", not "does a wood sing". It also meant
+`rescanSingers()` never found anything, so half the code under test never ran.
+The camera now **walks** through every case. (The run did expose one real fault
+behind it: a cuckoo and a tawny owl carry for more than a kilometre, and both had
+an earshot narrower than their own lattice spacing, so on average there was
+nobody in range to hear.)
+
+**The mean was the wrong statistic, and p95 was too.** A chaffinch sings for 1.5 s
+out of every 90, so a 90-second mean band power moved by **x1.5** for a wood
+demonstrably full of birds, and p95 by **x1.1** - because even the top 5% of the
+time is mostly faint song at 150 m over leaf rustle. The **maximum** across Welch
+segments answers the question actually being asked - does this band light up when
+the nearest bird sings - and reads **x45** in the song band by day, **x10** in the
+owl's band by night. The instrument was wrong, not the mix; the temptation was to
+lower the threshold, and that would have shipped a measurement that proved
+nothing.
+
+One assertion was also simply wrong about the design: it demanded that no forest
+bird be audible at Le Pont, which is open valley floor. But habitat is tested at
+the **singer's** position, not the listener's - and that is the right way round,
+because Valsavarenche has larch on both valley sides and standing on open ground
+near a wood you hear the wood.
+
+### Not judged by ear yet
+
+The same caveat as every audio round: the numbers say each voice responds to the
+right thing by the right amount, and cannot say whether a chaffinch is too loud at
+80 m or the wood too busy at 8 songs a minute. **That is the first thing to ask.**
+Every tunable is a named constant in `SONGBIRDS` at the top of `src/audio.js` -
+`gain`, `earshotM`, `everyS` (how often one bird sings) and `presence`/`cellM`
+(how many birds there are) - plus `SONG_WIND_DUCK` and `SONG_RAIN_SILENCE`.
+
+Worth knowing before tuning: the density knob the user's answer maps to is
+`everyS` and `presence`, not `gain`. Raising `gain` makes the near birds louder
+without adding any; raising `presence` puts more of them in earshot.
+
+### Next steps
+1. **Ask the user to listen to the songbirds**, in a real browser - the only
+   question left on them, and the one no measurement can answer. Worth walking
+   into a wood (the spawn at Le Pont is open ground, so the chaffinch and coal tit
+   are heard from a distance there rather than from around you), and worth pushing
+   the time slider to Night for the owl.
+2. **Footstep sound while walking** - the second topic the user recorded on
+   2026-08-05, still theirs to open, context in the 2026-08-05 section below.
+   Do not start building it unprompted.
+3. **Phase 7 polish** is still the only phase left: LOD popping/geomorphing,
+   one-texel normals at any depth, the bundle (772 kB / 213 kB gzipped), and the
+   mobile pass - pointer lock + WASD has no touch equivalent, and neither does a
+   keyboard mute.
+4. **Republish** when the songbirds are approved - the live site is a commit
+   behind again. `tools/dev/deploy.sh` does the whole thing.
+5. Deferred by the user, do not re-raise unprompted: the satellite/orthophoto
+   basemap.
+
+### How to resume
+Run the tests - they need a **dev** server (`tools/dev/start-dev.sh`):
+
+- `node tools/test-audio.mjs` after touching `src/audio.js`, `src/lighting.js`'s
+  time cycle, the hydrology manifest's shape, or `wildlife.js`'s alarm event. It
+  is the slowest it has been (it now walks the live viewer for 45 s), and its
+  songbird cases are the ones that catch a habitat or a day/night mistake.
+- the rest of the list in the 2026-08-05 section below is unchanged, and all of
+  `test-birds`, `test-wildlife` and `test-viewstate` were passing at the close.
+
+The landmines in the sections below all still apply. Add one from this session,
+of a shape already familiar here: **a deterministic lattice sampled from one
+fixed point is not a measurement of the lattice** - it is one draw of it, and
+three species reported zero from habitat that has them.
+
 ## Status as of 2026-08-05
 
 **Phase 6 is closed, both deferred topics are closed, and the site is republished.**

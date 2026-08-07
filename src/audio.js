@@ -116,6 +116,153 @@ const CALL_ATTACK_S = 0.012; // near-instant, which is what makes a whistle carr
 // would call on the same frame and read as a chord rather than an alarm.
 const CALL_MIN_GAP_S = 0.35;
 
+// ---------------------------------------------------------------------------
+// Songbirds - ambient animal sound (2026-08-07, the user's topic)
+// ---------------------------------------------------------------------------
+//
+// Everything above is EVENT-driven: something happens, something calls. What was
+// missing is the idle noise a place makes because animals live in it - and the
+// shape of the answer was the real decision, so it is worth writing down.
+//
+// The honest ambient animal sound of these mountains is BIRDSONG, not more
+// mammal voices. A marmot's whistle IS its alarm; it has no resting call. Ibex
+// and chamois are near-silent by nature and a fox barks in January, at night.
+// Giving any of them an idle voice would be inventing biology, which is the
+// mistake birds.js deliberately avoided with the screaming eagle. What was
+// genuinely missing is that a wood at 1,600 m sounded like leaves and nothing
+// alive.
+//
+// A singer is a position, a species and a clock. It has NO visual counterpart
+// and no simulation state, which is why it lives in this file rather than in a
+// module of its own like wildlife.js and birds.js: nothing here is stepped at
+// all while the sound is off. Placement is the same deterministic hash lattice
+// as wildlife.js's herds, and for the same reason - the bird that answers from
+// the same tree each time is what makes somewhere read as inhabited, whereas a
+// call arriving from a fresh random bearing reads as a sound effect.
+//
+// Density is the user's call: "discreto - si nota se ascolti". The numbers below
+// are set for a few songs a minute in good habitat, measured rather than
+// intended (tools/test-audio.mjs reports songs/minute per habitat).
+
+// A phrase is a SHAPE, not a repeated note - the difference between a cuckoo and
+// a chaffinch is which pitches follow which. Each entry is
+// [pitch multiplier, note length in seconds, seconds to the NEXT note's start].
+// The multiplier scales the species' own f0->f1 sweep, so every note keeps its
+// character and only its pitch moves. The LAST entry's third number is how long
+// the phrase runs on past that note before a repeat may follow, so it is
+// normally just that note's own length.
+function run(n, hiMul, loMul, durS, gapFirst, gapLast) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const t = n > 1 ? i / (n - 1) : 0;
+    out.push([hiMul + (loMul - hiMul) * t, durS, gapFirst + (gapLast - gapFirst) * t]);
+  }
+  return out;
+}
+
+const SONGBIRDS = [
+  {
+    name: 'chaffinch',
+    salt: 0x5a1,
+    // Montane and subalpine woodland. By a distance the commonest song in an
+    // Alpine forest, so it is the one that has to be right.
+    habitat: { elevMin: 700, elevMax: 2100, canopyMin: 0.22 },
+    cellM: 140,
+    presence: 0.42,
+    earshotM: 200,
+    everyS: [26, 58],
+    gain: 0.19,
+    voice: { f0: 4100, f1: 3750, bandQ: 6 },
+    // A descending accelerating run, then the terminal flourish that is the
+    // actual signature of this song - without it the run is just a trill.
+    phrase: [...run(9, 1.0, 0.62, 0.075, 0.155, 0.095), [0.68, 0.11, 0.14], [0.86, 0.2, 0.2]],
+  },
+  {
+    name: 'coaltit',
+    salt: 0x5b2,
+    // A conifer specialist, hence a canopy floor and the larch/spruce belt.
+    habitat: { elevMin: 900, elevMax: 2200, canopyMin: 0.35 },
+    cellM: 160,
+    presence: 0.35,
+    earshotM: 160,
+    everyS: [18, 42],
+    gain: 0.13,
+    voice: { f0: 4900, f1: 4700, bandQ: 8 },
+    // "wee-tsu, wee-tsu, wee-tsu" - a couplet, repeated a random number of
+    // times for the same reason the marmot's whistle is a random series.
+    phrase: [[1.0, 0.09, 0.135], [0.8, 0.09, 0.3]],
+    repeat: [3, 6],
+  },
+  {
+    name: 'cuckoo',
+    salt: 0x5c3,
+    // Forest edge rather than deep wood - hence a canopy window - and it carries
+    // for a kilometre. So the largest earshot here and the lowest density: one
+    // cuckoo per valley is already the right number of cuckoos.
+    habitat: { elevMin: 800, elevMax: 1900, canopyMin: 0.08, canopyMax: 0.75 },
+    cellM: 500,
+    presence: 0.25,
+    earshotM: 750,
+    everyS: [80, 180],
+    gain: 0.22,
+    // Very nearly a pure tone, and hollow: a sine through a gentle band, not the
+    // triangle that makes an alarm whistle cut.
+    voice: { f0: 735, f1: 722, bandQ: 2.2, wave: 'sine' },
+    phrase: [[1.0, 0.17, 0.3], [0.79, 0.24, 0.24]],
+    repeat: [3, 8],
+    repeatGapS: [0.9, 1.4],
+  },
+  {
+    name: 'pipit',
+    salt: 0x5d4,
+    // Above the treeline: the bird of alpine grassland. It song-flights over open
+    // ground, so a canopy ceiling rather than a floor.
+    habitat: { elevMin: 1900, elevMax: 2900, canopyMax: 0.12 },
+    cellM: 130,
+    presence: 0.4,
+    earshotM: 210,
+    everyS: [26, 55],
+    gain: 0.12,
+    // Thin and high, which is what carries over open ground - and quiet, because
+    // this is a very small bird in a great deal of wind.
+    voice: { f0: 5200, f1: 5050, bandQ: 9 },
+    phrase: run(11, 1.0, 0.88, 0.05, 0.105, 0.075),
+  },
+  {
+    name: 'tawnyowl',
+    salt: 0x5e5,
+    // The one nocturnal voice, and the reason the night stops being silent. Same
+    // wooded habitat as the chaffinch, lower down - an owl needs trees to sit in.
+    nocturnal: true,
+    habitat: { elevMin: 700, elevMax: 1900, canopyMin: 0.25 },
+    cellM: 500,
+    presence: 0.35,
+    earshotM: 800,
+    everyS: [40, 110],
+    gain: 0.2,
+    // Low, hollow, breathy, with the tremolo that is the whole character of it -
+    // a shallow amplitude chop, where the nutcracker's rattle is a violent one.
+    // That is what rattleDepth is for.
+    voice: { f0: 470, f1: 452, bandQ: 3, wave: 'sine', rattleHz: 13, rattleDepth: 0.2 },
+    // "HOOO ... (a long pause) ... ho, hu-hooooooo". The pause is the half of it
+    // that people actually remember.
+    phrase: [[1.0, 0.5, 2.6], [1.0, 0.08, 0.24], [0.97, 0.1, 0.16], [0.94, 0.8, 0.8]],
+    repeat: [1, 2],
+    repeatGapS: [6, 11],
+  },
+];
+
+// How often the lattice around the camera is re-tested. Habitat cannot change,
+// so this only has to keep up with walking, not with the frame rate.
+const SINGER_RESCAN_S = 2;
+// Wind and rain, both already computed for the wind bed, and each doing the one
+// thing it really does. Wind MASKS song, so it takes the level down. Rain does
+// not make a bird quieter, it makes it shut up and sit under something - so it
+// gates whether the bird sings at all, which is also the only version of it a
+// listener could tell apart from the weather getting louder.
+const SONG_WIND_DUCK = 0.65;
+const SONG_RAIN_SILENCE = 0.85;
+
 const _dir = new THREE.Vector3();
 
 function clamp(v, lo, hi) {
@@ -125,6 +272,31 @@ function clamp(v, lo, hi) {
 function smoothstep(edge0, edge1, x) {
   const t = clamp((x - edge0) / (edge1 - edge0), 0, 1);
   return t * t * (3 - 2 * t);
+}
+
+// Same generator as vegetation.js and wildlife.js, written out again for the
+// same reason they write it out: a singer must land in the same tree on every
+// load and on every machine, and that is worth more than sharing four lines.
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Cell coordinates are signed and unbounded, so they are mixed into a seed
+// rather than used as one.
+function cellRandom(ix, iz, salt) {
+  let h = Math.imul(ix | 0, 0x27d4eb2d) ^ Math.imul(iz | 0, 0x165667b1) ^ Math.imul(salt, 0x9e3779b9);
+  h = Math.imul(h ^ (h >>> 15), 0x2545f491);
+  return mulberry32(h ^ (h >>> 13));
+}
+
+function pick(rnd, range) {
+  return range[0] + (range[1] - range[0]) * rnd();
 }
 
 // Pink noise (Paul Kellet's filter), not white. Wind and running water both have
@@ -274,6 +446,18 @@ export function createAudio({
   let lastZ = 0;
   let lastCallAt = -Infinity;
   let callsPlayed = 0;
+  // Songbirds: one Map of singers per species, keyed by lattice cell. A null
+  // entry is a remembered miss - habitat cannot change, so an empty cell is
+  // never worth testing twice (the same trick as wildlife.js's herds).
+  const singers = SONGBIRDS.map(() => new Map());
+  let sinceRescan = SINGER_RESCAN_S; // so the first tick populates the lattice
+  let songClock = 0;
+  let songT0 = null;
+  let songsPlayed = 0;
+  // Per species too, because "which bird sang" is the whole habitat assertion:
+  // a chaffinch above the treeline is a bug a total would hide.
+  const songsBySpecies = Object.fromEntries(SONGBIRDS.map((s) => [s.name, 0]));
+  let nightness = 0;
   // The live camera, kept so alarm() can read where it is NOW - see the comment
   // there for why a remembered position was not good enough.
   let cameraRef = null;
@@ -281,6 +465,7 @@ export function createAudio({
   const diag = {
     started: false, enabled, strength: 0, altitude: 0, exposure: 0, canopy: 0,
     gust: 0, rain: 0, snow: 0, speedMps: 0, water: null, gains: {},
+    night: 0, singers: 0, songs: 0,
   };
 
   function set(param, value) {
@@ -379,6 +564,123 @@ export function createAudio({
     return { altitude, exposure };
   }
 
+  // ---- songbirds ----------------------------------------------------------
+
+  // The clock songs are scheduled against. A live context's currentTime is the
+  // right answer, but an OfflineAudioContext's stays at 0 for the whole driving
+  // phase - so a test that steps a minute of song would pile every note onto the
+  // first sample. Accumulated dt is correct in both; the max() stops it ever
+  // scheduling into the past on a live context, where the two can drift apart.
+  function songNow() {
+    if (songT0 == null) songT0 = ctx.currentTime;
+    return Math.max(ctx.currentTime, songT0 + songClock);
+  }
+
+  function makeSinger(spec, ix, iz) {
+    const rnd = cellRandom(ix, iz, spec.salt);
+    if (rnd() > spec.presence) return null;
+    const x = (ix + rnd()) * spec.cellM;
+    const z = (iz + rnd()) * spec.cellM;
+    const sample = samplers.sampleGroundHeight;
+    if (!sample) return null;
+    const elev = sample(x, z);
+    const h = spec.habitat;
+    if (!Number.isFinite(elev) || elev < h.elevMin || elev > h.elevMax) return null;
+    // No canopy sampler yet (main.js sets it once the forest mask has loaded)
+    // reads as bare ground, which keeps the forest birds quiet rather than
+    // putting a chaffinch on a glacier.
+    const canopy = clamp(samplers.canopyAt?.(x, z) ?? 0, 0, 1);
+    if (h.canopyMin != null && canopy < h.canopyMin) return null;
+    if (h.canopyMax != null && canopy > h.canopyMax) return null;
+    // Spread over the whole interval rather than starting at its floor: a bird
+    // that has just been discovered should sometimes be about to sing, or every
+    // arrival somewhere is met with half a minute of silence.
+    return { x, z, rnd, nextIn: rnd() * spec.everyS[1] };
+  }
+
+  function rescanSingers(x, z) {
+    if (!samplers.sampleGroundHeight) return;
+    for (let s = 0; s < SONGBIRDS.length; s++) {
+      const spec = SONGBIRDS[s];
+      const map = singers[s];
+      // Kept a cell beyond earshot, so a singer at the edge is not created and
+      // destroyed - resetting its clock each time - as you step back and forth.
+      const reach = spec.earshotM + spec.cellM;
+      const span = Math.ceil(reach / spec.cellM);
+      const cx = Math.floor(x / spec.cellM);
+      const cz = Math.floor(z / spec.cellM);
+      const keep = new Set();
+      for (let iz = cz - span; iz <= cz + span; iz++) {
+        for (let ix = cx - span; ix <= cx + span; ix++) {
+          const dx = (ix + 0.5) * spec.cellM - x;
+          const dz = (iz + 0.5) * spec.cellM - z;
+          if (Math.hypot(dx, dz) > reach) continue;
+          const key = `${ix}:${iz}`;
+          keep.add(key);
+          if (!map.has(key)) map.set(key, makeSinger(spec, ix, iz));
+        }
+      }
+      for (const key of map.keys()) if (!keep.has(key)) map.delete(key);
+    }
+  }
+
+  function sing(spec, singer, distanceM, duck) {
+    const pan = panFrom(singer.x, singer.z, distanceM);
+    const peak = spec.gain * duck * (1 - distanceM / spec.earshotM) ** 1.5;
+    // Not a cap on how many birds sing - a level floor. Below this the phrase
+    // would be further under the wind bed than the quantisation of the bed
+    // itself, so it is nodes built to be inaudible.
+    if (peak < 1e-3) return false;
+    const rnd = singer.rnd;
+    const repeats = spec.repeat
+      ? spec.repeat[0] + Math.floor(rnd() * (spec.repeat[1] - spec.repeat[0] + 1))
+      : 1;
+    // Jittered inside the tick rather than landing on its boundary: UPDATE_HZ is
+    // 8, and every song in the wood starting on a 125 ms grid is audible as one.
+    let when = songNow() + 0.01 + rnd() / UPDATE_HZ;
+    for (let r = 0; r < repeats; r++) {
+      for (const [mul, durS, toNextS] of spec.phrase) {
+        // Loudness and pitch vary note to note for the same reason the marmot's
+        // series does: an exactly repeated note is what betrays a sample.
+        whistle(spec.voice, peak * (0.86 + 0.14 * rnd()), pan, when, mul * (0.995 + 0.01 * rnd()), durS);
+        when += toNextS;
+      }
+      if (spec.repeatGapS) when += pick(rnd, spec.repeatGapS);
+    }
+    songsPlayed++;
+    songsBySpecies[spec.name]++;
+    return true;
+  }
+
+  function stepSingers(dt, x, z, wind, rain) {
+    const duck = clamp(1 - SONG_WIND_DUCK * wind, 0.1, 1);
+    // Shaped rather than linear: at the night preset itself the wood has to be
+    // properly silent and the owl properly present, with the crossover happening
+    // across dusk instead of smeared over the whole evening.
+    const dark = smoothstep(0.25, 0.7, nightness);
+    const dry = 1 - SONG_RAIN_SILENCE * rain;
+    let live = 0;
+    for (let s = 0; s < SONGBIRDS.length; s++) {
+      const spec = SONGBIRDS[s];
+      const active = (spec.nocturnal ? dark : 1 - dark) * dry;
+      for (const singer of singers[s].values()) {
+        if (!singer) continue;
+        live++;
+        singer.nextIn -= dt;
+        if (singer.nextIn > 0) continue;
+        singer.nextIn = pick(singer.rnd, spec.everyS);
+        // Day and night gate WHETHER it sings, not how loudly: a bird that has
+        // gone to roost is silent, not quiet. Probabilistic, so dusk thins the
+        // chorus out rather than switching it off between two frames.
+        if (singer.rnd() > active) continue;
+        const distanceM = Math.hypot(singer.x - x, singer.z - z);
+        if (distanceM > spec.earshotM) continue;
+        sing(spec, singer, distanceM, duck);
+      }
+    }
+    return live;
+  }
+
   function tick(dt, camera, weather) {
     const x = camera.position.x;
     const y = camera.position.y;
@@ -410,6 +712,19 @@ export function createAudio({
     // even in the same weather.
     const shelter = 1 - 0.55 * canopy;
     const strength = clamp((0.16 + 0.52 * altitude + 0.32 * exposure) * shelter + 0.55 * rain + rush, 0, 1.25);
+
+    // Songbirds. Skipped entirely while the sound is off - they exist only to be
+    // heard, so there is nothing to keep simulating for a muted listener.
+    let live = 0;
+    if (enabled) {
+      songClock += dt;
+      sinceRescan += dt;
+      if (sinceRescan >= SINGER_RESCAN_S) {
+        sinceRescan = 0;
+        rescanSingers(x, z);
+      }
+      live = stepSingers(dt, x, z, clamp(strength, 0, 1), rain);
+    }
 
     let waterLow = 0;
     let waterHigh = 0;
@@ -454,12 +769,18 @@ export function createAudio({
       strength, altitude, exposure, canopy, gust, rain, snow, speedMps,
       water: near,
       gains,
+      night: nightness,
+      singers: live,
+      songs: songsPlayed,
     });
   }
 
-  function update(dt, camera, weather = null) {
+  function update(dt, camera, weather = null, lighting = null) {
     if (!layers || !camera) return;
     cameraRef = camera;
+    // Whether it is dark, taken from the weight the lights are themselves using
+    // (src/lighting.js) rather than from a second set of thresholds here.
+    nightness = clamp(lighting?.night ?? 0, 0, 1);
 
     const x = camera.position.x;
     const y = camera.position.y;
@@ -506,19 +827,7 @@ export function createAudio({
     lastCallAt = ctx.currentTime;
     callsPlayed++;
 
-    // Which side it came from. The camera's right is (-fz, fx), with +X east and
-    // +Z south (docs/ARCHITECTURE.md §6) - and taken from the live look
-    // direction, for the same reason as the position above.
-    let fwdX = 0;
-    let fwdZ = -1;
-    if (cameraRef.getWorldDirection) {
-      cameraRef.getWorldDirection(_dir);
-      const len = Math.hypot(_dir.x, _dir.z) || 1;
-      fwdX = _dir.x / len;
-      fwdZ = _dir.z / len;
-    }
-    const d = Math.max(distanceM, 1e-3);
-    const pan = clamp(((x - camX) / d) * -fwdZ + ((z - camZ) / d) * fwdX, -1, 1);
+    const pan = panFrom(x, z, distanceM);
     const peak = cfg.gain * (1 - distanceM / cfg.earshotM) ** 1.5;
     // A random-length series, and deliberately not a metronome: each note varies
     // in pitch, loudness and spacing, because a fixed interval is what makes a
@@ -532,7 +841,30 @@ export function createAudio({
     return notes;
   }
 
-  function whistle(cfg, peak, pan, at, detune = 1) {
+  // Which side a sound came from. The camera's right is (-fz, fx), with +X east
+  // and +Z south (docs/ARCHITECTURE.md §6) - and taken from the live look
+  // direction, for the same reason call() reads the live position.
+  function panFrom(x, z, distanceM) {
+    if (!cameraRef) return 0;
+    let fwdX = 0;
+    let fwdZ = -1;
+    if (cameraRef.getWorldDirection) {
+      cameraRef.getWorldDirection(_dir);
+      const len = Math.hypot(_dir.x, _dir.z) || 1;
+      fwdX = _dir.x / len;
+      fwdZ = _dir.z / len;
+    }
+    const camX = cameraRef.position.x;
+    const camZ = cameraRef.position.z;
+    const d = Math.max(distanceM, 1e-3);
+    return clamp(((x - camX) / d) * -fwdZ + ((z - camZ) / d) * fwdX, -1, 1);
+  }
+
+  // One note. `detune` scales both ends of the sweep, so a songbird's phrase can
+  // move the pitch without changing the note's character; `durOverride` lets a
+  // phrase set each note's length, where an alarm series uses one length for all.
+  function whistle(cfg, peak, pan, at, detune = 1, durOverride = null) {
+    const durS = durOverride ?? cfg.durS;
     const f0 = cfg.f0 * detune;
     const f1 = cfg.f1 * detune;
     const osc = ctx.createOscillator();
@@ -540,7 +872,7 @@ export function createAudio({
     // carry. A species can ask for something richer (the nutcracker's sawtooth).
     osc.type = cfg.wave ?? 'triangle';
     osc.frequency.setValueAtTime(f0, at);
-    osc.frequency.exponentialRampToValueAtTime(f1, at + cfg.durS);
+    osc.frequency.exponentialRampToValueAtTime(f1, at + durS);
     const band = ctx.createBiquadFilter();
     band.type = 'bandpass';
     band.frequency.value = (f0 + f1) / 2;
@@ -548,20 +880,23 @@ export function createAudio({
 
     // A rattle is amplitude, not pitch: chopping the tone at a few dozen Hz is
     // what makes a corvid's call harsh rather than musical. The base gain stays
-    // above zero so it reads as a rattle and not as a stutter.
+    // above zero so it reads as a rattle and not as a stutter. Depth is what
+    // separates a rattle from a tremolo - the nutcracker chops hard, a tawny
+    // owl's hoot only wavers - so a voice can ask for a shallower one.
     const extras = [];
     let chain = band;
     if (cfg.rattleHz) {
+      const rattleDepth = cfg.rattleDepth ?? 0.55;
       const chop = ctx.createGain();
-      chop.gain.value = 0.45;
+      chop.gain.value = 1 - rattleDepth;
       const lfo = ctx.createOscillator();
       lfo.type = 'square';
       lfo.frequency.value = cfg.rattleHz;
       const depth = ctx.createGain();
-      depth.gain.value = 0.55;
+      depth.gain.value = rattleDepth;
       lfo.connect(depth).connect(chop.gain);
       lfo.start(at);
-      lfo.stop(at + cfg.durS + 0.02);
+      lfo.stop(at + durS + 0.02);
       band.connect(chop);
       chain = chop;
       extras.push(chop, lfo, depth);
@@ -573,14 +908,14 @@ export function createAudio({
     gain.gain.exponentialRampToValueAtTime(top, at + CALL_ATTACK_S);
     // Held most of the way through, then let go. The extra length the user asked
     // for has to be a sustained note - a longer decay alone just sounds smeared.
-    gain.gain.exponentialRampToValueAtTime(top * 0.8, at + cfg.durS * 0.7);
-    gain.gain.exponentialRampToValueAtTime(1e-4, at + cfg.durS);
+    gain.gain.exponentialRampToValueAtTime(top * 0.8, at + durS * 0.7);
+    gain.gain.exponentialRampToValueAtTime(1e-4, at + durS);
     const panner = ctx.createStereoPanner();
     panner.pan.value = pan;
     osc.connect(band);
     chain.connect(gain).connect(panner).connect(muffle);
     osc.start(at);
-    osc.stop(at + cfg.durS + 0.02);
+    osc.stop(at + durS + 0.02);
     osc.onended = () => {
       osc.disconnect();
       band.disconnect();
@@ -600,6 +935,12 @@ export function createAudio({
     },
     setSamplers(next) {
       samplers = { ...samplers, ...next };
+      // The habitat tests above cached a "nothing lives here" for every cell
+      // they saw, and main.js sets canopyAt only once the forest mask has
+      // loaded - so those misses were decided without it. Drop them, and rescan
+      // on the next tick rather than waiting out the interval.
+      for (const map of singers) map.clear();
+      sinceRescan = SINGER_RESCAN_S;
     },
     setWater(manifest) {
       earshot = manifest ? buildWaterEarshot(manifest) : null;
@@ -609,6 +950,9 @@ export function createAudio({
     call,
     get diag() { return diag; },
     get callsPlayed() { return callsPlayed; },
+    get songsPlayed() { return songsPlayed; },
+    get songsBySpecies() { return { ...songsBySpecies }; },
+    get songbirds() { return SONGBIRDS.map((s) => s.name); },
     get context() { return ctx; },
   };
 }

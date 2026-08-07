@@ -822,7 +822,23 @@ pngp-viewer/
 │                              canopy lookup, five height samples, one 3x3 hash query at
 │                              0.003 ms). Nothing exists until start() is called from a
 │                              real user gesture, per the autoplay policy - main.js uses
-│                              the click that already grabs pointer lock
+│                              the click that already grabs pointer lock.
+│                              Extended 2026-08-07 with SONGBIRDS, the ambient animal
+│                              sound the user asked to discuss: chaffinch, coal tit,
+│                              cuckoo, water pipit and - at night - a tawny owl. Birdsong
+│                              and not mammal voices, because a marmot's whistle IS its
+│                              alarm and ibex/chamois/fox are near silent by nature, so an
+│                              idle mammal call would be invented biology. A "singer" is a
+│                              position, a species and a clock, on the same deterministic
+│                              hash lattice as wildlife.js's herds, with no visual
+│                              counterpart at all - which is why it lives here rather than
+│                              in its own module: nothing is stepped while the sound is
+│                              off. Habitat is tested at the SINGER's position, not the
+│                              listener's, so open ground beside a wood hears the wood.
+│                              Day/night comes from lighting.js's `night` preset weight
+│                              (the same number the lights blend with, not a second set of
+│                              thresholds), wind takes the level down and rain stops the
+│                              singing outright. Cost 0.10 ms per 8 Hz tick
 │   └── ui/                 Still not created - phase 4's and phase 5's HUD controls
 │                              (time-of-day slider, weather select, compass/position
 │                              readout) all turned out small enough to wire directly in

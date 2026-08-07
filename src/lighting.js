@@ -142,6 +142,13 @@ export class Lighting {
     Object.assign(this._b, paramsFor(PRESETS[i1]));
     lerpState(this._a, this._b, f, this.state);
     this.label = f < 0.5 ? PRESETS[i0].label : PRESETS[i1].label;
+    // How much of the night preset is in the current blend - 1 at the night
+    // preset itself, 0 at dusk and again at dawn, and whatever the lights are
+    // actually mixing in between. src/audio.js's songbirds need "is it dark",
+    // and the honest answer is the weight the lights themselves are using: a
+    // second set of thresholds here would drift away from what is on screen.
+    const nightIndex = PRESETS.findIndex((p) => p.key === 'night');
+    this.night = (i0 === nightIndex ? 1 - f : 0) + (i1 === nightIndex ? f : 0);
     this.applyState();
   }
 
