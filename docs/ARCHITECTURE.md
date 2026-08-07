@@ -838,7 +838,25 @@ pngp-viewer/
 │                              Day/night comes from lighting.js's `night` preset weight
 │                              (the same number the lights blend with, not a second set of
 │                              thresholds), wind takes the level down and rain stops the
-│                              singing outright. Cost 0.10 ms per 8 Hz tick
+│                              singing outright. Cost 0.10 ms per 8 Hz tick.
+│                              Extended again 2026-08-07 with FOOTSTEPS, the second
+│                              deferred topic and the first sound here tied to the user's
+│                              action rather than to the scene. The discussion turned on a
+│                              number: controls.js walks at 4 m/s = 14.4 km/h, a running
+│                              pace, so an honest cadence would be 2.7 footfalls a second.
+│                              The user chose a FIXED ~2 Hz instead, which is deliberately
+│                              a lie (a 2 m stride) and is the decision - calm over
+│                              consistent. Five surfaces from signals the scene already
+│                              has: snow (weather, or above the nival line) > wet > forest
+│                              floor (canopy mask) > scree (rocky band or slope > 30 deg)
+│                              > grass. Each is a burst of the same pink-noise buffer
+│                              through one filter; scree and forest add scattered grains
+│                              after the footfall. Silent in fly mode, which is why
+│                              controls is passed to update() - the camera cannot tell you,
+│                              since walk mode is ground-clamped and fly mode can sit on
+│                              the ground. NOTE the level scale: the noise buffer is
+│                              +-0.1 where an oscillator is +-1.0, so footstep gains are
+│                              not comparable with the whistle gains above
 │   └── ui/                 Still not created - phase 4's and phase 5's HUD controls
 │                              (time-of-day slider, weather select, compass/position
 │                              readout) all turned out small enough to wire directly in

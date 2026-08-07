@@ -4,19 +4,20 @@ Read this first at the start of each session. Update it before ending one.
 
 ## Status as of 2026-08-07
 
-**The first of the two topics the user left open is now closed: ambient animal
-audio is built, and accepted the same day** ("mi piace così com'è"). They opened
-it, it was discussed before anything was written - which is how they asked for
-these to go - and the discussion changed the answer, so it is worth recording
-what it changed.
+**Both of the topics the user left open are now closed: ambient animal audio
+(accepted the same day - "mi piace così com'è") and footsteps.** Each was opened
+by the user and discussed before anything was written - which is how they asked
+for these to go - and in both cases the discussion changed the answer, which is
+the part worth recording.
 
 They also confirmed on the way in that they had already listened to the marmot's
 whistle series and it is fine, which closes the last thing hanging over the audio
 from 2026-08-05. The closing doc edits from that session were committed first
 (`7cda371`), so the working tree started clean.
 
-**Still open, and still theirs to open: footstep sound while walking.** Nothing
-else is outstanding except phase 7.
+**And then the second one, the same day: footstep sound while walking is built
+too.** So **nothing the user has ever deferred is outstanding**, and phase 7 is
+all that is left. Footsteps are the one thing not yet judged by ear.
 
 ### The discussion, and the thing it changed
 
@@ -157,20 +158,94 @@ Worth knowing before tuning: the density knob the user's answer maps to is
 `everyS` and `presence`, not `gain`. Raising `gain` makes the near birds louder
 without adding any; raising `presence` puts more of them in earshot.
 
+### Done: footsteps (`src/audio.js`) - and the discussion turned on a number
+
+The second deferred topic, opened the same day. The note left on 2026-08-05 said
+the crux was that footsteps are the first sound tied to the user's own action
+rather than to the scene, and that a loop is the easy way to make a quiet viewer
+tiring. True, but the discussion turned on something more concrete:
+
+**`src/controls.js` walks at 4 m/s. That is 14.4 km/h - a 4:10/km running pace -
+and Shift takes it to 36 km/h, faster than a sprinter.** A cadence derived
+honestly from that is 2.7 footfalls a second at a "walk" and a buzz under Shift.
+So there is no setting in which this viewer sounds like a stroll, unless the
+cadence stops being derived from the speed.
+
+Given that, the user chose **a fixed ~2 Hz cadence regardless of speed** and **one
+switch** (no separate mute). The fixed cadence is deliberately a lie - at 4 m/s it
+implies a 2 m stride - and the lie is the choice: calm over consistent. `STEP_HZ`
+is one constant if it ever reads wrong against the ground going past. They were
+also offered slowing the walk speed itself, which would have made the footsteps
+honest, and did not take it - the 4 m/s is there to cover an 84x48 km park.
+
+Five surfaces, from signals the scene already computes - **no new data at all**:
+snow (`weather.mod.snow`, or above the nival line at 3,800 m) beats wet
+(`weather.mod.wet`) beats forest floor (the OSM canopy mask) beats scree (the
+rocky band above 3,000 m, or any slope over 30 deg) beats grass. What has fallen
+on the ground beats what grows on it beats what it is made of. Each is a burst of
+the shared pink-noise buffer through one filter with a fast envelope; scree and
+forest add `grains`, the little scattered arrivals after the footfall, which is
+what loose stone actually sounds like. Feet alternate slightly left and right,
+which is the one thing that makes a sequence of identical events read as a gait.
+
+Silent in fly mode - `controls.mode` is now passed to `audio.update()` for that
+alone, because the camera cannot tell you: walk mode is ground-clamped and fly
+mode can sit on the ground too.
+
+**A landmine worth the name, and it was mine**: a noise-buffer source and an
+oscillator are **not on the same scale**. `makeNoise()` writes the shared buffer
+at about +-0.1, while an oscillator runs at +-1.0 - so the first `STEP_GAIN` of
+0.14, a value that would be loud for a whistle, measured **1.3x the wind bed**,
+which is inaudible. It is now 0.7 against a +-0.1 source, measured at **x1.98 on
+the whole-scene RMS** between walking and standing in the same place.
+
+Measured, all of it in scenes chosen so that nothing sings (a songbird phrase
+would land in the same envelope):
+
+- cadence **2.00 Hz**, 40 steps in 20 s; **zero** standing still, **zero** in fly
+  mode, and zero in the 1.5 s after letting go of W in the live viewer;
+- every surface is selected correctly, and each lifts its own band clear of the
+  same scene walked silently: grass **x68** in 600-1200 Hz, scree **x113** in
+  1.6-2.8 kHz, snow **x334** in 2.6-4.2 kHz, wet **x46** in 250-600 Hz;
+- 64 footsteps over 45 s of walking in the running viewer, on real terrain.
+
+77 checks pass. Bundle 772 -> **774 kB** raw, **214 kB** gzipped; `audio.js`
+minifies to 13.6 kB.
+
+**Not judged by ear.** `STEP_GAIN` (level), `STEP_HZ` (cadence) and the `SURFACES`
+table are the knobs.
+
+### Two method notes from this one too
+
+**An onset count cannot find a quiet event.** `noteOnsets()` thresholds at a
+fraction of the loudest thing in the buffer, so with nothing loud in it, it counts
+the noise bed - it reported **87 onsets for the standing case, which has zero
+footfalls**. The controlled comparison is the same scene walked silently, and that
+is what every footstep assertion now reads against.
+
+**A reference has to be the same scene.** The first per-surface table read the
+forest row against open ground at 1,700 m, and reported the forest footstep as the
+brightest of the lot (x72 in the crunch band) - which was the wood's own leaf
+rustle, not the step. Against a wood standing still it reads x1.9 there and x5.6
+low down, which is what a footfall on needles should be.
+
 ### Next steps
 1. ~~Ask the user to listen to the songbirds~~ - **CLOSED the same day**: "mi
-   piace così com'è", first listen, no changes. See the section above.
-2. **Footstep sound while walking** - the second topic the user recorded on
-   2026-08-05, still theirs to open, context in the 2026-08-05 section below.
-   Do not start building it unprompted.
+   piace così com'è", first listen, no changes.
+2. **Ask the user to listen to the footsteps** - the one thing left on them.
+   Walking on open ground at the spawn is grass; the dev 'G' key to `squirrel`
+   is the forest floor; Weather to Snowfall and then a few seconds for it to
+   settle is the crunch; Rainstorm is the squelch. 'F' must be silent.
 3. **Phase 7 polish** is still the only phase left: LOD popping/geomorphing,
-   one-texel normals at any depth, the bundle (772 kB / 213 kB gzipped), and the
+   one-texel normals at any depth, the bundle (774 kB / 214 kB gzipped), and the
    mobile pass - pointer lock + WASD has no touch equivalent, and neither does a
    keyboard mute.
-4. **Republish** when the songbirds are approved - the live site is a commit
-   behind again. `tools/dev/deploy.sh` does the whole thing.
+4. **Republish** once the footsteps are approved - the live site is several
+   commits behind. `tools/dev/deploy.sh` does the whole thing.
 5. Deferred by the user, do not re-raise unprompted: the satellite/orthophoto
    basemap.
+
+**Nothing the user has ever deferred is outstanding any more.**
 
 ### How to resume
 Run the tests - they need a **dev** server (`tools/dev/start-dev.sh`):

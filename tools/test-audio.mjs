@@ -443,6 +443,75 @@ const result = await page.evaluate(async () => {
   const songDay = await songRender({ ground: SONG_GROUND.forest, canopy: RENDER_CANOPY, night: 0 });
   const songNight = await songRender({ ground: SONG_GROUND.forest, canopy: RENDER_CANOPY, night: 1 });
 
+  // 6d. Footsteps (2026-08-07). Every scene below is chosen so that NOTHING
+  //     SINGS in it - a songbird phrase would land in the same envelope the step
+  //     onsets are counted from. 1,700 m with no canopy is under the pipit's
+  //     floor and over nothing else's; 2,500 m with canopy is over every forest
+  //     bird's ceiling; 3,600 m is above everything.
+  //
+  //     Grass and scree share a ground HEIGHT (1,700 m) and differ only in
+  //     slope, so the wind bed behind them is identical and the only thing that
+  //     changed is what is underfoot. Putting scree on a 3,600 m summit instead
+  //     would have compared two surfaces through two completely different winds.
+  const STEP_GROUND = {
+    flat: () => 1700,
+    // A constant 35-degree fall line along z, so walking along +x stays at
+    // 1,700 m the whole way while standing on ground steep enough to be scree.
+    steep: (x, z) => 1700 + z * 0.7,
+    high: () => 3600,
+    wooded: () => 2500,
+  };
+
+  async function stepRender({
+    ground, canopy = 0, weather = null, mode = 'walk', moving = true,
+    seconds = 20, seed = 7331,
+  }) {
+    const ctx = new OfflineAudioContext(2, Math.floor(SR * seconds), SR);
+    const audio = createAudio({
+      context: ctx, immediate: true, random: mulberry32(seed),
+      canopyAt: () => canopy, sampleGroundHeight: ground,
+    });
+    audio.start();
+    const camera = makeCamera({ x: 0, z: 0, ground });
+    const dt = 1 / 8;
+    const mps = mode === 'walk' ? WALK_MPS : 60;
+    for (let i = 0; i < Math.round(seconds / dt); i++) {
+      if (moving) camera.position.x = i * dt * mps;
+      audio.update(dt, camera, weather, null, { mode });
+    }
+    const buffer = await ctx.startRendering();
+    const left = buffer.getChannelData(0);
+    return {
+      steps: audio.stepsPlayed,
+      surface: audio.surface,
+      cadenceHz: audio.stepsPlayed / seconds,
+      onsets: noteOnsets(left, 0.45),
+      bands: {
+        wet: bandProfile(left, 250, 600), // where a squelch sits
+        soft: bandProfile(left, 600, 1200), // turf and forest floor
+        stone: bandProfile(left, 1600, 2800), // loose rock
+        crunch: bandProfile(left, 2600, 4200), // snow
+      },
+      rms: rms(left),
+    };
+  }
+
+  const step = {
+    grass: await stepRender({ ground: STEP_GROUND.flat }),
+    standing: await stepRender({ ground: STEP_GROUND.flat, moving: false }),
+    flying: await stepRender({ ground: STEP_GROUND.flat, mode: 'fly' }),
+    scree: await stepRender({ ground: STEP_GROUND.steep }),
+    screeHigh: await stepRender({ ground: STEP_GROUND.high }),
+    forest: await stepRender({ ground: STEP_GROUND.wooded, canopy: 0.6 }),
+    // Its own silent-footed reference: a wood at 2,500 m is a different bed from
+    // open ground at 1,700 m (canopy shelters the wind and adds rustle), so
+    // reading the forest row against the flat one would compare two scenes and
+    // call the difference footsteps.
+    standingForest: await stepRender({ ground: STEP_GROUND.wooded, canopy: 0.6, moving: false }),
+    snow: await stepRender({ ground: STEP_GROUND.flat, weather: { mod: { snow: 1 } } }),
+    wet: await stepRender({ ground: STEP_GROUND.flat, weather: { mod: { wet: 1 } } }),
+  };
+
   // 7. The real hydrology, at the real spawn point: is the Savara audible from
   //    the Le Pont trailhead the viewer opens at?
   const earshot = buildWaterEarshot(water);
@@ -466,6 +535,7 @@ const result = await page.evaluate(async () => {
     song,
     songDay,
     songNight,
+    step,
     earshot: { points: earshot.count, cells: earshot.cells, perQueryMs },
     spawn: {
       x: Math.round(lePont.local.x), z: Math.round(lePont.local.z),
@@ -543,9 +613,21 @@ const liveSong = await page.evaluate(async () => {
     singers: audio.diag.singers,
     songs: audio.songsPlayed,
     by: audio.songsBySpecies,
+    // The 45 s of held 'W' above is also the only real-terrain test the
+    // footsteps get: real ground, real slope, the real canopy mask.
+    steps: audio.stepsPlayed,
+    surface: audio.surface,
   };
 });
 await page.keyboard.up('KeyW');
+// And they must stop when the walking does.
+await page.waitForTimeout(1200);
+const liveStopped = await page.evaluate(() => ({
+  steps: window.__pngp.audio.stepsPlayed,
+  surface: window.__pngp.audio.surface,
+}));
+await page.waitForTimeout(1500);
+const liveStillStopped = await page.evaluate(() => window.__pngp.audio.stepsPlayed);
 
 // Time of day reaches the audio at all: the slider moves the same `night` weight
 // the lights use, and audio.js reads it from lighting rather than re-deriving it.
@@ -590,7 +672,7 @@ const afterM = await page.evaluate(() => ({
 
 await browser.close();
 
-const { cases, series, song, songDay, songNight, earshot, spawn } = result;
+const { cases, series, song, songDay, songNight, step, earshot, spawn } = result;
 const e = (v) => v.toExponential(2);
 const ratio = (a, b) => (b > 0 ? a / b : Infinity);
 
@@ -667,6 +749,24 @@ console.log(`          2.4-5.5k ${band3(songNight.songBand)} · 400-540 ${band3(
 console.log(`  day/night : song band max x${ratio(songDay.songBand.max, songNight.songBand.max).toFixed(1)},`
   + ` owl band max x${ratio(songNight.owlBand.max, songDay.owlBand.max).toFixed(1)} the other way`);
 
+console.log('\nFootsteps (20 s each, walking at the real 4 m/s, in scenes where nothing sings):');
+for (const [name, r] of Object.entries(step)) {
+  console.log(`  ${name.padEnd(10)}: ${String(r.steps).padStart(3)} steps`
+    + ` · ${r.cadenceHz.toFixed(2)} Hz · surface ${r.surface ?? '-'}`
+    + ` · ${r.onsets.count} onsets`);
+}
+// Every row is read against `standing`, which is the same scene with the same
+// wind and no footfalls - so the numbers are what the steps ADDED, not what the
+// bed happens to have in that band.
+console.log('  loudest segment per band, as a multiple of the same scene standing still:');
+const quietRef = (name) => (name === 'forest' ? step.standingForest : step.standing);
+const vsStanding = (name) => ['wet', 'soft', 'stone', 'crunch']
+  .map((b) => `${b} x${ratio(step[name].bands[b].max, quietRef(name).bands[b].max).toFixed(1)}`).join(' · ');
+for (const name of ['grass', 'forest', 'scree', 'snow', 'wet']) {
+  console.log(`    ${name.padEnd(7)}: ${vsStanding(name)}`);
+}
+console.log(`  rms walking/standing on grass: x${ratio(step.grass.rms, step.standing.rms).toFixed(2)}`);
+
 console.log('\nAt the Le Pont spawn, with the real hydrology:');
 console.log(`  (${spawn.x}, ${spawn.z}) · nearest river ${spawn.river} m`
   + ` · lake ${spawn.lake ?? '-'} m · waterfall ${spawn.waterfall ?? '-'} m`);
@@ -692,6 +792,8 @@ console.log('  songbirds, 45 s walking from Le Pont (real terrain + real canopy 
 console.log(`    ${liveSong.singers} singers tracked (some out of earshot, some nocturnal),`
   + ` ${liveSong.songs} songs`
   + ` (${Object.entries(liveSong.by).filter(([, n]) => n > 0).map(([k, n]) => `${k} ${n}`).join(', ') || 'nobody'})`);
+console.log(`    ${liveSong.steps} footsteps over the same 45 s, on ${liveSong.surface ?? '-'};`
+  + ` ${liveStillStopped - liveStopped.steps} more in the 1.5 s after letting go of W`);
 console.log(`  time slider to night  : audio night ${liveNight.night.toFixed(2)}, label "${liveNight.label}"`);
 console.log(`  'M'                   : enabled=${afterM.enabled}, checkbox=${afterM.checkbox}`);
 
@@ -796,6 +898,45 @@ check(songDay.notes.count >= songDay.songs,
   'fewer note onsets rendered than songs scheduled - the phrases are not coming out');
 check(song.forest.msPerTick < 0.5,
   'the songbird lattice is too slow to run on the audio tick');
+// Footsteps. The gate first: they are the one sound tied to the user's action.
+check(step.grass.steps > 0, 'walking on open ground produced no footsteps at all');
+check(step.standing.steps === 0, 'standing still produced footsteps');
+check(step.flying.steps === 0, 'fly mode produced footsteps - flying is not walking');
+// The user chose a fixed cadence near a walking pace over one derived from the
+// real 4 m/s (which would be 2.7 a second, a run). So this asserts the LIE, on
+// purpose - it is the decision, and a drift back towards honesty is a bug here.
+check(step.grass.cadenceHz > 1.7 && step.grass.cadenceHz < 2.3,
+  `the cadence is ${step.grass.cadenceHz.toFixed(2)} Hz, not the ~2 Hz walking pace chosen`);
+// Deliberately NOT an onset count. noteOnsets() thresholds against the loudest
+// thing in the buffer, so with no loud events it counts the noise bed instead -
+// it reported 87 onsets for the standing case, which has zero footfalls. The
+// controlled comparison is `standing`: the same scene, the same wind, no steps.
+check(ratio(step.grass.rms, step.standing.rms) > 1.15,
+  'walking sounds the same as standing still - the footsteps are inaudible');
+// Surface selection, from signals the scene already has.
+check(step.grass.surface === 'grass', `flat open ground at 1,700 m read as ${step.grass.surface}`);
+check(step.scree.surface === 'scree', `a 35-degree slope read as ${step.scree.surface}`);
+check(step.screeHigh.surface === 'scree', `3,600 m of rocky band read as ${step.screeHigh.surface}`);
+check(step.forest.surface === 'forest', `canopy 0.6 read as ${step.forest.surface}`);
+check(step.snow.surface === 'snow', `lying snow read as ${step.snow.surface}`);
+check(step.wet.surface === 'wet', `wet ground read as ${step.wet.surface}`);
+// And that the surfaces actually sound different. Grass and scree share a ground
+// height and differ only in slope, so the wind behind them is identical.
+// Each surface has to lift its OWN band clear of the silent-footed reference.
+for (const [name, band] of [['grass', 'soft'], ['forest', 'soft'], ['scree', 'stone'],
+  ['snow', 'crunch'], ['wet', 'wet']]) {
+  check(ratio(step[name].bands[band].max, quietRef(name).bands[band].max) > 2,
+    `walking on ${name} barely moves the ${band} band over standing still`);
+}
+// And they have to differ from each other, not just from silence. Grass and
+// scree share a ground height, so only the footing changed.
+check(ratio(step.scree.bands.stone.max, step.grass.bands.stone.max) > 1.5,
+  'loose stone does not sound any brighter than turf');
+check(ratio(step.snow.bands.crunch.max, step.grass.bands.crunch.max) > 1.5,
+  'snow does not crunch - no more high end than walking on grass');
+check(ratio(step.wet.bands.wet.max, step.wet.bands.stone.max)
+  > ratio(step.scree.bands.wet.max, step.scree.bands.stone.max),
+  'a squelch is not lower-pitched than loose stone');
 check(spawn.river < 250, 'the Savara is no longer within earshot of the spawn point');
 check(cases.atSpawn.diag.gains.waterLow > 0.01,
   'the river at the spawn point is not audible');
@@ -820,6 +961,13 @@ check(liveSong.by.tawnyowl === 0,
   'a tawny owl hooted in the running viewer, which opens in daylight');
 check(liveNight.night > 0.9,
   'moving the time slider to the night preset did not reach the audio');
+check(liveSong.steps > 0, 'walking for 45 s in the running viewer produced no footsteps');
+check(liveSong.surface != null,
+  'the running viewer never worked out what it was walking on');
+check(liveStillStopped === liveStopped.steps,
+  'footsteps kept playing after the user stopped walking');
+check(liveStopped.surface === null,
+  'the surface readout did not clear when the walking stopped');
 // Standing 18 m from a marmot or a chamois has to whistle. Asserted over the
 // whole G sweep rather than one press, because which species is reachable from
 // wherever the walk ended is not the point being tested.

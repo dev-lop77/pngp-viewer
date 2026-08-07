@@ -263,6 +263,74 @@ const SINGER_RESCAN_S = 2;
 const SONG_WIND_DUCK = 0.65;
 const SONG_RAIN_SILENCE = 0.85;
 
+// ---------------------------------------------------------------------------
+// Footsteps (2026-08-07, the user's second deferred topic)
+// ---------------------------------------------------------------------------
+//
+// The first sound in this project tied to the user's own action rather than to
+// the scene, which is why it was held back from the phase-6 round and discussed
+// on its own. The discussion turned on a number rather than on taste:
+// src/controls.js walks at 4 m/s, which is 14.4 km/h - a 4:10/km running pace,
+// not a walk - and Shift takes it to 36 km/h, which is faster than a sprinter.
+// A cadence derived honestly from that is 2.7 steps a second at a walk and a
+// buzz under Shift.
+//
+// The user's call: a FIXED cadence, near a real walking pace, regardless of
+// speed. That is deliberately a lie - at 4 m/s it implies a 2 m stride - and the
+// lie is the point: they chose calm over consistent, because the alternative is
+// eighty running footfalls in half a minute. It is one constant to change if it
+// ever reads wrong against the ground going past.
+const STEP_HZ = 2;
+// A gait is not a metronome, and a fixed interval is exactly what makes a
+// repeated sample sound repeated - the same lesson the marmot's series taught.
+const STEP_JITTER = 0.09;
+// Below this there is no walking to hear. Well under 4 m/s, so it only catches
+// standing still and the tail of a stop, not a slow approach.
+const STEP_MIN_MPS = 0.4;
+// NOT on the same scale as the alarm whistles, and the first value here was
+// wrong for exactly that reason. A whistle is an oscillator, so its peak gain is
+// a peak amplitude; a footstep is the shared pink-noise buffer, which makeNoise()
+// writes at about +-0.1. So a gain that would be loud for an oscillator comes out
+// forty times quieter here - 0.14 measured as 1.3x the wind bed, which is
+// inaudible. This is a level against a +-0.1 source: it puts a footfall about
+// six times the bed, clearly present and well under a marmot beside you.
+const STEP_GAIN = 0.7;
+// Scheduling look-ahead: one audio tick is 125 ms and a step falls between
+// ticks, so steps due in the next window are scheduled at their exact time
+// rather than quantised onto the tick grid.
+const STEP_LOOKAHEAD_S = 0.2;
+// Slightly left, slightly right. Free, and it is the one thing that makes a
+// footstep sequence read as a gait rather than as a repeating sound.
+const STEP_PAN = 0.12;
+
+// What you are walking on, from signals the scene already computes: no new data
+// at all. Each is a burst of the shared pink noise through one filter with a
+// fast envelope - a footstep is noise, which is why none of this can go through
+// whistle(). `grains` are the little scattered arrivals after the footfall,
+// which is what loose stone actually sounds like.
+const SURFACES = {
+  grass: { type: 'lowpass', freq: 850, Q: 0.9, durS: 0.11, attackS: 0.006, gain: 0.8 },
+  // Needles and leaf litter: softer and duller than turf, with a little crackle.
+  forest: { type: 'lowpass', freq: 620, Q: 0.8, durS: 0.14, attackS: 0.008, gain: 0.75, grains: 2, grainGain: 0.35 },
+  // Loose stone. Brighter, sharper, and the stones keep moving after the foot has.
+  scree: { type: 'bandpass', freq: 2100, Q: 0.7, durS: 0.09, attackS: 0.003, gain: 1, grains: 4, grainGain: 0.5 },
+  // The crunch is high and tight, and the squeak is the tail of it.
+  snow: { type: 'bandpass', freq: 3200, Q: 1.4, durS: 0.16, attackS: 0.004, gain: 0.85 },
+  // Wet ground is the opposite: low, thick and short - a squelch is a damped
+  // thing, and the water takes the top off it.
+  wet: { type: 'lowpass', freq: 420, Q: 1.2, durS: 0.13, attackS: 0.01, gain: 0.9 },
+};
+// Where each surface takes over. Elevations follow docs/ARCHITECTURE.md §5's
+// bands (rocky above 3,000 m, nival above 3,800 m) so the ear and the terrain
+// colour agree about what the ground is.
+const SNOW_COVER = 0.45;
+const WET_COVER = 0.5;
+const FOREST_CANOPY = 0.35;
+const NIVAL_M = 3800;
+const ROCKY_M = 3000;
+const SCREE_SLOPE_DEG = 30;
+const STEP_SLOPE_PROBE_M = 12;
+
 const _dir = new THREE.Vector3();
 
 function clamp(v, lo, hi) {
@@ -458,6 +526,12 @@ export function createAudio({
   // a chaffinch above the treeline is a bug a total would hide.
   const songsBySpecies = Object.fromEntries(SONGBIRDS.map((s) => [s.name, 0]));
   let nightness = 0;
+  // Footsteps.
+  let noiseBuffer = null;
+  let stepNextAt = 0;
+  let stepFoot = 0;
+  let stepsPlayed = 0;
+  let lastSurface = null;
   // The live camera, kept so alarm() can read where it is NOW - see the comment
   // there for why a remembered position was not good enough.
   let cameraRef = null;
@@ -465,7 +539,7 @@ export function createAudio({
   const diag = {
     started: false, enabled, strength: 0, altitude: 0, exposure: 0, canopy: 0,
     gust: 0, rain: 0, snow: 0, speedMps: 0, water: null, gains: {},
-    night: 0, singers: 0, songs: 0,
+    night: 0, singers: 0, songs: 0, surface: null, steps: 0,
   };
 
   function set(param, value) {
@@ -505,6 +579,7 @@ export function createAudio({
     muffle.connect(master);
 
     const buffer = makeNoise(ctx, NOISE_S, random);
+    noiseBuffer = buffer; // footsteps read the same one, at their own offsets
     layers = {
       windLow: makeLayer(buffer, { type: 'bandpass', freq: 130, Q: 0.8, rate: 0.83 }),
       windHigh: makeLayer(buffer, { type: 'bandpass', freq: 900, Q: 0.55, rate: 1.0 }),
@@ -514,6 +589,101 @@ export function createAudio({
       rain: makeLayer(buffer, { type: 'bandpass', freq: 1800, Q: 0.4, rate: 1.13 }),
     };
     diag.started = true;
+  }
+
+  // ---- footsteps ----------------------------------------------------------
+
+  // Rise over run across 2x the probe, in degrees, from the DRAWN surface - the
+  // slope the user can see rather than the true one. Same idea, and the same
+  // probe length, as wildlife.js uses to decide where an ibex can stand.
+  function slopeDegrees(x, z) {
+    const sample = samplers.sampleGroundHeight;
+    if (!sample) return 0;
+    const R = STEP_SLOPE_PROBE_M;
+    const hx = sample(x + R, z) - sample(x - R, z);
+    const hz = sample(x, z + R) - sample(x, z - R);
+    if (!Number.isFinite(hx) || !Number.isFinite(hz)) return 0;
+    return (Math.atan(Math.hypot(hx, hz) / (2 * R)) * 180) / Math.PI;
+  }
+
+  // What is underfoot, in priority order: what has fallen on the ground beats
+  // what grows on it, and what grows on it beats what it is made of.
+  function surfaceAt(x, z, groundY, canopy, snow, wet) {
+    if (snow > SNOW_COVER || groundY > NIVAL_M) return 'snow';
+    if (wet > WET_COVER) return 'wet';
+    if (canopy > FOREST_CANOPY) return 'forest';
+    if (groundY > ROCKY_M || slopeDegrees(x, z) > SCREE_SLOPE_DEG) return 'scree';
+    return 'grass';
+  }
+
+  function burst(cfg, peak, pan, at, { freqMul = 1, durMul = 1, rate = 1 } = {}) {
+    const durS = cfg.durS * durMul;
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer;
+    src.playbackRate.value = rate;
+    const filter = ctx.createBiquadFilter();
+    filter.type = cfg.type;
+    filter.frequency.value = cfg.freq * freqMul;
+    filter.Q.value = cfg.Q;
+    const gain = ctx.createGain();
+    const top = Math.max(peak, 1e-4);
+    gain.gain.setValueAtTime(1e-4, at);
+    gain.gain.exponentialRampToValueAtTime(top, at + cfg.attackS);
+    gain.gain.exponentialRampToValueAtTime(1e-4, at + durS);
+    const panner = ctx.createStereoPanner();
+    panner.pan.value = pan;
+    src.connect(filter).connect(gain).connect(panner).connect(muffle);
+    // A random offset into the shared buffer, so no two footfalls are the same
+    // stretch of noise - the same trick the six bed layers use against each
+    // other, here used against the step before.
+    src.start(at, random() * Math.max(0.1, NOISE_S - durS - 0.1), durS + 0.02);
+    src.onended = () => {
+      src.disconnect();
+      filter.disconnect();
+      gain.disconnect();
+      panner.disconnect();
+    };
+  }
+
+  function footstep(surface, at) {
+    const cfg = SURFACES[surface];
+    if (!cfg || !noiseBuffer) return;
+    // Alternating feet. Nothing else here makes a sequence of identical events
+    // read as a gait rather than as a repeat.
+    stepFoot ^= 1;
+    const pan = stepFoot ? STEP_PAN : -STEP_PAN;
+    const peak = STEP_GAIN * cfg.gain * (0.85 + 0.3 * random());
+    burst(cfg, peak, pan, at, {
+      freqMul: 0.9 + 0.2 * random(),
+      durMul: 0.9 + 0.2 * random(),
+      rate: 0.9 + 0.25 * random(),
+    });
+    // Loose ground keeps arriving after the foot has left it.
+    for (let g = 0; g < (cfg.grains ?? 0); g++) {
+      burst(cfg, peak * cfg.grainGain * (0.4 + 0.6 * random()), pan + (random() - 0.5) * 0.3,
+        at + 0.02 + random() * 0.09,
+        { freqMul: 1.1 + 0.5 * random(), durMul: 0.35, rate: 1 + 0.5 * random() });
+    }
+    stepsPlayed++;
+  }
+
+  function stepWalking(x, z, groundY, canopy, snow, wet, walking) {
+    const now = songNow();
+    if (!walking) {
+      // Re-armed just ahead of the clock, so the first stride after a stop lands
+      // promptly instead of a burst of the steps that were "missed" standing still.
+      stepNextAt = now + 0.06;
+      lastSurface = null;
+      return null;
+    }
+    const surface = surfaceAt(x, z, groundY, canopy, snow, wet);
+    lastSurface = surface;
+    if (stepNextAt < now) stepNextAt = now + 0.06;
+    while (stepNextAt < now + STEP_LOOKAHEAD_S) {
+      footstep(surface, stepNextAt);
+      stepNextAt += (1 / STEP_HZ) * (1 + (random() - 0.5) * 2 * STEP_JITTER);
+    }
+    return surface;
   }
 
   // Must be called from a user gesture the first time (browser autoplay policy).
@@ -681,7 +851,7 @@ export function createAudio({
     return live;
   }
 
-  function tick(dt, camera, weather) {
+  function tick(dt, camera, weather, controls) {
     const x = camera.position.x;
     const y = camera.position.y;
     const z = camera.position.z;
@@ -713,9 +883,11 @@ export function createAudio({
     const shelter = 1 - 0.55 * canopy;
     const strength = clamp((0.16 + 0.52 * altitude + 0.32 * exposure) * shelter + 0.55 * rain + rush, 0, 1.25);
 
-    // Songbirds. Skipped entirely while the sound is off - they exist only to be
-    // heard, so there is nothing to keep simulating for a muted listener.
+    // Songbirds and footsteps. Skipped entirely while the sound is off - both
+    // exist only to be heard, so there is nothing to keep simulating for a muted
+    // listener.
     let live = 0;
+    let surface = null;
     if (enabled) {
       songClock += dt;
       sinceRescan += dt;
@@ -724,6 +896,11 @@ export function createAudio({
         rescanSingers(x, z);
       }
       live = stepSingers(dt, x, z, clamp(strength, 0, 1), rain);
+      // Only on foot. Flying is not walking, and 'F' is the only thing that
+      // knows which you are doing - the camera cannot tell you, since walk mode
+      // is ground-clamped and fly mode can sit on the ground too.
+      const walking = controls?.mode === 'walk' && speedMps > STEP_MIN_MPS;
+      surface = stepWalking(x, z, groundY, canopy, snow, mod.wet ?? 0, walking);
     }
 
     let waterLow = 0;
@@ -772,10 +949,12 @@ export function createAudio({
       night: nightness,
       singers: live,
       songs: songsPlayed,
+      surface,
+      steps: stepsPlayed,
     });
   }
 
-  function update(dt, camera, weather = null, lighting = null) {
+  function update(dt, camera, weather = null, lighting = null, controls = null) {
     if (!layers || !camera) return;
     cameraRef = camera;
     // Whether it is dark, taken from the weight the lights are themselves using
@@ -798,7 +977,7 @@ export function createAudio({
     if (tickAccum < 1 / UPDATE_HZ) return;
     const tickDt = tickAccum;
     tickAccum = 0;
-    tick(tickDt, camera, weather);
+    tick(tickDt, camera, weather, controls);
   }
 
   // One vocalisation, from src/wildlife.js's onAlarm (an animal taking fright) or
@@ -951,6 +1130,9 @@ export function createAudio({
     get diag() { return diag; },
     get callsPlayed() { return callsPlayed; },
     get songsPlayed() { return songsPlayed; },
+    get stepsPlayed() { return stepsPlayed; },
+    get surface() { return lastSurface; },
+    get surfaces() { return Object.keys(SURFACES); },
     get songsBySpecies() { return { ...songsBySpecies }; },
     get songbirds() { return SONGBIRDS.map((s) => s.name); },
     get context() { return ctx; },

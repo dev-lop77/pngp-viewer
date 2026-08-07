@@ -839,7 +839,9 @@ renderer.setAnimationLoop(() => {
   // and a no-op until the first click starts the context. Lighting goes in for
   // its `night` weight alone - the songbirds roost after dusk and the tawny owl
   // takes over, and that weight is the one the lights are themselves using.
-  audio.update(timer.getDelta(), camera, weather, lighting);
+  // Controls goes in for its `mode` only: footsteps are the one sound tied to
+  // what the user is doing, and walking is the only mode that has them.
+  audio.update(timer.getDelta(), camera, weather, lighting, controls);
   // After controls, before render: the tile set must match where the camera
   // actually ended up this frame, or a fast move shows a hole at its edge.
   terrainUpdate?.(camera);
