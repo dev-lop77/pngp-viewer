@@ -5,9 +5,10 @@ Read this first at the start of each session. Update it before ending one.
 ## Status as of 2026-08-07
 
 **The first of the two topics the user left open is now closed: ambient animal
-audio is built.** They opened it, it was discussed before anything was written -
-which is how they asked for these to go - and the discussion changed the answer,
-so it is worth recording what it changed.
+audio is built, and accepted the same day** ("mi piace così com'è"). They opened
+it, it was discussed before anything was written - which is how they asked for
+these to go - and the discussion changed the answer, so it is worth recording
+what it changed.
 
 They also confirmed on the way in that they had already listened to the marmot's
 whistle series and it is fine, which closes the last thing hanging over the audio
@@ -132,25 +133,33 @@ the **singer's** position, not the listener's - and that is the right way round,
 because Valsavarenche has larch on both valley sides and standing on open ground
 near a wood you hear the wood.
 
-### Not judged by ear yet
+### Judged by ear, and accepted the same day
 
-The same caveat as every audio round: the numbers say each voice responds to the
-right thing by the right amount, and cannot say whether a chaffinch is too loud at
-80 m or the wood too busy at 8 songs a minute. **That is the first thing to ask.**
+**"mi piace così com'è."** First listen, no changes asked for - so the density
+(8 songs a minute in a wood, 3.3 above the treeline), the levels against wind and
+water, and all five voices stand as they are. **Nothing about the songbirds is
+open.**
+
 Every tunable is a named constant in `SONGBIRDS` at the top of `src/audio.js` -
 `gain`, `earshotM`, `everyS` (how often one bird sings) and `presence`/`cellM`
-(how many birds there are) - plus `SONG_WIND_DUCK` and `SONG_RAIN_SILENCE`.
+(how many birds there are) - plus `SONG_WIND_DUCK` and `SONG_RAIN_SILENCE`. If
+they are ever revisited, the density knob is `everyS`/`presence`, not `gain`:
+raising `gain` makes the near birds louder without adding any.
+
+Worth recording for any future listening test, because it is what made this one
+quick: the spawn at Le Pont is open valley floor, so the forest birds are only
+heard at a distance from there. Pressing the dev **'G'** key until the note reads
+`squirrel` lands you 18 m from an animal that only lives in canopy >= 0.9 - i.e.
+inside a closed wood, which is where the chaffinch and coal tit actually are. The
+time slider on Night is the owl.
 
 Worth knowing before tuning: the density knob the user's answer maps to is
 `everyS` and `presence`, not `gain`. Raising `gain` makes the near birds louder
 without adding any; raising `presence` puts more of them in earshot.
 
 ### Next steps
-1. **Ask the user to listen to the songbirds**, in a real browser - the only
-   question left on them, and the one no measurement can answer. Worth walking
-   into a wood (the spawn at Le Pont is open ground, so the chaffinch and coal tit
-   are heard from a distance there rather than from around you), and worth pushing
-   the time slider to Night for the owl.
+1. ~~Ask the user to listen to the songbirds~~ - **CLOSED the same day**: "mi
+   piace così com'è", first listen, no changes. See the section above.
 2. **Footstep sound while walking** - the second topic the user recorded on
    2026-08-05, still theirs to open, context in the 2026-08-05 section below.
    Do not start building it unprompted.
