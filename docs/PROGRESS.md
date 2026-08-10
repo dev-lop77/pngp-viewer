@@ -495,13 +495,45 @@ which is the only number that counts - everything before this was a local `gzip 
 `verify.mjs` against the public URL reports WebGL2 and no console or page errors,
 and the screenshot is the Le Pont spawn with its trees, river and HUD intact.
 
+### Mobile is dropped, and with it the roadmap is finished
+
+**"Ho deciso che il mobile non è un'opzione che voglio seguire al momento."** A
+scope decision, not a deferral to schedule around: **do not re-raise it
+unprompted**, the same standing as the satellite/orthophoto basemap.
+
+That closes phase 7, and with it **every phase in `docs/ARCHITECTURE.md` §7**.
+Worth recording how it closed, because two of its four items were answered by
+measuring rather than by building:
+
+| item | outcome |
+|---|---|
+| LOD popping / geomorphing | **Not built, deliberately** - the geometry pop is 1-2 px at p95 at every depth |
+| one-texel normals | **Fixed** - and it turned out to be the visible half of "LOD popping" |
+| the bundle | **Reframed and fixed** - the JS was 1.2% of the load; the real target was the data, 18.10 -> 10.88 MB on the wire |
+| mobile pass | **Dropped by the user** |
+
+Two things are open, and both are the user's to want rather than anything owed:
+
+1. **Blending the normals across an LOD transition** - the residual after the fix
+   is 21.5% of a tile's pixels moving more than two levels, from 27.6%. Offered
+   with the numbers and not taken up; it is the only way to reach zero, since the
+   two depths' surfaces genuinely differ.
+2. **"La neve che si deposita"** - their topic, recorded 2026-08-10, nothing
+   decided and nothing to be built on it unprompted.
+
+And one thing only they can measure: **frame rate on real hardware**. Headless is
+1.2 fps with SwiftShader and has been wrong on this four times. The scene draws
+135-145 calls and ~500k triangles; the last real reading was ~30 fps at the end of
+July, before vegetation, wildlife, birds and audio all landed.
+
 ### How to resume
 Everything above is committed and the working tree is clean. The audio suite needs
 a **dev** server (`tools/dev/start-dev.sh`) as before. **Nothing is owed to the
 user and nothing is waiting on a verdict** - the first time that has been true
-since phase 6 opened, and **the live site is level with `main`**. What is left is
-**phase 7** and **"la neve che si deposita"** whenever they want to open it -
-nothing else at all.
+since phase 6 opened, and **the live site is level with `main`**. **Every phase of
+the roadmap is now closed** - phase 7 included, mobile having been dropped by the
+user. What is left is **"la neve che si deposita"** whenever they want to open it,
+the optional LOD normal blend, and a frame-rate reading only they can take.
 
 ## Status as of 2026-08-07
 
