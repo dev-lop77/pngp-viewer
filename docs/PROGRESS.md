@@ -427,6 +427,54 @@ First load goes from about **18.1 MB to 10.9 MB, -40%**. Expect nearer 9.5 than
 `birds`, `viewstate`, `audio`, `terrain-albedo`, `vegetation`) and `verify.mjs` is
 clean. **Not yet republished.**
 
+### The forest mask: the free 15%, and the 74% that costs the picture
+
+Second asset by weight, 1.13 MB. It is 4096x2355 at one byte a pixel but holds
+only **16 distinct values** (`COVERAGE_LEVELS`), 78.6% of them zero - a 4-bit mask
+being shipped as 8-bit. Two levers, and they are not close in character.
+
+**Taken: PNG sample depth 4.** The file is now written at PNG's own 4-bit depth.
+Decoders - fast-png here, the browser in the viewer - apply the standard
+sample-depth scaling on the way out, which for 4→8 bits is exactly x17, and every
+value written was already a multiple of 17. So the bytes that reach the texture
+are identical. **1.13 -> 0.96 MB for a build-script change and not one line of the
+loader**: three's `TextureLoader` never sees the difference.
+
+Proved in the real browser rather than by round-tripping it in node, and with the
+control the earlier work taught: the same forest edge rendered with each mask, and
+**a third render with the same mask for a noise floor**, because this scene has
+birds and animals moving between shots.
+
+| at a forest edge, trees in shot | subpixels differing | largest |
+|---|---|---|
+| same mask, two runs (noise floor) | 19,787 (0.52%) | 167 |
+| 8-bit mask vs 4-bit mask | **18,452 (0.49%)** | 167 |
+| 8-bit mask vs half resolution | 1,150,789 (30.44%) | 231 |
+
+The 4-bit mask lands **below the noise floor** - it is not "close", it is
+indistinguishable.
+
+**Rejected: halving the resolution**, which was the big number - 1.13 -> 0.29 MB,
+8% off the whole load. At 41 m/px the wood stops being where the wood is: the band
+of trees along the ridge frays and spills downhill, and **30.4% of the frame
+changes, 58x the noise floor**. That is *more* than the LOD artefact this session
+just spent its effort removing (27.6% of a tile's pixels). Measured at two
+vantages, because one would have been misleading in the other direction: from a
+valley overlook the same change moves only 4.0% of pixels, and stopping there
+would have made it look free. It is free only where there are no trees in shot.
+
+**A mistake worth recording**: the heightfield commit before this one left
+`tools/build-forest.mjs` **broken** - the bulk edit replaced its
+`new Uint16Array(...)` without adding the import, and it was committed that way.
+No test caught it, and none could: **the build tools are not run by any suite**,
+they are run by hand when data is rebuilt. It surfaced within the hour only
+because this item happened to rebuild that file. Worth remembering before the next
+edit that sweeps across `tools/`.
+
+**First load now**: heightfield 9.18 + forest 0.96 + JS 0.22 + trails 0.18 + water
+0.13 + poi 0.01 = **about 10.7 MB, from 18.1** - a 41% cut across the two items,
+with nothing visibly changed. Seven suites pass and `verify.mjs` is clean.
+
 ### How to resume
 Everything above is committed and the working tree is clean. The audio suite needs
 a **dev** server (`tools/dev/start-dev.sh`) as before. **Nothing is owed to the

@@ -21,7 +21,7 @@
     "channels": 1,
     "depth": 8,
     "meaning": "fraction of the pixel covered by tree canopy, 0 = none, 255 = full",
-    "quantisedTo": "16 levels (file size; the mask is bilinear-filtered and drives a probability)"
+    "quantisedTo": "16 levels, stored at PNG sample depth 4 and scaled x17 on decode"
   },
   "coverage": {
     "woodedPixels": 1604007,
@@ -31,9 +31,9 @@
     "pixelsLostToSlope": 535710
   },
   "file": {
-    "name": "forest.6b4f80e1.png",
-    "bytes": 1185716,
-    "sha256Prefix": "6b4f80e1"
+    "name": "forest.c7b76145.png",
+    "bytes": 1009425,
+    "sha256Prefix": "c7b76145"
   },
   "source": {
     "name": "OpenStreetMap contributors",
@@ -45,5 +45,5 @@
     "fetchedAt": "2026-08-03T15:05:38.968Z"
   },
   "generatedBy": "tools/build-forest.mjs",
-  "generatedAt": "2026-08-03T15:10:21.799Z"
+  "generatedAt": "2026-08-10T12:34:22.215Z"
 }
