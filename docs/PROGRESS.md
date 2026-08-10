@@ -177,12 +177,36 @@ not a fault.)
 5. Deferred by the user, do not re-raise unprompted: the satellite/orthophoto
    basemap.
 
+### Republished, and verified as the real thing
+
+The user ran `tools/dev/deploy.sh` themselves at the close of 2026-08-10, so the
+live site is level with `243484f` - eight commits' worth, from the songbirds
+through today's three fixes. **Verified rather than assumed**: the served
+`index.html` was polled until it referenced the bundle that had just been built
+(`index-CNs4x57J.js`) rather than merely returning 200 - it was still serving the
+old one on the first attempt and took **16 s** to turn over - and then
+`node tools/verify.mjs https://dev-lop77.github.io/pngp-viewer/` was run against
+the public URL: WebGL2, context not lost, **no console or page errors**, and the
+screenshot shows the Le Pont spawn with terrain, trees, the Savara and the full
+HUD. (`tools/test-viewstate.mjs` and anything else reading `window.__pngp` still
+cannot be pointed at the live site - Vite strips that handle from a production
+build.)
+
+**One thing the screenshot caught, unrelated to any of today's work**: the POI
+search box's placeholder is `Cerca un luogo...` (`index.html:245`) - the only
+Italian string in an otherwise entirely English UI, against the language decision
+made at the start of the project. One line. Left alone deliberately, since fixing
+it puts the live site a commit behind again the moment it was levelled; raised
+with the user, and a natural pickup for the phase-7 pass if they do not want it
+sooner.
+
 ### How to resume
 Everything above is committed and the working tree is clean. The audio suite needs
 a **dev** server (`tools/dev/start-dev.sh`) as before. **Nothing is owed to the
 user and nothing is waiting on a verdict** - the first time that has been true
-since phase 6 opened. What is left is **phase 7**, the **republish** (offered on
-2026-08-10 and not yet answered), and **"la neve che si deposita"** whenever they
+since phase 6 opened, and the live site is level with `main` for the first time
+since 2026-08-05. What is left is **phase 7**, the Italian placeholder above (one
+line, the user's call on when), and **"la neve che si deposita"** whenever they
 want to open it.
 
 ## Status as of 2026-08-07
