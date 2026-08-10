@@ -21,6 +21,7 @@
 import { readFileSync, writeFileSync, readdirSync, unlinkSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { decode } from 'fast-png';
+import { encodeHeightfield, decodeHeightfield } from '../src/heightfield.js';
 
 const SRC_PNG = 'DEM/pngp_heightmap.png';
 const SRC_META = 'DEM/pngp_heightmap_meta.json';
@@ -109,7 +110,24 @@ for (const [name, [px, py]] of Object.entries(corners)) {
   console.log(`  corner ${name}: pixel(${px},${py}) center -> E ${worldE.toFixed(1)}, N ${worldN.toFixed(1)}`);
 }
 
-const buffer = Buffer.from(outPixels.buffer, outPixels.byteOffset, outPixels.byteLength);
+// Not the raw Uint16 stream any more: a horizontal delta per row split into two
+// byte planes. Identical size on disk and exactly lossless, but 9.2 MB over the
+// wire instead of 15.7, because the low byte of an elevation is nearly noise and
+// interleaving it with the smooth high byte was poisoning gzip for the whole
+// file - and this file is 91% of the viewer's first load. See
+// src/heightfield.js, which owns both halves of the codec.
+const dims = { width: dstW, height: dstH };
+const encoded = encodeHeightfield(outPixels, { dimensions: dims });
+const buffer = Buffer.from(encoded.buffer, encoded.byteOffset, encoded.byteLength);
+// Round-tripped here rather than trusted: a wrong codec does not fail, it makes
+// a mountain range out of noise.
+const roundTrip = decodeHeightfield(encoded, { dimensions: dims, encoding: { layout: 'row-delta-byte-planes' } });
+for (let i = 0; i < outPixels.length; i++) {
+  if (roundTrip[i] !== outPixels[i]) {
+    throw new Error(`heightfield codec is not lossless: sample ${i} is ${roundTrip[i]}, expected ${outPixels[i]}`);
+  }
+}
+console.log(`Encoded as row-delta byte planes, round-trip verified over ${outPixels.length.toLocaleString()} samples`);
 const sha256 = createHash('sha256').update(buffer).digest('hex').slice(0, 8);
 const fileName = `heightfield.${sha256}.bin`;
 
@@ -127,7 +145,7 @@ try {
 writeFileSync(`${OUT_DIR}/${fileName}`, buffer);
 
 const manifest = {
-  schemaVersion: 1,
+  schemaVersion: 2, // 2: the binary is delta+plane encoded (see encoding.layout)
   crs: meta.crs,
   bboxCrsUnits: { xmin, ymin, xmax, ymax },
   localOrigin: {
@@ -151,6 +169,12 @@ const manifest = {
   },
   encoding: {
     dtype: 'uint16',
+    // Read by src/heightfield.js's decodeHeightfield(), which throws on anything
+    // it does not recognise rather than reinterpreting the bytes.
+    layout: 'row-delta-byte-planes',
+    layoutNote:
+      'bytes [0, n) are the high byte of a per-row horizontal delta, bytes [n, 2n) the low byte; '
+      + 'value[x] = (value[x-1] + delta) mod 65536, with value[-1] = 0 at the start of each row',
     byteOrder: 'little-endian',
     channels: 1,
     valueToElevationM: 'elevation = min + (value / 65535) * (max - min)',

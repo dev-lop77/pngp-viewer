@@ -33,7 +33,9 @@
 // Usage: node tools/dev/probe-lod.mjs
 
 import { readFile } from 'node:fs/promises';
-import { sampleHeightfield, sampleRenderedHeightfield, isNearNoData } from '../../src/heightfield.js';
+import {
+  sampleHeightfield, sampleRenderedHeightfield, isNearNoData, decodeHeightfield,
+} from '../../src/heightfield.js';
 
 const SAMPLES = 20000;
 const VIEWPORT_PX = 900;
@@ -43,7 +45,7 @@ const FOG_FAR = 140000;
 const SUN_ELEVATION_DEG = 50; // a midday-ish sun, only to turn an angle into a brightness
 
 const manifest = JSON.parse(await readFile('public/data/heightfield.json', 'utf8'));
-const heights = new Uint16Array((await readFile(`public/data/${manifest.file.name}`)).buffer);
+const heights = decodeHeightfield(await readFile(`public/data/${manifest.file.name}`), manifest);
 
 // Read the LOD settings out of terrain.js rather than restating them, so this
 // cannot drift away from the thing it is measuring (same trick as

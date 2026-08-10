@@ -21,7 +21,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import proj4 from 'proj4';
 import { setLocalOrigin, worldToLocal } from '../src/geo.js';
-import { sampleHeightfield, isNearNoData } from '../src/heightfield.js';
+import { sampleHeightfield, isNearNoData, decodeHeightfield } from '../src/heightfield.js';
 
 const OUT_FILE = 'tools/hydrology-draft.json';
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
@@ -30,11 +30,7 @@ proj4.defs('EPSG:23032', '+proj=utm +zone=32 +ellps=intl +towgs84=-87,-98,-121,0
 
 const heightfieldManifest = JSON.parse(readFileSync('public/data/heightfield.json', 'utf8'));
 const heightfieldBuffer = readFileSync(`public/data/${heightfieldManifest.file.name}`);
-const heights = new Uint16Array(
-  heightfieldBuffer.buffer,
-  heightfieldBuffer.byteOffset,
-  heightfieldBuffer.byteLength / 2,
-);
+const heights = decodeHeightfield(heightfieldBuffer, heightfieldManifest);
 setLocalOrigin(heightfieldManifest.localOrigin.x, heightfieldManifest.localOrigin.y);
 
 const { xmin, ymin, xmax, ymax } = heightfieldManifest.bboxCrsUnits;

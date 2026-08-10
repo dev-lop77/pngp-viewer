@@ -123,7 +123,7 @@ for (const polygon of draft.polygons) {
 const SLOPE_FULL_DEG = 30; // full canopy up to here
 const SLOPE_NONE_DEG = 45; // nothing above here
 const heightBuf = readFileSync(`${OUT_DIR}/${manifest.file.name}`);
-const heights = new Uint16Array(heightBuf.buffer, heightBuf.byteOffset, heightBuf.byteLength / 2);
+const heights = decodeHeightfield(heightBuf, manifest);
 const { min: elevMin, max: elevMax } = manifest.elevationRangeM;
 const elevAt = (px, py) => {
   const x = Math.min(width - 1, Math.max(0, px));

@@ -22,14 +22,14 @@
 
 import { readFile } from 'node:fs/promises';
 import * as THREE from 'three';
-import { sampleHeightfield, sampleRenderedHeightfield } from '../src/heightfield.js';
+import { sampleHeightfield, sampleRenderedHeightfield, decodeHeightfield } from '../src/heightfield.js';
 
 const SAMPLES = 4000;
 const EYE_HEIGHT_M = 1.7; // must match src/controls.js
 const TOLERANCE_M = 0.05; // float32 vertex storage + raycast arithmetic, not algorithmic slack
 
 const manifest = JSON.parse(await readFile('public/data/heightfield.json', 'utf8'));
-const heights = new Uint16Array((await readFile(`public/data/${manifest.file.name}`)).buffer);
+const heights = decodeHeightfield(await readFile(`public/data/${manifest.file.name}`), manifest);
 
 // Read the LOD settings out of terrain.js's source rather than hardcoding
 // them, so this test can't silently drift away from the app it's testing.

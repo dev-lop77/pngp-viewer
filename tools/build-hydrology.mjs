@@ -26,7 +26,7 @@ import proj4 from 'proj4';
 import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
 import { point, polygon } from '@turf/helpers';
 import { setLocalOrigin, worldToLocal } from '../src/geo.js';
-import { sampleHeightfield, isNearNoData } from '../src/heightfield.js';
+import { sampleHeightfield, isNearNoData, decodeHeightfield } from '../src/heightfield.js';
 
 const DRAFT_FILE = 'tools/hydrology-draft.json';
 const POI_DRAFT_FILE = 'tools/osm-poi-draft.json';
@@ -58,11 +58,7 @@ const poiDraft = JSON.parse(readFileSync(POI_DRAFT_FILE, 'utf8'));
 const boundaryGeoJSON = JSON.parse(readFileSync(BOUNDARY_FILE, 'utf8'));
 const heightfieldManifest = JSON.parse(readFileSync(`${HEIGHTFIELD_DIR}/heightfield.json`, 'utf8'));
 const heightfieldBuffer = readFileSync(`${HEIGHTFIELD_DIR}/${heightfieldManifest.file.name}`);
-const heights = new Uint16Array(
-  heightfieldBuffer.buffer,
-  heightfieldBuffer.byteOffset,
-  heightfieldBuffer.byteLength / 2,
-);
+const heights = decodeHeightfield(heightfieldBuffer, heightfieldManifest);
 setLocalOrigin(heightfieldManifest.localOrigin.x, heightfieldManifest.localOrigin.y);
 
 function sampleHeight(x, z) {

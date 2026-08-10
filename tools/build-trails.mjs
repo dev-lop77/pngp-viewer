@@ -13,7 +13,7 @@ import proj4 from 'proj4';
 import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
 import { point, polygon } from '@turf/helpers';
 import { setLocalOrigin, worldToLocal } from '../src/geo.js';
-import { sampleHeightfield, isNearNoData } from '../src/heightfield.js';
+import { sampleHeightfield, isNearNoData, decodeHeightfield } from '../src/heightfield.js';
 
 const SRC_GEOJSON = process.argv[2] ?? `${process.env.HOME}/pngp-trails-work/pngp_sentieri.geojson`;
 const HEIGHTFIELD_DIR = 'public/data';
@@ -27,11 +27,7 @@ proj4.defs('EPSG:23032', '+proj=utm +zone=32 +ellps=intl +towgs84=-87,-98,-121,0
 
 const heightfieldManifest = JSON.parse(readFileSync(`${HEIGHTFIELD_DIR}/heightfield.json`, 'utf8'));
 const heightfieldBuffer = readFileSync(`${HEIGHTFIELD_DIR}/${heightfieldManifest.file.name}`);
-const heights = new Uint16Array(
-  heightfieldBuffer.buffer,
-  heightfieldBuffer.byteOffset,
-  heightfieldBuffer.byteLength / 2,
-);
+const heights = decodeHeightfield(heightfieldBuffer, heightfieldManifest);
 setLocalOrigin(heightfieldManifest.localOrigin.x, heightfieldManifest.localOrigin.y);
 
 // Park boundary, converted to local scene coordinates once (cheaper than

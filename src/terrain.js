@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { setLocalOrigin } from './geo.js';
-import { sampleHeightfield, sampleRenderedHeightfield } from './heightfield.js';
+import { sampleHeightfield, sampleRenderedHeightfield, decodeHeightfield } from './heightfield.js';
 import { attachAtmo } from './atmosphere.js';
 import { FOREST_MASK } from './forest.js';
 
@@ -109,7 +109,7 @@ const SLOPE_ROCK_TO = 0.6; // ~53 deg, cliff - fully bare
 export async function loadTerrain(dataUrl = `${import.meta.env.BASE_URL}data`) {
   const manifest = await fetch(`${dataUrl}/heightfield.json`).then((r) => r.json());
   const buffer = await fetch(`${dataUrl}/${manifest.file.name}`).then((r) => r.arrayBuffer());
-  const heights = new Uint16Array(buffer);
+  const heights = decodeHeightfield(new Uint8Array(buffer), manifest);
 
   const { width, height } = manifest.dimensions;
   const { xmin, ymin, xmax, ymax } = manifest.bboxCrsUnits;

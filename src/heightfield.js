@@ -5,6 +5,77 @@
 // scene-local (x,z)" (docs/ARCHITECTURE.md §4/§10 - GPU displacement and
 // every CPU-side consumer must agree, and now the build pipeline too).
 
+// The heightfield binary, turned back into the Uint16 grid everything else here
+// expects. It is worth a decoder because of what the file costs to send: at
+// 4096 x 2355 it is 18.4 MB raw and gzip only takes it to 15.7 (measured
+// 2026-08-10), which is 91% of the whole first load. The reason gzip fails is
+// that the LOW byte of a 16-bit elevation is very nearly noise - 0.069 m per
+// step, far below what the source DTM actually knows - and interleaving it with
+// the high byte, which is smooth enough to compress 4:1 on its own, poisons the
+// entire stream.
+//
+// So the file is stored as a horizontal delta per row, split into two byte
+// planes: all the high bytes, then all the low bytes. Same number of bytes on
+// disk, 9.2 MB over the wire instead of 15.7, and exactly lossless - the delta
+// is taken mod 2^16 and the reconstruction is the same sum mod 2^16, verified
+// sample-by-sample before it was adopted.
+//
+// Throws rather than guessing on an unknown layout. A heightfield read with the
+// wrong layout does not fail, it produces a mountain range made of noise, and
+// this project has already shipped one silent misreading of this exact file (the
+// RG8 shader patch that never applied - see docs/PROGRESS.md).
+export function decodeHeightfield(bytes, manifest) {
+  const { width, height } = manifest.dimensions;
+  const n = width * height;
+  if (bytes.length !== n * 2) {
+    throw new Error(`heightfield is ${bytes.length} bytes, expected ${n * 2} for ${width}x${height}`);
+  }
+  const layout = manifest.encoding?.layout ?? 'raw';
+  if (layout === 'raw') {
+    // The original format, kept so an older checkout still loads: plain
+    // little-endian Uint16. Copied rather than viewed because `bytes` may be a
+    // Node Buffer sitting at an offset inside a shared pool, where a Uint16Array
+    // view would be unaligned.
+    const out = new Uint16Array(n);
+    for (let i = 0; i < n; i++) out[i] = bytes[i * 2] | (bytes[i * 2 + 1] << 8);
+    return out;
+  }
+  if (layout !== 'row-delta-byte-planes') {
+    throw new Error(`unknown heightfield layout ${JSON.stringify(layout)} - refusing to guess`);
+  }
+  const out = new Uint16Array(n);
+  for (let y = 0; y < height; y++) {
+    const row = y * width;
+    let prev = 0;
+    for (let x = 0; x < width; x++) {
+      const i = row + x;
+      prev = (prev + ((bytes[i] << 8) | bytes[n + i])) & 0xffff;
+      out[i] = prev;
+    }
+  }
+  return out;
+}
+
+// The inverse, used by tools/process-heightmap.mjs. Kept next to the decoder so
+// the two cannot drift apart.
+export function encodeHeightfield(values, manifest) {
+  const { width, height } = manifest.dimensions;
+  const n = width * height;
+  const out = new Uint8Array(n * 2);
+  for (let y = 0; y < height; y++) {
+    const row = y * width;
+    let prev = 0;
+    for (let x = 0; x < width; x++) {
+      const i = row + x;
+      const d = (values[i] - prev) & 0xffff;
+      prev = values[i];
+      out[i] = d >> 8;
+      out[n + i] = d & 255;
+    }
+  }
+  return out;
+}
+
 export function valueToElevation(v, elevMin, elevMax) {
   return elevMin + (v / 65535) * (elevMax - elevMin);
 }

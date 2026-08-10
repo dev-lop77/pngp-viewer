@@ -365,6 +365,68 @@ the shader lines). `test-rendered-height`, `test-wildlife`, `test-birds` and
 `test-viewstate` all pass; `tools/verify.mjs` reports no console errors, which for
 a shader edit means the program compiled.
 
+### Done: the first load is 40% smaller, and not one pixel changed
+
+The user asked what the LOD fix bought in performance. **Nothing, by
+construction** - the same four texture taps at a different spacing. Measured
+rather than asserted: `aCellM` costs **57.2 kB** of GPU memory in total (shared
+between the eight geometries; 1.1 MB if each tile had its own copy) plus one
+`max()` per vertex, and the frame is otherwise untouched - **135 draw calls /
+478,303 triangles** walking at Le Pont, **145 / 507,591** from the Gran Paradiso
+summit, 35 geometries, 4 textures, 15 programs.
+
+So the load item was next, and it starts with what is actually sent rather than
+what is on disk:
+
+| asset | transferred | note |
+|---|---|---|
+| `heightfield.bin` | **16.36 MB** | gzip already applied, from 18.4 MB raw |
+| `forest.png` | 1.19 MB | PNG, correctly not re-compressed |
+| `index.js` | 0.22 MB | gzip |
+| `trails.json` | 0.19 MB | gzip |
+
+**The heightfield is 91% of the first load, and the JS bundle - the thing the
+roadmap names - is 1.2%.**
+
+Why gzip barely touched it is the whole answer: the **low byte of a 16-bit
+elevation is very nearly noise** (0.069 m per step, far below what the source DTM
+knows), and interleaving it with the high byte, which compresses better than 4:1
+on its own, poisons the entire stream. Measured on the real file:
+
+```
+  as shipped, gzip -9          15.72 MB
+  high-byte plane alone         2.43 MB   (of 9.20 raw)
+  low-byte plane alone          8.11 MB   (of 9.20 raw)
+  the two planes                10.53 MB
+  row-delta then planes          9.18 MB   <- adopted
+  16-bit grayscale PNG          15.19 MB
+  brotli of the raw file        12.69 MB   (Pages serves gzip, so unavailable)
+```
+
+So the binary is now a **horizontal delta per row, split into two byte planes**.
+Same size on disk, **9.18 MB over the wire instead of 15.72**, and *exactly*
+lossless - the delta is mod 2^16 and the reconstruction is the same sum mod 2^16.
+Decode is one pass, **50 ms for 9.6M samples**, against a download that is
+several seconds. Two 8-bit PNGs were the alternative (browser-native decode, no
+custom code) and were measured too: **10.63 MB**, worse, and they would need a
+canvas readback of 9.6M pixels twice.
+
+Both halves of the codec live in `src/heightfield.js` so they cannot drift apart,
+and every reader goes through it - `terrain.js` plus the six build/fetch tools and
+the probes, which all had their own `new Uint16Array(...)`.
+`process-heightmap.mjs` **round-trips its own output over all 9.6M samples and
+throws** if a single one differs, and `decodeHeightfield()` **throws on a layout
+it does not recognise rather than reinterpreting the bytes** - a wrong codec here
+does not fail, it makes a mountain range out of noise, and this project has
+already shipped one silent misreading of this exact file.
+
+First load goes from about **18.1 MB to 10.9 MB, -40%**. Expect nearer 9.5 than
+9.18 live: Pages' gzip ran about 4% behind local `gzip -9` on the old file.
+
+`schemaVersion` is 2. All seven suites pass (`rendered-height`, `wildlife`,
+`birds`, `viewstate`, `audio`, `terrain-albedo`, `vegetation`) and `verify.mjs` is
+clean. **Not yet republished.**
+
 ### How to resume
 Everything above is committed and the working tree is clean. The audio suite needs
 a **dev** server (`tools/dev/start-dev.sh`) as before. **Nothing is owed to the
