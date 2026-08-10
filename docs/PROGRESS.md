@@ -599,13 +599,45 @@ And one thing only they can measure: **frame rate on real hardware**. Headless i
 July, before vegetation, wildlife, birds and audio all landed.
 
 ### How to resume
-Everything above is committed and the working tree is clean. The audio suite needs
-a **dev** server (`tools/dev/start-dev.sh`) as before. **Nothing is owed to the
-user and nothing is waiting on a verdict** - the first time that has been true
-since phase 6 opened, and **the live site is level with `main`**. **Every phase of
-the roadmap is now closed** - phase 7 included, mobile having been dropped by the
-user. What is left is **"la neve che si deposita"** whenever they want to open it,
-the optional LOD normal blend, and a frame-rate reading only they can take.
+**Session closed 2026-08-10 with a clean working tree, everything committed
+through `82272a6`, and all seven suites passing.** The audio suite needs a **dev**
+server (`tools/dev/start-dev.sh`) as before.
+
+**Every phase of the roadmap is closed** - phase 7 included, the mobile pass
+having been dropped by the user. What follows is not roadmap, it is whatever they
+want next.
+
+**Open the session with the one thing owed: a real-browser look at the snow.**
+Weather to Snowfall, then wait - it arrives over about 18 s and melts back over
+the same. Headless says luma 84.1 -> 114.2 -> 84.1 and the slope gate keeps cliffs
+bare, but how it *looks* is exactly the class of question headless has been wrong
+about five times now. The dev 'G' key and the time slider are the fast ways around
+the scene; there is no need to walk anywhere.
+
+Then, in the order they choose:
+
+1. **Republish** - the site is **three commits behind** (`91fd9b6` is live): phase
+   7's closure, the LOD negative result, and the snow. `tools/dev/deploy.sh`, then
+   poll the served `index.html` until it names the new bundle and run
+   `node tools/verify.mjs <public URL>` - "returns 200" proves nothing.
+2. **Snow that accumulates**, their original topic, still undecided and still a
+   discussion first. Today's fix is the *state*; the topic is the *history*. The
+   three questions already put to them, unanswered: what decides where snow lies
+   (altitude alone, or altitude + slope + aspect - a north face holds it for
+   weeks); whether it has memory (a real accumulator to save in the viewstate, or
+   a deterministic map from the terrain); and whether it has depth underfoot or
+   only colour. My recommendation stands: altitude + aspect + slope,
+   deterministic, colour only.
+3. **Trees stay green in a snowstorm** - the most obvious gap left after today.
+4. **The LOD residual is structural** and needs no more shader work: both fixes
+   were tried and measured worse (see above). The only levers are `TILE_SEGMENTS`
+   and `SPLIT_FACTOR`, and both are frame-rate trades.
+5. **A frame-rate reading only they can take.** Headless is 1.2 fps with
+   SwiftShader. The scene draws 135-145 calls and ~500k triangles; the last real
+   number is ~30 fps from late July, before vegetation, wildlife, birds and audio.
+
+Deferred by the user, **do not re-raise unprompted**: the mobile pass and the
+satellite/orthophoto basemap.
 
 ## Status as of 2026-08-07
 
