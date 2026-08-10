@@ -133,6 +133,12 @@ export class WalkFlyControls {
     this.mode = 'walk'; // 'walk' | 'fly'
     this._enabled = true;
     this.getGroundHeight = null; // (x, z) => elevation meters, set once terrain loads
+    // How fast the ground is going past, in m/s, measured from what update()
+    // itself moved this frame. Deliberately NOT derivable from the camera
+    // position by whoever wants it: the camera is also placed outright - by the
+    // dev 'G' key, by a POI fly-to, by a restored view - and a placement is not
+    // travel. src/audio.js's footsteps read this and nothing else.
+    this.travelMps = 0;
 
     this.plc = new PointerLockControls(camera, domElement);
     // Still used for its lock-state tracking and its movement helpers
@@ -264,6 +270,10 @@ export class WalkFlyControls {
   }
 
   update(dt) {
+    // Zeroed here rather than after the movement below, so a frame this class
+    // does not move on - disabled, or a flyTo driving the camera instead -
+    // reports standing still rather than the last frame it did move.
+    this.travelMps = 0;
     // Ahead of the enabled check, so the windows keep rolling (and decaying)
     // even while a flyTo has control of the camera.
     this.lookDiag.frameMs.add(dt * 1000);
@@ -302,6 +312,9 @@ export class WalkFlyControls {
     dx /= len;
     dz /= len;
 
+    const fromX = this.camera.position.x;
+    const fromZ = this.camera.position.z;
+
     if (this.mode === 'fly') {
       this.plc.getDirection(this._dir); // full 3D look direction, incl. pitch
       this.camera.position.addScaledVector(this._dir, dz * move);
@@ -313,6 +326,14 @@ export class WalkFlyControls {
       this.plc.moveRight(dx * move);
       const ground = this.getGroundHeight?.(this.camera.position.x, this.camera.position.z);
       if (ground != null) this.camera.position.y = ground + EYE_HEIGHT_M;
+    }
+
+    // Read back off the camera rather than taken from `move`, so anything that
+    // ever stops the movement short (a collision, a boundary) is travel this
+    // frame did not do. Horizontal only: in walk mode the y above is a clamp to
+    // the terrain, so a 3D measure would report the hill, not the walking.
+    if (dt > 1e-4) {
+      this.travelMps = Math.hypot(this.camera.position.x - fromX, this.camera.position.z - fromZ) / dt;
     }
   }
 }

@@ -477,7 +477,10 @@ const result = await page.evaluate(async () => {
     const mps = mode === 'walk' ? WALK_MPS : 60;
     for (let i = 0; i < Math.round(seconds / dt); i++) {
       if (moving) camera.position.x = i * dt * mps;
-      audio.update(dt, camera, weather, null, { mode });
+      // travelMps is what src/controls.js measured itself moving, which is the
+      // only thing the footsteps read. Passing the camera alone would let a
+      // teleport masquerade as a sprint - see stepStop/stepTeleport below.
+      audio.update(dt, camera, weather, null, { mode, travelMps: moving ? mps : 0 });
     }
     const buffer = await ctx.startRendering();
     const left = buffer.getChannelData(0);
@@ -512,6 +515,85 @@ const result = await page.evaluate(async () => {
     wet: await stepRender({ ground: STEP_GROUND.flat, weather: { mod: { wet: 1 } } }),
   };
 
+  // 6e. The two faults the user found by ear on 2026-08-10. Both are the same
+  //     mistake - judging "am I walking" from the camera's own displacement - and
+  //     neither is a level or a timbre, so nothing in the table above could have
+  //     caught them: they are about WHEN a step is allowed to sound. Each runs
+  //     one continuous scene and splits it in two, because the question is
+  //     entirely about what happens AFTER a moment.
+  async function stepPhaseRender({ ground, seconds, splitS, drive, seed = 7331 }) {
+    const ctx = new OfflineAudioContext(2, Math.floor(SR * seconds), SR);
+    const audio = createAudio({
+      context: ctx, immediate: true, random: mulberry32(seed),
+      canopyAt: () => 0, sampleGroundHeight: ground,
+    });
+    audio.start();
+    const camera = makeCamera({ x: 0, z: 0, ground });
+    const dt = 1 / 8;
+    let atSplit = null;
+    for (let i = 0; i < Math.round(seconds / dt); i++) {
+      const t = i * dt;
+      const travelMps = drive(t, camera);
+      audio.update(dt, camera, null, null, { mode: 'walk', travelMps });
+      // Sampled AFTER the first tick past the split, not before it: a step is
+      // booked up to STEP_LOOKAHEAD_S early, so at the moment of the split
+      // stepsPlayed still counts one that has not sounded and never will. That
+      // tick is where it is cancelled, and nothing can sound between the split
+      // and the end of it, so this is exactly "steps sounded up to the split".
+      if (atSplit == null && t >= splitS) atSplit = audio.stepsPlayed;
+    }
+    const buffer = await ctx.startRendering();
+    // Split in two rather than measured whole: a whole-buffer number is dominated
+    // by the phase that is not under test. And the head is the reference the tail
+    // is read against - same buffer, same gust, same stretch of the RNG, so the
+    // only difference between them is whether anyone is walking. Comparing the
+    // tail to a separate standing-still render instead compares two different
+    // draws of a random walk, which is worth 20% of the rms on its own.
+    const left = buffer.getChannelData(0);
+    const cut = Math.floor(SR * splitS);
+    const head = left.subarray(0, cut);
+    const tail = left.subarray(cut);
+    return {
+      before: atSplit,
+      after: audio.stepsPlayed - atSplit,
+      speedAfter: audio.diag.speedMps,
+      tailRms: rms(tail),
+      // 600-1200 Hz: where a footstep on turf lands.
+      headSoft: bandProfile(head, 600, 1200).max,
+      tailSoft: bandProfile(tail, 600, 1200).max,
+    };
+  }
+
+  // Releasing W. The camera stops dead - there is no deceleration in
+  // src/controls.js - so a stride that has not sounded yet has nothing left to
+  // justify it. Pre-fix this ran on for ~0.9 s: 0.69 s of smoothing decay down to
+  // STEP_MIN_MPS plus the 0.2 s scheduling look-ahead, i.e. about two more steps.
+  const stepStop = await stepPhaseRender({
+    ground: STEP_GROUND.flat, seconds: 20, splitS: 12,
+    drive: (t, camera) => {
+      if (t >= 12) return 0;
+      camera.position.x = t * WALK_MPS;
+      return WALK_MPS;
+    },
+  });
+
+  // The dev 'G' key (src/main.js): camera.position.set() to 18 m from an animal
+  // that can be kilometres off, in walk mode, with the controls not having moved
+  // at all. The camera therefore reports a four-figure speed for one frame, which
+  // smoothed decays through the walking gate over the next couple of seconds -
+  // the user heard footsteps standing still, right after the animal called.
+  let jumped = false;
+  const stepTeleport = await stepPhaseRender({
+    ground: STEP_GROUND.flat, seconds: 20, splitS: 8,
+    drive: (t, camera) => {
+      if (t >= 8 && !jumped) {
+        jumped = true;
+        camera.position.x = 1200; // 1.2 km in a single frame
+      }
+      return 0; // standing still throughout: nothing the controls did moved it
+    },
+  });
+
   // 7. The real hydrology, at the real spawn point: is the Savara audible from
   //    the Le Pont trailhead the viewer opens at?
   const earshot = buildWaterEarshot(water);
@@ -536,6 +618,8 @@ const result = await page.evaluate(async () => {
     songDay,
     songNight,
     step,
+    stepStop,
+    stepTeleport,
     earshot: { points: earshot.count, cells: earshot.cells, perQueryMs },
     spawn: {
       x: Math.round(lePont.local.x), z: Math.round(lePont.local.z),
@@ -652,6 +736,11 @@ await page.evaluate(() => {
 // wildlife in the same handler. That is inside the alert radius of every fleeing
 // species, so the marmot and chamois presses must produce a whistle - the user
 // reported on 2026-08-05 that they never did, and this is the reproduction.
+// It is also the reproduction of the second fault the user reported on
+// 2026-08-10, in the place it actually happened: nothing is being pressed but G,
+// so every one of these presses is standing still, and any footstep during them
+// is the camera's own displacement being mistaken for walking.
+const stepsBeforeG = await page.evaluate(() => window.__pngp.audio.stepsPlayed);
 const gPresses = [];
 for (let i = 0; i < 5; i++) {
   await page.keyboard.press('KeyG');
@@ -659,6 +748,7 @@ for (let i = 0; i < 5; i++) {
   gPresses.push(await page.evaluate(() => ({
     note: document.getElementById('dev-note')?.textContent ?? '',
     calls: window.__pngp.audio.callsPlayed,
+    steps: window.__pngp.audio.stepsPlayed,
   })));
 }
 
@@ -672,7 +762,9 @@ const afterM = await page.evaluate(() => ({
 
 await browser.close();
 
-const { cases, series, song, songDay, songNight, step, earshot, spawn } = result;
+const {
+  cases, series, song, songDay, songNight, step, stepStop, stepTeleport, earshot, spawn,
+} = result;
 const e = (v) => v.toExponential(2);
 const ratio = (a, b) => (b > 0 ? a / b : Infinity);
 
@@ -766,6 +858,13 @@ for (const name of ['grass', 'forest', 'scree', 'snow', 'wet']) {
   console.log(`    ${name.padEnd(7)}: ${vsStanding(name)}`);
 }
 console.log(`  rms walking/standing on grass: x${ratio(step.grass.rms, step.standing.rms).toFixed(2)}`);
+console.log('  when it has to go quiet (both reported by ear, 2026-08-10):');
+console.log(`    letting go of W: ${stepStop.before} steps walking, ${stepStop.after} after`
+  + ` · soft band x${ratio(stepStop.tailSoft, stepStop.headSoft).toFixed(3)} of the walking half`
+  + ` (rms x${ratio(stepStop.tailRms, step.standing.rms).toFixed(2)} of a standing render, gust draw and all)`);
+console.log(`    a 1.2 km teleport, standing: ${stepTeleport.before + stepTeleport.after} steps`
+  + ` · airspeed ${stepTeleport.speedAfter.toFixed(1)} m/s`
+  + ` · soft band x${ratio(stepTeleport.tailSoft, step.standing.bands.soft.max).toFixed(2)}`);
 
 console.log('\nAt the Le Pont spawn, with the real hydrology:');
 console.log(`  (${spawn.x}, ${spawn.z}) · nearest river ${spawn.river} m`
@@ -902,6 +1001,28 @@ check(song.forest.msPerTick < 0.5,
 check(step.grass.steps > 0, 'walking on open ground produced no footsteps at all');
 check(step.standing.steps === 0, 'standing still produced footsteps');
 check(step.flying.steps === 0, 'fly mode produced footsteps - flying is not walking');
+// The two the user found by ear on 2026-08-10, and the reason the gate no longer
+// reads the camera at all. `standing` is the reference for both: the same flat
+// 1,700 m, the same wind, nobody walking.
+check(stepStop.before > 0, 'the stop case never walked in the first place');
+check(stepStop.after === 0,
+  `${stepStop.after} footsteps sounded after W was released - a stop has to be silent from the tick it happens`);
+// Read against the WALKING half of the same buffer, not against a separate
+// standing-still render, and a band maximum rather than the rms. Both for the
+// same reason: the gust is a random walk, so a run that scheduled two dozen
+// footsteps has consumed a different stretch of the RNG than one that stood
+// still, and their wind beds are then 20% apart in rms with nobody walking in
+// either. The head of this buffer is the same gust as its tail, so the only
+// thing that changed at the split is the feet - and a leaked footstep would read
+// the same level as the two dozen before it, not a tenth of it.
+check(ratio(stepStop.tailSoft, stepStop.headSoft) < 0.1,
+  'a footstep still sounds after the walk stopped - the tail is as loud as the walking half in the footstep band');
+check(stepTeleport.before + stepTeleport.after === 0,
+  `the dev teleport produced ${stepTeleport.before + stepTeleport.after} footsteps while standing still`);
+check(stepTeleport.speedAfter === 0,
+  `a teleport smoothed ${stepTeleport.speedAfter.toFixed(0)} m/s into the airspeed - it reads as flight, and the wind swells on arrival`);
+check(ratio(stepTeleport.tailSoft, step.standing.bands.soft.max) < 1.05,
+  'the scene is louder after a teleport than before it, standing in both');
 // The user chose a fixed cadence near a walking pace over one derived from the
 // real 4 m/s (which would be 2.7 a second, a run). So this asserts the LIE, on
 // purpose - it is the decision, and a drift back towards honesty is a bug here.
@@ -975,6 +1096,10 @@ const gReached = gPresses.filter((g) => /^(marmot|chamois):/.test(g.note));
 check(gReached.length > 0, "the dev 'G' key never reached a species that has a call");
 check(gPresses[gPresses.length - 1].calls > 0,
   "walking up to a marmot with 'G' played no alarm whistle at all");
+// And it has to do all that in silence underfoot. Five teleports of a kilometre
+// or more, in walk mode, with nothing held down: the user heard footsteps here.
+check(gPresses[gPresses.length - 1].steps === stepsBeforeG,
+  `${gPresses[gPresses.length - 1].steps - stepsBeforeG} footsteps sounded across five 'G' teleports, standing still`);
 
 if (problems.length) console.log(`\nPage problems:\n  ${problems.join('\n  ')}`);
 if (failures.length) {

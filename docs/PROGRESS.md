@@ -2,6 +2,135 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## Status as of 2026-08-10
+
+**The footsteps were judged by ear and two real faults came back with the
+verdict.** Both are fixed. The rest of the mix - the surfaces, the level, the
+cadence - was accepted: "il resto mi pare a posto". Rainstorm is quiet and the
+user explicitly let it stand.
+
+Their words, and what each turned out to be:
+
+1. *"il rumore dei passi continua un po' dopo che mi sono fermato"*
+2. *"quando spingo G sento il rumore di passi anche se non mi muovo e dopo il
+   richiamo animale"*
+
+### One cause, and it is the one this project keeps rediscovering
+
+Both were the same mistake: **`audio.js` was working out whether you are walking
+from the camera's own displacement**, smoothed over 0.3 s. That is an inference,
+and it is wrong in both directions.
+
+- **On a stop** it lags. 4 m/s decaying with a 0.3 s time constant takes
+  `0.3 * ln(4 / 0.4) = 0.69 s` to fall under `STEP_MIN_MPS`, and the scheduler
+  looks 0.2 s ahead, so a stop kept sounding for about **0.9 s - very nearly two
+  more steps** - while the camera itself had stopped dead in the same frame the
+  key came up.
+- **On a teleport it is not lag but fiction.** The dev 'G' key is
+  `camera.position.set()` to 18 m from an animal that was a kilometre away; one
+  frame of that is a four-figure speed, and smoothed it decays back through the
+  walking gate over about **two seconds of footsteps standing still**. Same for a
+  POI fly-to and for a restored view. And the user heard it *after the animal
+  called*, which is exactly the order: 'G' teleports, the marmot whistles at the
+  arrival, and then the phantom walking runs on underneath it.
+
+This is the **third** time the same shape of bug has been written here - the
+stale-camera alarm on 2026-08-05, `sampleRenderedHeightfield()` clamping instead
+of reporting off-map, and now this. **A camera position is a position. It is not
+a distance, not a speed, and not an intention.**
+
+### The fix: ask the thing that knows
+
+`src/controls.js` now measures **what its own movement code actually moved the
+camera by** this frame and publishes it as `controls.travelMps` - read back off
+the camera around the movement block, horizontally only (in walk mode the y is a
+clamp to the terrain, so a 3D measure would report the hill rather than the
+walking). It is zero on any frame this class did not move on, including one where
+a flyTo has the camera instead. `audio.js`'s gate is now
+`controls.mode === 'walk' && controls.travelMps > STEP_MIN_MPS` and reads the
+camera for nothing at all.
+
+Two more pieces, because the gate alone does not close either hole completely:
+
+- **Booked steps are cancelled.** A footfall is scheduled up to
+  `STEP_LOOKAHEAD_S` (0.2 s) before it is due, so releasing W can leave one on the
+  books. `cancelPendingSteps()` stops any source whose start time is still in the
+  future - it therefore never plays at all, so there is no click - and decrements
+  `stepsPlayed`, which now means *steps that sounded*. Steps already sounding are
+  left alone. A last stride would be defensible if the camera decelerated; it does
+  not, so silence is the honest match.
+- **Airspeed rejects teleports.** `speedMps` still comes from the camera (nothing
+  else knows how fast a flyTo is going), but a value above `TELEPORT_MPS` = 200
+  m/s now **resets it to zero** instead of being smoothed in. Fly mode boosted is
+  60 x 2.5 = 150 m/s, so there is a third of headroom, and this is a speed rather
+  than a distance - a slow frame cannot trigger it, only a discontinuity can.
+  Without this, arriving somewhere swelled the wind for ~2 s. Nobody reported that
+  one; it was next door to the reported bug and would have outlived it.
+
+### Measured
+
+Two new offline cases in `tools/test-audio.mjs`, plus one live. Each runs a single
+continuous scene and splits it at a moment, because the whole question is what
+happens *after* one:
+
+- **letting go of W**: 24 steps walking, **0** after, and the footstep band in the
+  tail is **x0.036** of the same buffer's walking half;
+- **a 1.2 km teleport standing still**: **0** steps, airspeed **0.0 m/s**, soft
+  band **x0.98** of standing still - i.e. nothing happened at all;
+- **in the running viewer**: five 'G' presses, each over a kilometre, with nothing
+  held down - **0** footsteps across all five, while the marmot and chamois
+  whistles still fire.
+
+84 checks pass, and `test-wildlife`, `test-birds` and `test-viewstate` still do.
+The bundle is **793.28 kB raw / 222.26 kB gzipped**, which is **+0.42 kB** for
+this change - measured against a build of HEAD, not against the 774 kB figure in
+the 2026-08-07 section, which had already gone stale for reasons unrelated to any
+of this. Worth remembering before quoting a bundle number: rebuild the baseline.
+
+### Two method notes, and both are the measurement being wrong first, again
+
+**A counter sampled at the split counted a step that never sounded.** `before` was
+read at the moment of the stop, when `stepsPlayed` still included the booked
+footfall that the very next tick cancels - so "steps after the stop" came out as
+**-1**. It is sampled after that tick now, which is exactly "steps that sounded up
+to the split".
+
+**A separate standing-still render is not the same scene.** The stop's tail
+measured **x1.20** the rms of a standing render and the check failed - but the
+gust is a random walk, so a run that scheduled two dozen footsteps has consumed a
+different stretch of the RNG, and two wind beds with nobody walking in either sit
+20% apart on their own. Against **the walking half of its own buffer** - same
+gust, same stream, the only difference being the feet - the tail reads **x0.036**.
+The 2026-08-07 note said a reference has to be the same scene; this says the same
+scene includes the same draw of the random numbers.
+
+### Next steps
+1. ~~Ask the user to listen to the footsteps~~ - **CLOSED 2026-08-10**: accepted
+   apart from the two faults above, both now fixed. **A confirmation listen is
+   owed**: that a stop is silent, and that 'G' is silent.
+2. **Phase 7 polish** is the only phase left: LOD popping/geomorphing, one-texel
+   normals at any depth, the bundle (793 kB / 222 kB gzipped), and the mobile pass
+   - pointer lock + WASD has no touch equivalent, and neither does a keyboard mute.
+3. **Republish** - the live site is several commits behind, since 2026-08-05.
+   `tools/dev/deploy.sh` does the whole thing.
+4. **A new topic the user asked to record, theirs to open: "la neve che si
+   deposita"** - snow that settles. Nothing was decided and nothing should be
+   built on it unprompted. Context for when it is opened: `weather.js`'s snowfall
+   is *falling* snow plus a `mod.snow` weight that other modules read (the terrain
+   whitens, the footsteps crunch, the master lowpass muffles), but there is no
+   accumulation anywhere - nothing settles, deepens, lies in the lee of a rock,
+   melts, or stays on north faces after the sky clears. The footstep surface is
+   the one place it already half-exists: `SURFACES` picks snow from `mod.snow` or
+   from being above the nival line, which is a state, not a history.
+5. Deferred by the user, do not re-raise unprompted: the satellite/orthophoto
+   basemap.
+
+### How to resume
+Everything above is committed and the working tree is clean. The audio suite needs
+a **dev** server (`tools/dev/start-dev.sh`) as before. **Open the next session by
+asking for the confirmation listen on the two fixes** (stop, and 'G'), then it is
+phase 7 and the republish - and "la neve che si deposita" whenever they want it.
+
 ## Status as of 2026-08-07
 
 **Both of the topics the user left open are now closed: ambient animal audio

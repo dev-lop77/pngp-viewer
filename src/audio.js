@@ -285,8 +285,14 @@ const STEP_HZ = 2;
 // repeated sample sound repeated - the same lesson the marmot's series taught.
 const STEP_JITTER = 0.09;
 // Below this there is no walking to hear. Well under 4 m/s, so it only catches
-// standing still and the tail of a stop, not a slow approach.
+// standing still, not a slow approach.
 const STEP_MIN_MPS = 0.4;
+// Above this, the camera did not travel - it was placed. Fly mode boosted is
+// 60 x 2.5 = 150 m/s, the fastest the controls can ever legitimately produce, so
+// there is a third of a headroom before this bites; a POI fly-to crosses tens of
+// km in 1.2 s and lands far above it. Only airspeed uses it - the footsteps stopped
+// reading the camera at all on 2026-08-10.
+const TELEPORT_MPS = 200;
 // NOT on the same scale as the alarm whistles, and the first value here was
 // wrong for exactly that reason. A whistle is an oscillator, so its peak gain is
 // a peak amplitude; a footstep is the shared pink-noise buffer, which makeNoise()
@@ -643,6 +649,28 @@ export function createAudio({
       gain.disconnect();
       panner.disconnect();
     };
+    return src;
+  }
+
+  // Footfalls booked but not yet sounded. A step is scheduled up to
+  // STEP_LOOKAHEAD_S before it is due, so letting go of W can leave one already
+  // on the books - and the camera stops dead, with no deceleration to justify a
+  // last stride. Cancelled rather than left to sound; see stepWalking().
+  let pendingSteps = [];
+
+  function cancelPendingSteps(now) {
+    for (const step of pendingSteps) {
+      if (step.at <= now) continue; // already sounding: cutting it would click
+      for (const src of step.srcs) {
+        src.stop(now); // before its start time, so it never plays at all
+        // A source stopped before it started may never fire 'ended', so free the
+        // chain here instead of waiting for it. disconnect() is safe twice.
+        src.onended?.();
+        src.onended = null;
+      }
+      stepsPlayed--; // it never sounds, so it was never a step
+    }
+    pendingSteps.length = 0;
   }
 
   function footstep(surface, at) {
@@ -653,29 +681,36 @@ export function createAudio({
     stepFoot ^= 1;
     const pan = stepFoot ? STEP_PAN : -STEP_PAN;
     const peak = STEP_GAIN * cfg.gain * (0.85 + 0.3 * random());
-    burst(cfg, peak, pan, at, {
+    const srcs = [burst(cfg, peak, pan, at, {
       freqMul: 0.9 + 0.2 * random(),
       durMul: 0.9 + 0.2 * random(),
       rate: 0.9 + 0.25 * random(),
-    });
+    })];
     // Loose ground keeps arriving after the foot has left it.
     for (let g = 0; g < (cfg.grains ?? 0); g++) {
-      burst(cfg, peak * cfg.grainGain * (0.4 + 0.6 * random()), pan + (random() - 0.5) * 0.3,
+      srcs.push(burst(cfg, peak * cfg.grainGain * (0.4 + 0.6 * random()), pan + (random() - 0.5) * 0.3,
         at + 0.02 + random() * 0.09,
-        { freqMul: 1.1 + 0.5 * random(), durMul: 0.35, rate: 1 + 0.5 * random() });
+        { freqMul: 1.1 + 0.5 * random(), durMul: 0.35, rate: 1 + 0.5 * random() }));
     }
+    pendingSteps.push({ at, srcs });
     stepsPlayed++;
   }
 
   function stepWalking(x, z, groundY, canopy, snow, wet, walking) {
     const now = songNow();
     if (!walking) {
+      // Anything booked for after this moment is un-booked: standing still has to
+      // be silent from the tick it starts, not from the end of the look-ahead.
+      cancelPendingSteps(now);
       // Re-armed just ahead of the clock, so the first stride after a stop lands
       // promptly instead of a burst of the steps that were "missed" standing still.
       stepNextAt = now + 0.06;
       lastSurface = null;
       return null;
     }
+    // Sounded steps stop being cancellable, and stop being kept: a long walk
+    // would otherwise accumulate an entry per footfall.
+    if (pendingSteps.length) pendingSteps = pendingSteps.filter((s) => s.at > now);
     const surface = surfaceAt(x, z, groundY, canopy, snow, wet);
     lastSurface = surface;
     if (stepNextAt < now) stepNextAt = now + 0.06;
@@ -896,10 +931,15 @@ export function createAudio({
         rescanSingers(x, z);
       }
       live = stepSingers(dt, x, z, clamp(strength, 0, 1), rain);
-      // Only on foot. Flying is not walking, and 'F' is the only thing that
-      // knows which you are doing - the camera cannot tell you, since walk mode
-      // is ground-clamped and fly mode can sit on the ground too.
-      const walking = controls?.mode === 'walk' && speedMps > STEP_MIN_MPS;
+      // Only on foot, and only while actually walking - both facts come from
+      // controls, neither from the camera. 'F' is the only thing that knows
+      // which mode you are in (walk mode is ground-clamped and fly mode can sit
+      // on the ground too), and controls.travelMps is the only thing that knows
+      // you are travelling rather than having been PUT somewhere. The camera's
+      // own displacement answers neither: smoothed it lags a stop by ~0.7 s, and
+      // a teleport (the dev 'G' key) reads as several seconds of sprinting.
+      // Both were real, both reported by ear on 2026-08-10.
+      const walking = controls?.mode === 'walk' && (controls.travelMps ?? 0) > STEP_MIN_MPS;
       surface = stepWalking(x, z, groundY, canopy, snow, mod.wet ?? 0, walking);
     }
 
@@ -966,8 +1006,17 @@ export function createAudio({
     const z = camera.position.z;
     if (lastX != null && dt > 1e-4) {
       const instant = Math.hypot(x - lastX, y - lastY, z - lastZ) / dt;
-      // Smoothed, or one long frame reads as a gust of airspeed.
-      speedMps += (instant - speedMps) * (1 - Math.exp(-dt / 0.3));
+      if (instant > TELEPORT_MPS) {
+        // The camera was PLACED, not flown: the dev 'G' key, a POI fly-to, a
+        // restored view. This is a speed, not a distance, so a slow frame cannot
+        // trigger it - only a discontinuity can. Smoothing one in leaves a
+        // phantom airspeed decaying for ~2 s, i.e. a wind swell for arriving
+        // somewhere. Start again from standing still instead.
+        speedMps = 0;
+      } else {
+        // Smoothed, or one long frame reads as a gust of airspeed.
+        speedMps += (instant - speedMps) * (1 - Math.exp(-dt / 0.3));
+      }
     }
     lastX = x;
     lastY = y;
