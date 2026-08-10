@@ -11,20 +11,25 @@ const CATEGORY_STYLE = {
   trailhead: { color: 0x66bb6a }, // valley bases - green, the only category down among the trees
 };
 
+// English, like the rest of the UI - these had been Italian since phase 2 and
+// were shipped that way, which nobody noticed because the only place they appear
+// is beside a place name that IS Italian. The names themselves stay exactly as
+// OSM has them: "Gran Paradiso" is not a thing to translate, the category beside
+// it is.
 const CATEGORY_LABELS = {
-  peak: 'Vetta',
-  hut: 'Rifugio',
-  pass: 'Passo/Colle',
-  waterfall: 'Cascata',
-  lake: 'Lago',
-  trailhead: 'Partenza sentieri',
+  peak: 'Peak',
+  hut: 'Mountain hut',
+  pass: 'Pass',
+  waterfall: 'Waterfall',
+  lake: 'Lake',
+  trailhead: 'Trailhead',
 };
 
 // The hut category covers both staffed rifugi and unstaffed bivacchi, and
-// calling the latter "Rifugio" in the search list would be wrong - 17 of the
-// 38 are bivacchi (tools/build-poi.mjs keeps OSM's tag as hutKind).
+// calling the latter a mountain hut in the search list would be wrong - 18 of
+// the 38 are bivacchi (tools/build-poi.mjs keeps OSM's tag as hutKind).
 function categoryLabel(poi) {
-  if (poi.category === 'hut' && poi.hutKind === 'shelter:basic_hut') return 'Bivacco';
+  if (poi.category === 'hut' && poi.hutKind === 'shelter:basic_hut') return 'Bivouac hut';
   return CATEGORY_LABELS[poi.category] ?? poi.category;
 }
 
@@ -229,7 +234,14 @@ export function poiInfoHTML(poi) {
   const label = categoryLabel(poi);
   let html = `<div class="name">${poi.name}</div><div>${label} · ${Math.round(poi.elevationM)} m</div>`;
   if (poi.dataIncomplete) {
-    html += `<div class="warning">⚠ dati di elevazione incompleti in quest'area (versante piemontese)</div>`;
+    // The attribution this carried - "versante piemontese" - was true when it was
+    // written and is not any more: the Piemonte gap was closed on 2026-07-30 by
+    // the three-source mosaic. Exactly one POI of 426 still trips the flag, Roc
+    // de Bassagne, and it sits 460 m from the SOUTHERN EDGE of the DEM bbox
+    // (45.4709N, 7.0888E) reading 1,604 m against OSM's 3,222. So the cause is
+    // the edge of what was extracted, not a source's coverage - and rather than
+    // swap one geographic claim for another, this now says only what is certain.
+    html += '<div class="warning">⚠ incomplete elevation data in this area</div>';
   }
   return html;
 }

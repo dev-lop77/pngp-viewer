@@ -192,22 +192,52 @@ HUD. (`tools/test-viewstate.mjs` and anything else reading `window.__pngp` still
 cannot be pointed at the live site - Vite strips that handle from a production
 build.)
 
-**One thing the screenshot caught, unrelated to any of today's work**: the POI
-search box's placeholder is `Cerca un luogo...` (`index.html:245`) - the only
-Italian string in an otherwise entirely English UI, against the language decision
-made at the start of the project. One line. Left alone deliberately, since fixing
-it puts the live site a commit behind again the moment it was levelled; raised
-with the user, and a natural pickup for the phase-7 pass if they do not want it
-sooner.
+### The UI was part Italian, and it was not one line
+
+The screenshot caught `Cerca un luogo...` in the search box, which I reported as
+"the only Italian string, one line". **That was wrong, and wrong in the way worth
+recording: it was the only Italian string _in that screenshot_.** Asked to fix it,
+grepping for Italian function words across `src/` and `index.html` found the rest
+immediately - so the report cost nothing to check and should have been checked
+before it was made. What there actually was:
+
+- `index.html:245` - the search placeholder, now `Search for a place…`;
+- `src/poi.js` - **every POI category label**, shipped since phase 2: Vetta,
+  Rifugio, Passo/Colle, Cascata, Lago, Partenza sentieri, Bivacco. Now Peak,
+  Mountain hut, Pass, Waterfall, Lake, Trailhead, Bivouac hut. The
+  staffed-vs-unstaffed distinction the old code was careful about is kept.
+- `src/poi.js` - the incomplete-elevation warning in the info panel.
+
+**Place names stay exactly as OSM has them** - the search list reads "Bivacco
+Mario Balzola · Bivouac hut" and "Rifugio Vittorio Sella · Mountain hut", which is
+right: the name is a name, the category beside it is UI. `src/main.js:138` also
+keeps its Italian, and must: it is a comment quoting the VDA licence clause
+verbatim, and that wording is prescribed.
+
+**The warning also changed meaning, not just language.** It said "(versante
+piemontese)", which was true when written and is not now - the Piemonte gap was
+closed on 2026-07-30. Exactly **1 POI of 426** still trips `dataIncomplete`: Roc
+de Bassagne, which sits **460 m from the southern edge of the DEM bbox**
+(45.4709N, 7.0888E) and reads 1,604 m against OSM's 3,222. So the cause is where
+the extraction stops, not a source's coverage. Rather than swap one geographic
+claim for another, it now says only what is certain: `⚠ incomplete elevation data
+in this area`. **A stale claim survives translation** - check what a string
+asserts before carrying it into another language.
+
+Verified on the running page rather than in the source: all seven categories
+render in English, the placeholder does, and the warning was read out of the info
+panel by actually selecting the one POI that shows it. `test-viewstate` passes and
+`tools/verify.mjs` reports no console or page errors. Bundle **793.31 kB /
+222.25 kB gzipped**. **The live site is one commit behind again as a result** -
+worth a republish, the user's call.
 
 ### How to resume
 Everything above is committed and the working tree is clean. The audio suite needs
 a **dev** server (`tools/dev/start-dev.sh`) as before. **Nothing is owed to the
 user and nothing is waiting on a verdict** - the first time that has been true
-since phase 6 opened, and the live site is level with `main` for the first time
-since 2026-08-05. What is left is **phase 7**, the Italian placeholder above (one
-line, the user's call on when), and **"la neve che si deposita"** whenever they
-want to open it.
+since phase 6 opened. What is left is **phase 7**, a **republish** (the UI-language
+pass landed after the last deploy, so the site is one commit behind), and **"la
+neve che si deposita"** whenever they want to open it.
 
 ## Status as of 2026-08-07
 
