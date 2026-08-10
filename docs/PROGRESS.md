@@ -512,14 +512,45 @@ measuring rather than by building:
 | the bundle | **Reframed and fixed** - the JS was 1.2% of the load; the real target was the data, 18.10 -> 10.88 MB on the wire |
 | mobile pass | **Dropped by the user** |
 
-Two things are open, and both are the user's to want rather than anything owed:
+One thing is open, and it is the user's to want rather than anything owed:
+**"la neve che si deposita"** - their topic, recorded 2026-08-10, nothing decided
+and nothing to be built on it unprompted.
 
-1. **Blending the normals across an LOD transition** - the residual after the fix
-   is 21.5% of a tile's pixels moving more than two levels, from 27.6%. Offered
-   with the numbers and not taken up; it is the only way to reach zero, since the
-   two depths' surfaces genuinely differ.
-2. **"La neve che si deposita"** - their topic, recorded 2026-08-10, nothing
-   decided and nothing to be built on it unprompted.
+### The LOD residual: both fixes tried, both worse, and my claim was wrong
+
+The user asked to go ahead with the normal blend, which I had described as "the
+only way to reach zero". **That was wrong, and the measurement says so.** What is
+shipped is already the best of the three:
+
+| shading normal | mean | p95 | pixels >2 levels |
+|---|---|---|---|
+| one texel always (before 2026-08-10) | 2.10 | 8.6 | 27.6% |
+| **the tile's own cell (shipped)** | **1.60** | **6.2** | **21.5%** |
+| cell, geomorphed across the transition | 1.69 | 6.8 | 22.4% |
+| per pixel, at the pixel's footprint | 2.55 | 11.1 | 29.3% |
+
+**Why blending cannot work**: two mesh resolutions sample the terrain at different
+*positions*, not just at different spacings. The coarse tile has half the vertices
+and interpolates linearly between them; a blend that ends on the child's spacing
+still evaluates it at the parent's vertices, so the two never meet. Blending the
+spacing and blending two whole normals land on the same value at the boundary,
+which is why the cheap version was the right one to test - it costs four taps
+where two normals cost eight, and it settles both.
+
+**Why per-pixel is worse, which was the surprise**: at 15.7 km a pixel covers
+about 20 m of ground, which is one texel - so a footprint-scaled normal *is* the
+one-texel normal, i.e. exactly the behaviour that measured 2.10 before this
+session. Worse still, finer shading detail amplifies the geometry pop: the same
+1-2 px of surface movement now drags a high-frequency pattern with it. The
+committed fix works precisely because its spacing is *coarser* than a texel - it
+describes the surface being drawn rather than the terrain's true slope.
+
+So the residual is structural: the 328 m surface and the 164 m surface genuinely
+differ, and honest shading of each must differ too. **The only levers left are
+`TILE_SEGMENTS` and `SPLIT_FACTOR`** - finer tiles, or subdividing further out -
+and both are frame-rate trades (32 -> 64 segments would take the terrain from
+~478k triangles to ~1.9M), which cannot be judged here: headless is 1.2 fps.
+Nothing was changed; `src/terrain.js` is untouched by this round.
 
 And one thing only they can measure: **frame rate on real hardware**. Headless is
 1.2 fps with SwiftShader and has been wrong on this four times. The scene draws
