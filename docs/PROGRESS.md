@@ -237,6 +237,69 @@ panel by actually selecting the one POI that shows it. `test-viewstate` passes a
 `tools/verify.mjs` reports no console or page errors. Bundle **793.31 kB /
 222.25 kB gzipped**.
 
+### Phase 7 opened by measuring, and the first item turned out to be the wrong one
+
+`tools/dev/probe-lod.mjs` (new) answers the two terrain items that had been
+carried since 2026-08-03 with an explicit **"unknown whether it's noticeable in
+practice"** against them. Neither needs a GPU: the drawn surface is what
+`sampleRenderedHeightfield()` reconstructs, the shading is what terrain.js's own
+NORMALS chunk computes, and the distance a depth is drawn at follows from the
+split rule. 20,000 sample points on real ground.
+
+The unit is deliberately **what reaches the eye** - pixels for the geometry, a
+brightness step for the shading, both after the real linear fog. Metres and
+degrees cannot answer either question: a 40 m pop at 30 km is nothing.
+
+```
+ swap   cells        distance  fog   surface moves       on screen   brightness step
+                                     p50    p95    max   p95   max    now    if scaled
+ 1->2  1311-> 655 m  62.9 km  36%   39.0  186.3   730 m  2.3    9 px  35.1% ->  18.3%
+ 2->3   655-> 328 m  31.5 km  10%   17.8   91.6   798 m  2.3   20 px  31.1% ->  17.4%
+ 3->4   328-> 164 m  15.7 km   0%    7.7   41.5  1162 m  2.1   58 px  24.4% ->  15.8%
+ 4->5   164->  82 m   7.9 km   0%    3.3   18.7   156 m  1.9   15 px  17.2% ->  13.8%
+ 5->6    82->  41 m   3.9 km   0%    1.2    7.9   235 m  1.6   46 px   9.6% ->  10.8%
+ 6->7    41->  20 m   2.0 km   0%    0.4    2.8   206 m  1.1   82 px   4.1% ->   5.1%
+```
+
+**The geometry pop is 1.1-2.3 px at p95, at every depth.** That is not a
+coincidence: the split rule is scale-invariant, so pop-over-distance is very
+nearly constant down the whole tree. **Geomorphing - the thing the roadmap names -
+would smooth something worth two pixels.** The long tail is real (the worst single
+point jumps 82 px, a cliff face where a 41 m grid and a 20 m grid disagree by
+206 m) but it is 1 sample in 20,000.
+
+**What actually changes when a tile subdivides is its brightness, by 24-35% at
+p95 on the far transitions**, of which 28% survives the fog at 31 km and *all* of
+it at 15.7 km, where there is no fog at all. That is the other item - normals
+sampled at one texel regardless of tile depth - and it is not a separate
+refinement: it *is* the visible half of "LOD popping". The comment in `terrain.js`
+saying distant coarse tiles are "washed out by fog anyway" is wrong, and measurably
+so: fog does not start until 20 km, and depths 3-5 are drawn from 3.9 km outward.
+
+**The counterfactual is measured, not assumed**: evaluating the normal at the
+tile's own cell size instead of one texel roughly **halves** the far steps
+(35.1 -> 18.3, 31.1 -> 17.4, 24.4 -> 15.8) and slightly *worsens* the near ones
+(9.6 -> 10.8, 4.1 -> 5.1). It cannot reach zero, and that is not a flaw in the fix:
+the 655 m surface and the 328 m surface genuinely have different slopes, so their
+honest normals differ. Killing the rest needs the normals *blended* across the
+transition - a geomorph on the shading rather than on the vertices, which is the
+opposite of what the roadmap assumed.
+
+Two measurement traps on the way, both caught before the numbers were reported:
+
+1. **A coarse cell is up to 1.3 km across**, so testing the sample point for the
+   nodata sentinel is not enough - the interpolation reads the cell's *corners*,
+   which can sit in the gap when the point does not. Corner-checking dropped up to
+   435 of 20,000 samples and cut the worst pop from 2,292 m to 730 m. The first
+   run's max column was measuring the data gap, not the LOD.
+2. **"The normal disagrees with the drawn surface" is not what anyone sees.** The
+   first version compared normals at a point; what a viewer sees is the brightness
+   step when a tile subdivides, which needs the vertex normals interpolated across
+   the triangle exactly as the varying is.
+
+**Nothing has been built or changed yet** - this is a measurement, and it says the
+named item should not be built as named. Put to the user with the numbers.
+
 ### How to resume
 Everything above is committed and the working tree is clean. The audio suite needs
 a **dev** server (`tools/dev/start-dev.sh`) as before. **Nothing is owed to the
