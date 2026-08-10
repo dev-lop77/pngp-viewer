@@ -771,14 +771,31 @@ export function createAudio({
 
   // ---- songbirds ----------------------------------------------------------
 
-  // The clock songs are scheduled against. A live context's currentTime is the
-  // right answer, but an OfflineAudioContext's stays at 0 for the whole driving
-  // phase - so a test that steps a minute of song would pile every note onto the
-  // first sample. Accumulated dt is correct in both; the max() stops it ever
-  // scheduling into the past on a live context, where the two can drift apart.
+  // The clock everything is scheduled against, and there is exactly one right
+  // answer per kind of context.
+  //
+  // An OfflineAudioContext - the only kind with startRendering - leaves
+  // currentTime at 0 for the whole driving phase, so accumulated dt is the only
+  // clock it has; without it a test that steps a minute of song would pile every
+  // note onto the first sample.
+  //
+  // A live context has a real clock, and it is the one the hardware will play
+  // against, so it is the answer. This used to be `max(currentTime, t0 +
+  // accumulated)` for both, which looks harmless and is not: t0 is captured at
+  // the first call, so whatever dt had already accumulated by then - the seeded
+  // first tick, plus however long the frame that started the audio took - became
+  // a PERMANENT head start, and max() can only ever push it further ahead, never
+  // pull it back. Measured at 1.12 s headless and reported as about five seconds
+  // on real hardware (2026-08-10): every sound scheduled that far after the thing
+  // that caused it. Nothing else made it visible - the wind and the birds do not
+  // care when they start, and it is silent in every reading except diag.clockSkew,
+  // which exists because of this.
   function songNow() {
-    if (songT0 == null) songT0 = ctx.currentTime;
-    return Math.max(ctx.currentTime, songT0 + songClock);
+    if (typeof ctx.startRendering === 'function') {
+      if (songT0 == null) songT0 = ctx.currentTime;
+      return songT0 + songClock;
+    }
+    return ctx.currentTime;
   }
 
   function makeSinger(spec, ix, iz) {
@@ -991,6 +1008,12 @@ export function createAudio({
       songs: songsPlayed,
       surface,
       steps: stepsPlayed,
+      // How far ahead of the context's own clock everything is being scheduled.
+      // Zero on a healthy live context; anything else is a delay between doing
+      // something and hearing it, and songNow()'s max() means it can only ever
+      // run one way. Cheap, and it is the only window onto a fault that is
+      // completely silent in every other reading (2026-08-10).
+      clockSkew: songNow() - ctx.currentTime,
     });
   }
 

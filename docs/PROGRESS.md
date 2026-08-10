@@ -81,11 +81,12 @@ happens *after* one:
   held down - **0** footsteps across all five, while the marmot and chamois
   whistles still fire.
 
-84 checks pass, and `test-wildlife`, `test-birds` and `test-viewstate` still do.
-The bundle is **793.28 kB raw / 222.26 kB gzipped**, which is **+0.42 kB** for
-this change - measured against a build of HEAD, not against the 774 kB figure in
-the 2026-08-07 section, which had already gone stale for reasons unrelated to any
-of this. Worth remembering before quoting a bundle number: rebuild the baseline.
+85 checks pass, and `test-wildlife`, `test-birds` and `test-viewstate` still do.
+The bundle is **793.34 kB raw / 222.29 kB gzipped**, which is **+0.48 kB** for
+everything today - measured against a build of HEAD, not against the 774 kB figure
+in the 2026-08-07 section, which had already gone stale for reasons unrelated to
+any of this. Worth remembering before quoting a bundle number: rebuild the
+baseline.
 
 ### Two method notes, and both are the measurement being wrong first, again
 
@@ -104,10 +105,60 @@ gust, same stream, the only difference being the feet - the tail reads **x0.036*
 The 2026-08-07 note said a reference has to be the same scene; this says the same
 scene includes the same draw of the random numbers.
 
+### And then a third, from the same listen: everything was a second late
+
+*"Il rumore dei passi parte con 5 secondi di ritardo."* This one was **not** in
+the footsteps, and **not** caused by the fix above - `git show` confirms the
+commit never touched a line of the clock. It was in `songNow()`, and it applied
+to **every sound in the viewer at once**:
+
+```js
+if (songT0 == null) songT0 = ctx.currentTime;      // captured at the FIRST call
+return Math.max(ctx.currentTime, songT0 + songClock);
+```
+
+`songT0` is captured at the first call, but `songClock` has already been
+accumulating - the seeded first tick, plus however long the frame that started
+the audio took. That head start then became **permanent**, because `max()` can
+only ever push the clock further ahead, never pull it back. Every sound was
+scheduled that far after the thing that caused it.
+
+Measured **1.12 s headless, dead constant over a whole session**, and the user
+heard about five seconds on real hardware - their first frame after the click,
+with the terrain still loading, is where the difference lives.
+
+The fix is to stop pretending one clock serves both contexts. An
+`OfflineAudioContext` - the only kind with `startRendering` - leaves
+`currentTime` at 0 for the whole driving phase, so accumulated dt is the only
+clock it has, and that path is unchanged. A **live** context has a real clock,
+and it is the one the hardware will play against, so it is now simply returned.
+Skew measured **0.0000 s** afterwards.
+
+**Why nothing caught it**: no count, level, band ratio or cadence in
+`tools/test-audio.mjs` changes if you schedule the whole soundscape a second
+late. It is only audible as *latency*, and only against an action - which is why
+it surfaced the day footsteps did, and why the wind, the water and the birds have
+been a second late since 2026-08-05 with nobody the wiser. `diag.clockSkew` now
+reports it, the live suite asserts it is under 50 ms, and
+`tools/dev/probe-step-delay.mjs` is the instrument that found it.
+
+**One more measurement note, and it is the same lesson as yesterday's:** the
+probe first reported the first step scheduled 690 ms after W, from a poll loop in
+node - most of which was the CDP round trip **measuring itself**. Moved inside the
+page it reads 1,141 ms, which sounds worse until you also measure the frame rate:
+headless renders this scene at **1.2 fps**, so that is **1.4 frames**, and the
+audio tick is gated on frames. The floor is one frame plus up to 185 ms; at 30 fps
+that is about a fifth of a second. Measure the clock you are quoting, and quote a
+latency in frames when a frame is what gates it. (The same 1.2 fps is why the
+cadence reads ~1 Hz in this harness rather than 2: a tick that arrives after the
+next step was due re-arms instead of firing a burst of the ones it missed. Also
+not a fault.)
+
 ### Next steps
 1. ~~Ask the user to listen to the footsteps~~ - **CLOSED 2026-08-10**: accepted
-   apart from the two faults above, both now fixed. **A confirmation listen is
-   owed**: that a stop is silent, and that 'G' is silent.
+   apart from three faults, all now fixed. **A confirmation listen is owed**: that
+   a stop is silent, that 'G' is silent, and that sound now arrives when the thing
+   that causes it does.
 2. **Phase 7 polish** is the only phase left: LOD popping/geomorphing, one-texel
    normals at any depth, the bundle (793 kB / 222 kB gzipped), and the mobile pass
    - pointer lock + WASD has no touch equivalent, and neither does a keyboard mute.

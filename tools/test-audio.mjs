@@ -661,6 +661,7 @@ const live = await page.evaluate(() => {
     exposure: d.exposure,
     gains: d.gains,
     riverM: d.water?.river?.distanceM ?? null,
+    clockSkew: d.clockSkew,
     hud: document.getElementById('audio-diag')?.textContent ?? null,
   };
 });
@@ -881,6 +882,8 @@ console.log(`  driven at the spawn   : wind ${live.strength?.toFixed(2)}`
   + ` (alt ${live.altitude?.toFixed(2)}, exp ${live.exposure?.toFixed(2)}), canopy ${live.canopy?.toFixed(2)}`
   + `, river ${live.riverM != null && Number.isFinite(live.riverM) ? `${Math.round(live.riverM)} m` : '-'}`);
 console.log(`  gains                 : ${Object.entries(live.gains ?? {}).map(([k, v]) => `${k} ${v.toFixed(3)}`).join(', ')}`);
+console.log(`  clock skew            : ${live.clockSkew?.toFixed(4)} s ahead of the context`
+  + ' (0 = you hear things when they happen)');
 console.log(`  after walking 3 s     : river ${walked.riverM != null && Number.isFinite(walked.riverM) ? `${Math.round(walked.riverM)} m` : '-'}`
   + `, water ${walked.gains.waterLow.toFixed(3)}/${walked.gains.waterHigh.toFixed(3)}`);
 console.log('  dev \'G\' walk-up:');
@@ -1082,6 +1085,14 @@ check(liveSong.by.tawnyowl === 0,
   'a tawny owl hooted in the running viewer, which opens in daylight');
 check(liveNight.night > 0.9,
   'moving the time slider to the night preset did not reach the audio');
+// Everything is scheduled against songNow(), so a skew here is a delay between
+// doing something and hearing it, across the whole soundscape at once. It was
+// 1.12 s in this harness and about five seconds on the user's machine, and
+// nothing else in this file could see it: every count, level and band ratio is
+// unchanged by scheduling the lot a second late. Live contexts only - offline,
+// the accumulated clock IS the clock and the skew is meaningless.
+check(live.clockSkew < 0.05,
+  `the live audio clock runs ${live.clockSkew?.toFixed(2)} s ahead of the context - everything sounds that late`);
 check(liveSong.steps > 0, 'walking for 45 s in the running viewer produced no footsteps');
 check(liveSong.surface != null,
   'the running viewer never worked out what it was walking on');
