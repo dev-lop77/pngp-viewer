@@ -475,6 +475,26 @@ edit that sweeps across `tools/`.
 0.13 + poi 0.01 = **about 10.7 MB, from 18.1** - a 41% cut across the two items,
 with nothing visibly changed. Seven suites pass and `verify.mjs` is clean.
 
+### Republished, and the saving confirmed on the wire
+
+Every asset asked for from the live site with `Accept-Encoding: gzip, deflate, br`,
+which is the only number that counts - everything before this was a local `gzip -9`:
+
+| asset | transferred | encoding |
+|---|---|---|
+| `heightfield.3e0525a4.bin` | 9.38 MB | gzip |
+| `forest.c7b76145.png` | 0.96 MB | none (already compressed) |
+| `index.js` | 0.21 MB | gzip |
+| `trails.json` | 0.18 MB | gzip |
+| `water.json` | 0.13 MB | gzip |
+| everything else | 0.02 MB | gzip |
+| **total first load** | **10.88 MB** | was **18.10** |
+
+**-40% on the wire.** The heightfield came in at 9.38 against 9.18 locally, the
+~2% behind that was predicted for Pages' gzip. New bundle live in **8 s**;
+`verify.mjs` against the public URL reports WebGL2 and no console or page errors,
+and the screenshot is the Le Pont spawn with its trees, river and HUD intact.
+
 ### How to resume
 Everything above is committed and the working tree is clean. The audio suite needs
 a **dev** server (`tools/dev/start-dev.sh`) as before. **Nothing is owed to the
