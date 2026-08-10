@@ -224,20 +224,26 @@ claim for another, it now says only what is certain: `⚠ incomplete elevation d
 in this area`. **A stale claim survives translation** - check what a string
 asserts before carrying it into another language.
 
+**Republished straight after** (`0c8cc6a`), and verified the same way: the served
+`index.html` named the new bundle within **8 s** this time and carries
+`placeholder="Search for a place…"` in the markup, `tools/verify.mjs` against the
+public URL reports WebGL2 and **no console or page errors**, and the screenshot
+shows the English placeholder in the running site. **The live site is level with
+`main`.**
+
 Verified on the running page rather than in the source: all seven categories
 render in English, the placeholder does, and the warning was read out of the info
 panel by actually selecting the one POI that shows it. `test-viewstate` passes and
 `tools/verify.mjs` reports no console or page errors. Bundle **793.31 kB /
-222.25 kB gzipped**. **The live site is one commit behind again as a result** -
-worth a republish, the user's call.
+222.25 kB gzipped**.
 
 ### How to resume
 Everything above is committed and the working tree is clean. The audio suite needs
 a **dev** server (`tools/dev/start-dev.sh`) as before. **Nothing is owed to the
 user and nothing is waiting on a verdict** - the first time that has been true
-since phase 6 opened. What is left is **phase 7**, a **republish** (the UI-language
-pass landed after the last deploy, so the site is one commit behind), and **"la
-neve che si deposita"** whenever they want to open it.
+since phase 6 opened, and **the live site is level with `main`**. What is left is
+**phase 7** and **"la neve che si deposita"** whenever they want to open it -
+nothing else at all.
 
 ## Status as of 2026-08-07
 
