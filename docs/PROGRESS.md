@@ -297,8 +297,73 @@ Two measurement traps on the way, both caught before the numbers were reported:
    step when a tile subdivides, which needs the vertex normals interpolated across
    the triangle exactly as the varying is.
 
-**Nothing has been built or changed yet** - this is a measurement, and it says the
-named item should not be built as named. Put to the user with the numbers.
+### Then rendered it, because 24% of a diffuse term is not yet a thing anyone sees
+
+The user's call was to confirm visually before writing a fix.
+`tools/dev/probe-lod-visible.mjs` places the camera **exactly** at the distance
+where one chosen tile subdivides - the split rule is explicit, so the position is
+computed rather than hunted for - and takes three frames: the same position twice
+for a noise floor, and one **40 m** across the boundary, which at 15.7 km is
+0.15 px of parallax. The diff is taken only inside the screen rectangle the tile
+projects to, and the scene is read back to confirm the tile really is depth 3 in
+one frame and depth 4 in the other.
+
+| luminance diff, 0-255 | mean | p95 | p99 | max | pixels >2 / >8 / >20 |
+|---|---|---|---|---|---|
+| same position twice (noise) | 0.02 | 0.0 | 0.7 | 19 | 0.1% / 0.0% / 0.0% |
+| across the LOD boundary | **2.10** | **8.6** | **18.9** | **74** | **27.6% / 5.6% / 0.9%** |
+
+**So it shows.** A quarter of the tile's pixels move perceptibly against a noise
+floor of nothing - signal/noise x121 on the mean.
+
+The first version of that probe read the tile set in the *same* evaluate that
+moved the camera, which reports the previous position's answer, because
+`terrainUpdate()` runs in the render loop. The pixel numbers were right and the
+confirmation was nonsense.
+
+### Done: the normal is measured over the tile's own cell (`src/terrain.js`)
+
+`aCellM`, a vec2 attribute constant per geometry - an attribute rather than a
+uniform because all eight depths share one material, so a uniform could not
+differ between them. The normal's central difference now spans
+`max(one texel, this tile's cell)` instead of one texel always. **The same four
+texture taps at a different spacing: no cost.** The geometry is untouched, so
+`sampleRenderedHeightfield()` and everything standing on it are unaffected - and
+the finest depth is unchanged too, since its cell already *is* about one texel.
+
+Measured in rendered pixels, same probe, same camera:
+
+| | mean | p95 | p99 | >2 levels | >8 levels |
+|---|---|---|---|---|---|
+| before | 2.10 | 8.6 | 18.9 | 27.6% | 5.6% |
+| after | **1.60** | **6.2** | **14.8** | **21.5%** | **3.1%** |
+
+**Down about a quarter to a third - not the halving the analytic number
+predicted.** Worth knowing why: the analytic figure was the Lambert term alone,
+while a pixel also carries the albedo, which changes with LOD too (the slope→rock
+mix reads `n.y`, and the elevation banding reads the interpolated height). The
+irreducible part is real: the 328 m surface and the 164 m surface genuinely have
+different slopes, so their honest normals differ. Killing the rest needs the
+normals **blended** across the transition - a geomorph on the shading rather than
+on the vertices.
+
+**And it costs something, measured rather than guessed.** A before/after pair from
+the Gran Paradiso summit looking north (`tools/dev/shoot.mjs` gained `--at`/
+`--towards` for exactly this - a repeatable camera, since the mouse-driven
+`--look`/`--pitch` cannot express "stand here and look at that"), scored by mean
+|Laplacian| per band:
+
+- far ridges **-31.2%** fine detail, mid ground **-26.0%**, near ground **-4.8%**.
+
+That is the trade in one line: **the distance where the flash lives is the same
+distance that loses its texture, and the ground you actually walk on does not
+change.** Whether the distant ranges now read as cleaner or as flatter is a taste
+question, and it is the user's.
+
+Bundle 793.31 -> **794.31 kB** raw, 222.71 kB gzipped (+1.0 kB, the attribute and
+the shader lines). `test-rendered-height`, `test-wildlife`, `test-birds` and
+`test-viewstate` all pass; `tools/verify.mjs` reports no console errors, which for
+a shader edit means the program compiled.
 
 ### How to resume
 Everything above is committed and the working tree is clean. The audio suite needs

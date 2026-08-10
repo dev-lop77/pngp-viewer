@@ -91,6 +91,28 @@ if (!Number.isNaN(look)) {
   await page.waitForTimeout(500);
 }
 
+// Explicit camera placement, for when the shot has to be repeatable to the
+// metre - comparing two builds of a shader, most obviously, where "roughly the
+// same view" is not good enough because the whole question is a pixel diff.
+// The mouse-driven --look/--pitch above cannot do that: they are relative turns
+// at a sensitivity that is controls.js's business.
+//   --at=x,y,z --towards=x,y,z   (local metres, src/geo.js's frame)
+const at = flags.get('at');
+if (at) {
+  const [ax, ay, az] = at.split(',').map(Number);
+  const [tx, ty, tz] = (flags.get('towards') ?? '0,2000,0').split(',').map(Number);
+  await page.evaluate(({ ax, ay, az, tx, ty, tz }) => {
+    // Fly mode: walk mode re-clamps the camera to the ground every frame, which
+    // would throw away the altitude before the shot is taken.
+    window.__pngp.controls.mode = 'fly';
+    window.__pngp.camera.position.set(ax, ay, az);
+    window.__pngp.camera.lookAt(tx, ty, tz);
+    window.__pngp.camera.updateMatrixWorld(true);
+  }, { ax, ay, az, tx, ty, tz });
+  await page.waitForTimeout(4000); // headless renders this scene at ~1 fps
+  console.log(`Placed at (${ax}, ${ay}, ${az}) looking at (${tx}, ${ty}, ${tz})`);
+}
+
 const hud = await page.textContent('#nav-text').catch(() => '');
 await page.screenshot({ path: outFile });
 console.log(`HUD: ${hud.replace(/\s+/g, ' ').trim()}`);

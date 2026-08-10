@@ -170,6 +170,10 @@ export async function loadTerrain(dataUrl = `${import.meta.env.BASE_URL}data`) {
   // per-texel noise, and the RG8 reconstruction this file documents had never
   // actually run. Found 2026-08-03 while adding LOD; see docs/PROGRESS.md.
   const HELPERS = /* glsl */ `
+    // Constant across a geometry, one per LOD depth: the size of this tile's own
+    // grid cell in metres. Injected into the VERTEX shader only, where HELPERS
+    // goes - the fragment side has its own declarations.
+    attribute vec2 aCellM;
     varying float vTerrainElev;
     varying vec3 vTerrainNormal;
     varying vec2 vTerrainXZ;
@@ -191,14 +195,23 @@ export async function loadTerrain(dataUrl = `${import.meta.env.BASE_URL}data`) {
   const NORMALS = /* glsl */ `
     vec2 wTerrainXZ = ( modelMatrix * vec4( position, 1.0 ) ).xz;
     vec2 tUv = terrainUv( wTerrainXZ );
-    float hW = terrainElevation( tUv - vec2( ${glsl(1 / width)}, 0.0 ) );
-    float hE = terrainElevation( tUv + vec2( ${glsl(1 / width)}, 0.0 ) );
-    float hN = terrainElevation( tUv + vec2( 0.0, ${glsl(1 / height)} ) );
-    float hS = terrainElevation( tUv - vec2( 0.0, ${glsl(1 / height)} ) );
+    // The slope is measured over THIS TILE'S cell, never finer than one texel of
+    // the height texture. It used to be one texel always, which meant a tile
+    // drawn on a 328 m grid was shaded by a 20 m slope it does not have - and
+    // that mismatch, not the geometry, is what a subdivision actually shows:
+    // measured 2026-08-10, the surface moves by 1-2 px while 27.6% of the tile's
+    // pixels change brightness (tools/dev/probe-lod.mjs and probe-lod-visible.mjs).
+    // Costs nothing: the same four taps, at a different spacing.
+    vec2 nSpacing = max( vec2( ${glsl(resX)}, ${glsl(resY)} ), aCellM );
+    vec2 nUv = nSpacing / vec2( ${glsl(worldWidth)}, ${glsl(worldDepth)} );
+    float hW = terrainElevation( tUv - vec2( nUv.x, 0.0 ) );
+    float hE = terrainElevation( tUv + vec2( nUv.x, 0.0 ) );
+    float hN = terrainElevation( tUv + vec2( 0.0, nUv.y ) );
+    float hS = terrainElevation( tUv - vec2( 0.0, nUv.y ) );
     vec3 objectNormal = normalize( vec3(
-      ( hW - hE ) / ${glsl(2 * resX)},
+      ( hW - hE ) / ( 2.0 * nSpacing.x ),
       1.0,
-      ( hN - hS ) / ${glsl(2 * resY)}
+      ( hN - hS ) / ( 2.0 * nSpacing.y )
     ) );
     // Safe to hand the fragment shader as a world-space normal: every tile's
     // modelMatrix is a pure translation (see the geometries[] comment below),
@@ -413,6 +426,11 @@ function buildTileGeometry(segments, sizeX, sizeZ) {
   const positions = new Float32Array(total * 3);
   const normals = new Float32Array(total * 3);
   const uvs = new Float32Array(total * 2);
+  // This tile's cell size in metres, the same value on every vertex. An
+  // attribute rather than a uniform because all depths share one material, so a
+  // uniform could not differ between them; two floats a vertex is nothing beside
+  // the position it sits next to.
+  const cells = new Float32Array(total * 2);
   const idx = (ix, iz) => iz * n + ix;
 
   const put = (i, x, y, z, u, v) => {
@@ -422,6 +440,8 @@ function buildTileGeometry(segments, sizeX, sizeZ) {
     normals[i * 3 + 1] = 1; // overwritten in the vertex shader; three still needs the attribute
     uvs[i * 2] = u;
     uvs[i * 2 + 1] = v;
+    cells[i * 2] = sizeX / segments;
+    cells[i * 2 + 1] = sizeZ / segments;
   };
 
   for (let iz = 0; iz <= segments; iz++) {
@@ -468,6 +488,7 @@ function buildTileGeometry(segments, sizeX, sizeZ) {
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
   geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geometry.setAttribute('aCellM', new THREE.BufferAttribute(cells, 2));
   geometry.setIndex(indices);
   return geometry;
 }
