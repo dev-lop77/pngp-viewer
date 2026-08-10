@@ -4,10 +4,12 @@ Read this first at the start of each session. Update it before ending one.
 
 ## Status as of 2026-08-10
 
-**The footsteps were judged by ear and two real faults came back with the
-verdict.** Both are fixed. The rest of the mix - the surfaces, the level, the
-cadence - was accepted: "il resto mi pare a posto". Rainstorm is quiet and the
-user explicitly let it stand.
+**The footsteps were judged by ear, three real faults came back with the verdict,
+and after the fixes the user listened again and accepted: "ascoltato, ora è ok".**
+The rest of the mix - the surfaces, the level, the cadence - was accepted on the
+first listen: "il resto mi pare a posto". Rainstorm is quiet and they explicitly
+let it stand. **Nothing about the audio is open**, and with it phase 6 is finished
+for good: everything in it has now been judged by ear or by eye and approved.
 
 Their words, and what each turned out to be:
 
@@ -155,10 +157,9 @@ next step was due re-arms instead of firing a burst of the ones it missed. Also
 not a fault.)
 
 ### Next steps
-1. ~~Ask the user to listen to the footsteps~~ - **CLOSED 2026-08-10**: accepted
-   apart from three faults, all now fixed. **A confirmation listen is owed**: that
-   a stop is silent, that 'G' is silent, and that sound now arrives when the thing
-   that causes it does.
+1. ~~Ask the user to listen to the footsteps~~ - **CLOSED 2026-08-10.** Accepted
+   apart from three faults; all three fixed and then **confirmed by ear the same
+   day: "ascoltato, ora è ok"**. Nothing about the audio is owed to anyone.
 2. **Phase 7 polish** is the only phase left: LOD popping/geomorphing, one-texel
    normals at any depth, the bundle (793 kB / 222 kB gzipped), and the mobile pass
    - pointer lock + WASD has no touch equivalent, and neither does a keyboard mute.
@@ -178,9 +179,11 @@ not a fault.)
 
 ### How to resume
 Everything above is committed and the working tree is clean. The audio suite needs
-a **dev** server (`tools/dev/start-dev.sh`) as before. **Open the next session by
-asking for the confirmation listen on the two fixes** (stop, and 'G'), then it is
-phase 7 and the republish - and "la neve che si deposita" whenever they want it.
+a **dev** server (`tools/dev/start-dev.sh`) as before. **Nothing is owed to the
+user and nothing is waiting on a verdict** - the first time that has been true
+since phase 6 opened. What is left is **phase 7**, the **republish** (offered on
+2026-08-10 and not yet answered), and **"la neve che si deposita"** whenever they
+want to open it.
 
 ## Status as of 2026-08-07
 
