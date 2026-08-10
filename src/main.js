@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { loadTerrain } from './terrain.js';
+import { loadTerrain, TERRAIN_SNOW } from './terrain.js';
 import { loadTrails } from './trails.js';
 import { loadPOI, poiInfoHTML } from './poi.js';
 import { loadWater } from './water.js';
@@ -743,6 +743,12 @@ renderer.setAnimationLoop(() => {
   wildlife?.update(timer.getDelta(), camera);
   birds?.update(timer.getDelta(), camera);
   lighting.applyState(); // re-grades every frame so an in-progress weather transition stays live
+  // Snow on the ground. weather.js has accumulated this since phase 4 and both
+  // the haze and the footsteps have always read it; the terrain never did, so it
+  // snowed without the ground ever going white (found 2026-08-10 by the user
+  // simply watching and waiting). Driven here rather than inside terrain.js so
+  // the terrain keeps knowing nothing about the weather.
+  TERRAIN_SNOW.value = weather?.mod.snow ?? 0;
 
   fpsFrames += 1;
   fpsAccum += timer.getDelta();

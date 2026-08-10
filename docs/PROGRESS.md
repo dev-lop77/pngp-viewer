@@ -512,9 +512,50 @@ measuring rather than by building:
 | the bundle | **Reframed and fixed** - the JS was 1.2% of the load; the real target was the data, 18.10 -> 10.88 MB on the wire |
 | mobile pass | **Dropped by the user** |
 
-One thing is open, and it is the user's to want rather than anything owed:
-**"la neve che si deposita"** - their topic, recorded 2026-08-10, nothing decided
-and nothing to be built on it unprompted.
+### The snow topic opened with a bug, and the user found it by watching
+
+The discussion about *snow that settles* got one question in before the user
+stopped it: **"io non vedo sbiancare il terreno anche aspettando un po'."** They
+were right, and the framing in this file - and in what I had just told them - was
+wrong: **the ground never whitened at all.**
+
+Measured before touching anything, because "it doesn't look snowy" is not a
+finding: switching to Snowfall took a patch of valley ground from luma **84.1 to
+71.3 - darker**, that being the overcast preset dimming the sun - and then flat
+for another **75 seconds**. Waiting did nothing because there was nothing to wait
+for.
+
+The cause is one missing consumer, and everything else was already there.
+`weather.js` has computed `mod.snow` since phase 4 and even **ramps it with a 6 s
+time constant**, its own comment saying "snow blankets the ground (and melts)
+slower than the flakes fall". `lighting.js` reads it for the haze; `audio.js`
+reads it for the crunch underfoot and the muffled master. **`terrain.js` never
+did.** So it snowed, it sounded like snow, the air went white - and the ground it
+was supposedly lying on kept its summer colour.
+
+**Fixed** with the pattern `forest.js` already uses: a shared uniform holder
+(`TERRAIN_SNOW`) driven by `main.js` each frame, so `terrain.js` still knows
+nothing about `weather.js`. The mix goes on last, over rock and forest floor
+alike, gated by the **same slope term the rock already uses** - what is too steep
+for soil is too steep for snow, which is what the existing comment there had
+always said. No new constants and no elevation term: the permanent white of the
+nival band is the elevation-dependent one, and this is weather on top of it.
+
+Measured after, on the same patch of ground:
+
+| | clear | +3 s | +8 s | settled | clearing +5 s | +20 s | +50 s |
+|---|---|---|---|---|---|---|---|
+| ground luma | 84.1 | 107.7 | 113.5 | **114.2** | 93.1 | 84.3 | **84.1** |
+
+It arrives over about 18 s, it melts back over the same, and it returns to exactly
+where it started. All seven suites pass; with no weather `uSnow` is 0, so nothing
+outside a snowstorm changed. Bundle +0.6 kB.
+
+**Still open and still theirs**: the original topic, snow that *accumulates* -
+lying deeper in a lee, lasting on north faces after the sky clears, and whether it
+should raise the surface underfoot rather than only colour it. What landed today
+is the state, not the history. **Trees also stay green in a snowstorm**, which is
+the next most obvious gap if they want one.
 
 ### The LOD residual: both fixes tried, both worse, and my claim was wrong
 

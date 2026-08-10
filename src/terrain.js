@@ -97,6 +97,22 @@ const ROCK_COLOR = 0xb3aa9f; // == the rocky band; steep ground is bare regardle
 // from a distance, which defeats the point of tinting at all.
 const FOREST_FLOOR_COLOR = 0x667d5e;
 const FOREST_FLOOR_MIX = 0.9;
+// Weather snow lying on the ground, 0..1. A shared holder driven by main.js from
+// weather.js's own accumulator, the same way forest.js hands over its mask - so
+// terrain.js still knows nothing about weather.js.
+//
+// This was simply missing until 2026-08-10: weather.js has computed and ramped
+// mod.snow since phase 4, lighting.js and audio.js both read it - the haze
+// whitens, the footsteps crunch, the master lowpass muffles - and the ground it
+// is supposedly lying on never changed colour at all. Measured before fixing:
+// switching to Snowfall took the ground from luma 84.1 to 71.3, i.e. DARKER (the
+// overcast preset dimming the sun), and then flat for another 75 s.
+export const TERRAIN_SNOW = { value: 0 };
+// The same near-white as the nival band, and for the same reason: it is the
+// brightest this lighting rig can reach (see the band table above - even albedo
+// 1.0 only renders at rgb(195) here), so there is nothing to gain by inventing a
+// second white.
+const SNOW_COLOR = 0xf6f9ff;
 const SLOPE_ROCK_FROM = 0.87; // cos of slope: ~30 deg, where soil starts failing to hold
 const SLOPE_ROCK_TO = 0.6; // ~53 deg, cliff - fully bare
 
@@ -238,6 +254,7 @@ export async function loadTerrain(dataUrl = `${import.meta.env.BASE_URL}data`) {
     varying vec3 vTerrainNormal;
     varying vec2 vTerrainXZ;
     uniform sampler2D uForestMask;
+    uniform float uSnow;
 
     float terrainHash( vec2 p ) {
       return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453123 );
@@ -278,7 +295,13 @@ ${bandMix}
       // smoothstep undefined when edge0 >= edge1, so this can't be written as
       // a descending smoothstep on n.y.
       float bare = 1.0 - smoothstep( ${glsl(SLOPE_ROCK_TO)}, ${glsl(SLOPE_ROCK_FROM)}, n.y );
-      return mix( albedo, ${glslRgb(ROCK_COLOR)}, bare * 0.9 );
+      vec3 ground = mix( albedo, ${glslRgb(ROCK_COLOR)}, bare * 0.9 );
+      // Weather snow goes on last, over rock and forest floor alike - but only
+      // where the ground can hold it, which is the same slope test as above read
+      // the other way up: what is too steep for soil is too steep for snow, which
+      // is why this reuses the rock term. Nothing here is elevation-dependent; the permanent
+      // white of the nival band already is, and this is the weather on top of it.
+      return mix( ground, ${glslRgb(SNOW_COLOR)}, uSnow * ( 1.0 - bare ) );
     }
   `;
 
@@ -286,6 +309,7 @@ ${bandMix}
     // Shared holder, not the texture itself: the mask downloads independently of
     // the terrain, and this way neither has to wait for the other.
     shader.uniforms.uForestMask = FOREST_MASK;
+    shader.uniforms.uSnow = TERRAIN_SNOW;
 
     let vs = shader.vertexShader;
     vs = patch(vs, '#include <displacementmap_pars_vertex>', `#include <displacementmap_pars_vertex>\n${HELPERS}`);
