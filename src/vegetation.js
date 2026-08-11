@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { attachAtmo } from './atmosphere.js';
 import { FOREST_MASK } from './forest.js';
+import { SNOW_LEVEL, snowGlsl, snowColorGlsl } from './snow.js';
 
 // Trees (phase 6). Placement happens entirely in the vertex shader, so walking
 // or flying costs nothing on the CPU - there is no per-frame scatter, no
@@ -48,6 +49,18 @@ const CONE_SEGMENTS = 7; // odd, so a stand doesn't line up into obvious symmetr
 // bands - see tools/dev/solve-albedo.mjs and the warning in terrain.js. This is
 // albedo: it looks too light as a swatch and must not be "corrected".
 const CANOPY_COLOR = 0x6c8761;
+// Snow-laden trees (2026-08-11). Until then the ground went white in a snowstorm
+// and the forest on it stayed summer green, which was the most obvious thing left
+// wrong after the ground snow landed - and the user said so first.
+//
+// How much of the way to white a fully snowed tree goes, at its base and at its
+// crown. Not uniform, because a conifer is not: the exposed crown carries a real
+// load while the lower branches are sheltered by the ones above them, and the
+// gradient is most of what makes a flocked tree read as flocked rather than as a
+// white cone. Neither end reaches 1.0 - even under snow a spruce keeps dark green
+// showing through, and the shaded undersides of the tiers are why.
+const TREE_SNOW_BASE = 0.3;
+const TREE_SNOW_CROWN = 0.85;
 
 function glsl(n) {
   const s = n.toPrecision(12);
@@ -96,6 +109,9 @@ function treeLattice() {
 }
 
 export { SPACING_M as TREE_SPACING_M };
+// Exported for tools/test-snow.mjs, so it asserts against these numbers rather
+// than a second copy that could drift from them.
+export { CANOPY_COLOR, TREE_SNOW_BASE, TREE_SNOW_CROWN };
 
 // Where the tree nearest (x, z) actually stands, applying the same wrap the
 // vertex shader does, from the same offsets - so this is the trunk the user can
@@ -142,6 +158,7 @@ export function nearestTree(x, z, camX, camZ) {
 export function createVegetation({ manifest, heightTexture }) {
   const { xmin, ymin, xmax, ymax } = manifest.bboxCrsUnits;
   const { min: elevMin, max: elevMax } = manifest.elevationRangeM;
+  const { y: resY } = manifest.resolutionMPerPx; // north-south metres per height texel
   const worldWidth = xmax - xmin;
   const worldDepth = ymax - ymin;
 
@@ -177,6 +194,8 @@ export function createVegetation({ manifest, heightTexture }) {
     uniform sampler2D uHeightMap;
     uniform sampler2D uForestMask;
     varying float vTreeTint;
+    varying float vTreeSnow;
+${snowGlsl()}
 
     // MUST agree with terrain.js's terrainUv()/terrainElevation(). Kept separate
     // rather than shared because the two sample different uniforms; the tree
@@ -224,6 +243,27 @@ export function createVegetation({ manifest, heightTexture }) {
     float treeR = treeH * mix( ${glsl(RADIUS_MIN)}, ${glsl(RADIUS_MAX)}, vegHash( vegCell + 41.3 ) );
     vTreeTint = mix( 0.78, 1.18, vegHash( vegCell + 7.1 ) );
 
+    // Snow load, from the very same snowCover() the ground under this tree uses
+    // (src/snow.js). Sharing it is the whole point: a tree that decided for
+    // itself would stand green on white ground somewhere along the snowline,
+    // which is the fault this fixes, just moved.
+    //
+    // Aspect comes from two extra taps of the height texture, one texel north and
+    // one south. Two, not four: the exact normal's z divides by the full gradient
+    // length, and leaving the east-west slope out of that normalisation costs at
+    // most ~5 m of effective elevation on ground gentle enough to grow trees (the
+    // mask holds nothing above 45 deg) against a term that spans 320 m.
+    float dv = ${glsl(resY)} / ${glsl(worldDepth)};
+    float gradZ = ( vegElevation( uv + vec2( 0.0, dv ) ) - vegElevation( uv - vec2( 0.0, dv ) ) )
+                / ${glsl(2 * resY)};
+    float aspectZ = gradZ * inversesqrt( 1.0 + gradZ * gradZ );
+    // No bare term: slope was baked out of the mask at build time, so there are
+    // no trees on ground too steep to hold snow to begin with.
+    // position.y runs 0 at the base to 1 at the apex (the cone is translated so
+    // it does), which is the crown gradient for free.
+    vTreeSnow = snowCover( slot, elev, aspectZ, 0.0 )
+              * mix( ${glsl(TREE_SNOW_BASE)}, ${glsl(TREE_SNOW_CROWN)}, position.y );
+
     // treeH = 0 collapses every vertex onto the base point, so a slot that has
     // no tree draws degenerate triangles and costs no fragments.
     vec3 transformed = vec3(
@@ -236,6 +276,7 @@ export function createVegetation({ manifest, heightTexture }) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uHeightMap = { value: heightTexture };
     shader.uniforms.uForestMask = FOREST_MASK; // shared holder - the mask may still be downloading
+    shader.uniforms.uSnow = SNOW_LEVEL; // declared by snowGlsl(); the same holder the terrain reads
 
     let vs = shader.vertexShader;
     vs = patch(vs, '#include <common>', `#include <common>\n${HELPERS}`);
@@ -243,8 +284,16 @@ export function createVegetation({ manifest, heightTexture }) {
     shader.vertexShader = vs;
 
     let fs = shader.fragmentShader;
-    fs = patch(fs, '#include <common>', '#include <common>\nvarying float vTreeTint;');
-    fs = patch(fs, '#include <map_fragment>', '#include <map_fragment>\n  diffuseColor.rgb *= vTreeTint;');
+    fs = patch(fs, '#include <common>', '#include <common>\nvarying float vTreeTint;\nvarying float vTreeSnow;');
+    // Snow goes on AFTER the per-tree tint, so a tree's own lighter-or-darker
+    // draw shows in its green and not in its snow.
+    fs = patch(
+      fs,
+      '#include <map_fragment>',
+      `#include <map_fragment>
+  diffuseColor.rgb *= vTreeTint;
+  diffuseColor.rgb = mix( diffuseColor.rgb, ${snowColorGlsl()}, vTreeSnow );`,
+    );
     shader.fragmentShader = fs;
   };
   attachAtmo(material); // same aerial-perspective fog as everything else (phase 4)

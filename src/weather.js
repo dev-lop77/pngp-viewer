@@ -38,6 +38,9 @@ const MODES = [
 export const WEATHER_KEYS = MODES.map((m) => m.key);
 
 const LERP_KEYS = ['cover', 'dark', 'hazeMul', 'vfAdd', 'exposureMul', 'grey', 'glowMul', 'starsMul', 'wet', 'rain'];
+// Time constants of the lying-snow accumulator, seconds. See update().
+const SNOW_BUILD_TAU_S = 6;
+const SNOW_MELT_TAU_S = 12;
 const WHITE = new THREE.Color(1, 1, 1);
 
 export class Weather {
@@ -77,8 +80,16 @@ export class Weather {
       for (const k of LERP_KEYS) this.mod[k] = this.from[k] + (this.to[k] - this.from[k]) * f;
       this.mod.snowFall = this.from.snowFall + (this.to.snow - this.from.snowFall) * f;
     }
-    // snow blankets the ground (and melts) slower than the flakes fall
-    this._snowAccum += (this.to.snow - this._snowAccum) * (1 - Math.exp(-dt / 6));
+    // Snow blankets the ground slower than the flakes fall, and melts slower
+    // still - asymmetric on purpose (2026-08-11, with src/snow.js). Snow arrives
+    // in hours and goes in days, and the two constants are what make that
+    // readable at this timescale: it settles over ~18 s and takes ~36 s to go.
+    // Since where it lies is now altitude- and aspect-dependent, the melt is not
+    // a uniform fade any more but a snowline RISING back up the mountain, so the
+    // valley clears in about 10 s while the high north faces are still white half
+    // a minute later - which is the phenomenon the user asked for.
+    const tau = this.to.snow > this._snowAccum ? SNOW_BUILD_TAU_S : SNOW_MELT_TAU_S;
+    this._snowAccum += (this.to.snow - this._snowAccum) * (1 - Math.exp(-dt / tau));
     this.mod.snow = this._snowAccum;
 
     const cu = this.clouds.material.uniforms;

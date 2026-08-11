@@ -460,6 +460,7 @@ const result = await page.evaluate(async () => {
     steep: (x, z) => 1700 + z * 0.7,
     high: () => 3600,
     wooded: () => 2500,
+    valley: () => 700, // below the snowline even in a full storm - see snowValley
   };
 
   async function stepRender({
@@ -512,6 +513,11 @@ const result = await page.evaluate(async () => {
     // call the difference footsteps.
     standingForest: await stepRender({ ground: STEP_GROUND.wooded, canopy: 0.6, moving: false }),
     snow: await stepRender({ ground: STEP_GROUND.flat, weather: { mod: { snow: 1 } } }),
+    // The same full storm, 1,000 m lower down. Since 2026-08-11 snow LIES by
+    // altitude, aspect and slope (src/snow.js) instead of everywhere at once, so
+    // the ear has to disagree with itself between these two rows or it is
+    // contradicting what the eye is being shown.
+    snowValley: await stepRender({ ground: STEP_GROUND.valley, weather: { mod: { snow: 1 } } }),
     wet: await stepRender({ ground: STEP_GROUND.flat, weather: { mod: { wet: 1 } } }),
   };
 
@@ -1043,6 +1049,10 @@ check(step.scree.surface === 'scree', `a 35-degree slope read as ${step.scree.su
 check(step.screeHigh.surface === 'scree', `3,600 m of rocky band read as ${step.screeHigh.surface}`);
 check(step.forest.surface === 'forest', `canopy 0.6 read as ${step.forest.surface}`);
 check(step.snow.surface === 'snow', `lying snow read as ${step.snow.surface}`);
+// Not "did it crunch" but "did it crunch in the right place": one storm, two
+// altitudes, and only the upper one is white.
+check(step.snowValley.surface === 'grass',
+  `in the same storm, 700 m of valley floor read as ${step.snowValley.surface} rather than bare grass`);
 check(step.wet.surface === 'wet', `wet ground read as ${step.wet.surface}`);
 // And that the surfaces actually sound different. Grass and scree share a ground
 // height and differ only in slope, so the wind behind them is identical.

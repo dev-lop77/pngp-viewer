@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { snowCoverAt } from './snow.js';
 
 // Ambient audio - the last piece of phase 6 (docs/ARCHITECTURE.md §7).
 //
@@ -612,10 +613,33 @@ export function createAudio({
     return (Math.atan(Math.hypot(hx, hz) / (2 * R)) * 180) / Math.PI;
   }
 
+  // How much snow is lying HERE, not how much has fallen on the park. Since
+  // 2026-08-11 snow lies by altitude, aspect and slope (src/snow.js), so the
+  // global weather level is the wrong question: in a storm that has whitened the
+  // ridge above, the valley floor is still bare, and crunching across it would
+  // contradict what the user can see. Same rule as the birdsong reading
+  // lighting.js's own `night` - one source, so the ear and the eye cannot drift.
+  //
+  // Aspect from two taps of the drawn surface, as the trees do. The slope term is
+  // left at 0 deliberately: 'snow' already wins over 'scree' in the priority
+  // order below, so passing it could only change the answer on ground steeper
+  // than 30 deg, where it would have said scree anyway.
+  function snowUnderfoot(x, z, groundY, level) {
+    const sample = samplers.sampleGroundHeight;
+    if (!(level > 0)) return 0;
+    let aspectZ = 0;
+    if (sample) {
+      const R = STEP_SLOPE_PROBE_M;
+      const grad = (sample(x, z - R) - sample(x, z + R)) / (2 * R); // -Z is north (§6)
+      if (Number.isFinite(grad)) aspectZ = grad / Math.hypot(1, grad);
+    }
+    return snowCoverAt({ elevM: groundY, aspectZ, level });
+  }
+
   // What is underfoot, in priority order: what has fallen on the ground beats
   // what grows on it, and what grows on it beats what it is made of.
   function surfaceAt(x, z, groundY, canopy, snow, wet) {
-    if (snow > SNOW_COVER || groundY > NIVAL_M) return 'snow';
+    if (snowUnderfoot(x, z, groundY, snow) > SNOW_COVER || groundY > NIVAL_M) return 'snow';
     if (wet > WET_COVER) return 'wet';
     if (canopy > FOREST_CANOPY) return 'forest';
     if (groundY > ROCKY_M || slopeDegrees(x, z) > SCREE_SLOPE_DEG) return 'scree';

@@ -525,6 +525,50 @@ Two things to know before editing those colours:
 so a future edit that breaks the mapping fails loudly instead of merely looking
 different.
 
+### Lying snow — `src/snow.js` (2026-08-11)
+
+The nival band above is *permanent* snow, and a fact about altitude alone.
+Weather snow is a different thing and lives in its own module, because three
+files have to agree about it and none of them owns it:
+
+| Reader | What it does with it |
+|---|---|
+| `terrain.js` | the ground colour, fragment shader |
+| `vegetation.js` | snow-laden trees, vertex shader |
+| `audio.js` | whether a footstep crunches, on the CPU |
+
+`weather.js` still owns *how much* snow has fallen and not yet melted — one
+number for the whole park, `mod.snow`, ramped by an accumulator (settles with a
+6 s time constant, melts with 12 s: snow arrives in hours and goes in days, and
+the asymmetry is what makes that readable at this timescale). `snow.js` owns the
+other half: given that number, **which ground is holding it**.
+
+That answer is a pure function of the terrain — a snowline descending from
+3,200 m to 900 m as the storm builds, offset per pixel by aspect (a north face
+behaves as if 320 m higher, scaled by its own steepness) and by a two-octave
+noise wobble, and cut to zero where the ground is too steep to hold anything.
+So:
+
+- **Nothing to save.** A deterministic map needs no history buffer and no entry
+  in `viewstate.js`; a restored or shared view recomputes it identically.
+- **One definition, three readers.** The maths is one GLSL snippet both shaders
+  inject (`snowGlsl()`) plus one JS twin for the ear (`snowCoverAt()`), so the
+  eye and the ear cannot drift apart — the same reason `lighting.js` exposes its
+  own `night` to the birdsong.
+- **The twin is exact except for the wobble**, which it takes as a parameter and
+  callers leave at 0: a chaotic hash cannot be reproduced across GLSL float32
+  and JS float64 (the same reason `wildlife.js` never ported the tree hash), so
+  the ear can disagree with the eye by at most `SNOW_NOISE_M` of effective
+  elevation, and only inside the margin.
+
+`tools/test-snow.mjs` measures rendered pixels against that twin, as a
+**bracket**: cover is monotonic in effective elevation, so evaluating the twin
+at both extremes of the wobble gives a strict interval the measurement must fall
+inside. `tools/dev/probe-snow.mjs` is the eye — and it pins the level under a
+clear sky, because switching the weather to Snowfall also drops a cloud deck,
+doubles the haze and fills the frame with falling particles, which is most of
+what a naive before/after screenshot actually measures.
+
 ## 6. Coordinate system & real-world scale
 
 **Decided 2026-07-28** (was TBD): local metric frame, 1 unit = 1 meter.
@@ -642,7 +686,14 @@ pngp-viewer/
 │                              reference, see §7
 │   ├── weather.js          Done, 2026-07-31. clear/clouds/storm(rain)/snow, an FBM cloud
 │                              deck plane sized to our real bbox + one GPU-driven
-│                              particle system that's rain or snow depending on mode: see §7
+│                              particle system that's rain or snow depending on mode: see §7.
+│                              Owns HOW MUCH snow has fallen and not yet melted (mod.snow,
+│                              6 s to settle / 12 s to melt); where it lies is snow.js
+│   ├── snow.js            Done, 2026-08-11. WHERE lying snow lies: a descending
+│                              snowline offset by aspect and slope, deterministic, colour
+│                              only. One GLSL snippet for terrain.js + vegetation.js and a
+│                              JS twin for audio.js's footsteps, so the eye and the ear
+│                              cannot disagree - see §5's "Lying snow"
 │   ├── water.js            rivers, lakes, waterfalls
 │   ├── poi.js              loads public/data/poi.json, one merged pickable `LineSegments`
 │                              draw call per category (§10) - a thin vertical line from the
@@ -739,7 +790,19 @@ pngp-viewer/
 │                              the mask at build time, which is why nothing here samples the
 │                              terrain gradient. Low-poly opaque cones, deliberately: no
 │                              alpha sorting, no texture asset, and correct from above,
-│                              which billboards are not once you can fly
+│                              which billboards are not once you can fly.
+│                              Snow-laden since 2026-08-11 (the user's own first
+│                              observation once the ground snow landed): the SAME
+│                              snowCover() the ground under a tree uses (§5), so a tree
+│                              cannot stand green on white ground, times a base-to-crown
+│                              gradient - the exposed crown carries a load the sheltered
+│                              lower branches do not, and that gradient is most of what
+│                              makes a flocked conifer read as one. Costs two extra height
+│                              taps per vertex for the aspect term, one texel either side
+│                              of a tap already being made; the exact normal's z would need
+│                              four, and leaving the east-west slope out of the
+│                              normalisation is worth ~5 m of effective elevation on ground
+│                              gentle enough to grow trees, against a term spanning 320 m
 │   ├── wildlife.js         Done, 2026-08-04 (phase 6). Ibex, chamois, marmots, foxes and
 │                              squirrels - the last two added the same day at the user's
 │                              request, and both are about behaviour: a species declares a
@@ -847,9 +910,12 @@ pngp-viewer/
 │                              The user chose a FIXED ~2 Hz instead, which is deliberately
 │                              a lie (a 2 m stride) and is the decision - calm over
 │                              consistent. Five surfaces from signals the scene already
-│                              has: snow (weather, or above the nival line) > wet > forest
+│                              has: snow (lying, or above the nival line) > wet > forest
 │                              floor (canopy mask) > scree (rocky band or slope > 30 deg)
-│                              > grass. Each is a burst of the same pink-noise buffer
+│                              > grass. Since 2026-08-11 the snow row asks snow.js how
+│                              much is lying HERE (§5), not how much has fallen on the
+│                              park: in one storm 1,700 m crunches and 700 m does not,
+│                              which is what the eye is being shown. Each is a burst of the same pink-noise buffer
 │                              through one filter; scree and forest add scattered grains
 │                              after the footfall. Silent in fly mode, which is why
 │                              controls is passed to update() - the camera cannot tell you,

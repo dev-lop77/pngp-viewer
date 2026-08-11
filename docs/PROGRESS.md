@@ -2,6 +2,144 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## Status as of 2026-08-11
+
+**Both things owed to the user are closed by their own verdict: "Test visivo ok,
+frame rate ok."** The snow on the ground looks right in their browser, and the
+frame-rate reading — the one number only they could take, open since late July —
+came back good. Nothing is waiting on them.
+
+They then opened their own deferred topic and decided it in one line: **the
+vegetation needs fixing, and yes to altitude + aspect + slope, deterministic,
+colour only.** Both are built.
+
+### Snow now lies somewhere, instead of everywhere
+
+`src/snow.js` (new) owns **where** snow lies; `weather.js` keeps owning **how
+much** has fallen. That split is the whole design, and the reason it is a module
+and not a few lines in `terrain.js` is that three files have to agree about it:
+the ground colour (fragment shader), the trees (vertex shader) and whether a
+footstep crunches (CPU). One GLSL snippet both shaders inject, one JS twin for
+the ear. Full writeup in `docs/ARCHITECTURE.md` §5, "Lying snow".
+
+A **descending snowline**, 3,200 m → 900 m as the storm builds, is the mechanism:
+it is the one piece of Alpine weather everybody recognises on sight, and it is
+what makes the altitude term visible rather than merely present. Per pixel it is
+offset by **aspect** (a north face behaves as if 320 m higher, scaled by its own
+steepness — six times the treeline's own shift, because for lying snow the effect
+really is that much stronger), wobbled by ±100 m of two-octave noise so the margin
+is not a contour line, and cut to zero on ground too steep to hold anything, which
+reuses the rock term already there.
+
+Deliberate choices worth keeping:
+
+- **900 m, not the DEM floor.** A line that always reached the bottom would be the
+  uniform whitening this replaces. A January storm routinely leaves the lowest
+  valleys bare, and now so does this one — measured: dense forest at 384 m never
+  whitens at all, at 2,318 m it whitens fully.
+- **300 m of blend.** At the steepest part of the ramp the line crosses a given
+  contour in about a second, so a narrow margin would read as a wipe passing over
+  the landscape rather than as snow settling.
+- **Melt is asymmetric**: 6 s to settle, 12 s to melt (`weather.js`). Snow arrives
+  in hours and goes in days. Combined with the line, the melt is no longer a
+  uniform fade but a snowline **rising** back up the mountain: the valley clears in
+  about 10 s while the high north faces are still white half a minute later, which
+  is the phenomenon the user asked for.
+- **Nothing is saved.** Deterministic means no history buffer and no entry in
+  `viewstate.js`; a shared link recomputes the same snow.
+
+**Trees are snow-laden** (`vegetation.js`), the gap the user named first. They read
+the **same** `snowCover()` as the ground under them — sharing it is the point, since
+a tree that decided for itself would stand green on white ground somewhere along
+the line, which is the original fault moved rather than fixed — times a
+base-to-crown gradient (0.3 → 0.85), because the exposed crown carries a load the
+sheltered lower branches do not and that gradient is most of what makes a flocked
+conifer read as one. Measured at a dense wood at 2,318 m: canopy luma 0.207 → 0.550
+with the ground behind it at 0.545, i.e. the trees now sit *with* the snowfield
+instead of against it.
+
+**The ear was changed too, and that was not optional**: `audio.js` asked the global
+weather level whether to crunch. Left alone, my own change would have created a new
+contradiction — bare summer ground underfoot, crunching. It now asks `snow.js` at
+the walker's position. One storm, two altitudes: 1,700 m reads `snow`, 700 m reads
+`grass`, both asserted in `tools/test-audio.mjs`.
+
+### What was measured, and the four things that went wrong first
+
+`tools/test-snow.mjs` (new, the eighth suite) measures rendered pixels against
+`snow.js`'s own CPU twin as a **bracket**: cover is monotonic in effective
+elevation, so evaluating the twin at both extremes of the ±100 m wobble gives a
+strict interval the measurement must fall inside. That is the honest form here —
+the wobble is a chaotic hash and cannot be reproduced across GLSL float32 and JS
+float64 (the `wildlife.js` tree-hash lesson), so an equality assertion would be a
+lie. Every point falls inside its bracket at every level, at 3,340 m, 2,050 m,
+1,126 m, on a cliff and on both faces of one ridge. **That single fact is also what
+proves the eye and the ear agree**, because the bracket is computed by the twin the
+ear uses.
+
+Four faults, all in the measuring and not one of them in the code:
+
+1. **A probe that read the WebGL canvas back with `drawImage()` reported 0.000
+   luma for every shot, snow and all.** The context has no
+   `preserveDrawingBuffer`, so after the frame is presented the buffer is empty —
+   and it says nothing about it. Measure the screenshot, which goes through the
+   compositor and sees what the user sees. Same shape as the `onBeforeCompile` and
+   `AudioParam.value` landmines: the readback lied while the output was right.
+2. **I inferred the snow level from the pixels and "found" a melt three times
+   faster than the constant I had just written.** The pixels were being dimmed by
+   the overcast preset, not cleared of snow. Reading the level from the holder
+   instead settled it in one run: 0.56 → 0.27 → 0.06, exactly τ=12 s. *Ask the
+   thing that knows* — third time this rule has paid on this project.
+3. **Switching the weather to Snowfall changes four things at once** — snow on the
+   ground, a cloud deck, 2.4× haze and a frame full of falling particles — so a
+   before/after screenshot of it measures mostly the last three. Worse, the
+   Snowfall preset *dims* the scene, so at a wooded vantage the full storm reads
+   **darker** (0.411) than the same snow under a clear sky (0.536). The probe now
+   pins the level under an untouched sky, which is the only isolation that works.
+4. **A one-line addition to the `__pngp` dev handle took the whole handle down**,
+   silently: `terrain` is not in scope there (it arrives from a promise), so the
+   ReferenceError killed the last statement `main.js` runs. The page loaded,
+   rendered and simply never published the handle. Getters now, like the wildlife
+   and the birds beside it.
+
+And one testing lesson of the usual kind: the aspect check first compared a north
+face at 2,058 m against a south face at 2,221 m, which differed in altitude and in
+steepness as well as in aspect — **three variables, one number**. The south face is
+now scanned for at the north face's own elevation, and the slope term is divided
+out. It then separated cleanly: 0.68 held against 0.04 at the same level.
+
+**Not measured, and I am not going to pretend otherwise**: the frame cost of the
+two extra height taps the trees now make per vertex. It is ~0.9 M texture fetches
+a frame, each one texel from a tap already being made and so cache-resident, but
+headless renders this scene at 1 fps with SwiftShader and cannot answer the
+question. The user's reading today was taken **before** this change.
+
+### How to resume
+
+Everything is committed and all **eight** suites pass (`test-snow.mjs` is new; the
+audio one still needs a **dev** server, `tools/dev/start-dev.sh`).
+
+1. **A look and a listen, and they are small ones.** The snow-laden trees and the
+   snowline are the kind of thing headless has been wrong about five times; the
+   fast way to see both is `Weather → Snowfall` and then watching the *edge* of the
+   white, not the middle. For the ear, walk in a wood during a storm and then in a
+   low valley — the crunch should stop.
+2. **Republish.** The site is now **five commits behind**. `tools/dev/deploy.sh`,
+   then poll the served `index.html` until it names the new bundle and run
+   `node tools/verify.mjs <public URL>` — "returns 200" proves nothing.
+3. **Knobs, if the snow wants tuning after a real look**: `SNOW_LINE_TOP_M` /
+   `SNOW_LINE_BOTTOM_M` (where the line starts and ends), `SNOW_LINE_BLEND_M` (how
+   soft the margin is), `SNOW_ASPECT_M` (how much a north face favours snow),
+   `SNOW_MELT_TAU_S` in `weather.js` (how long it lingers), and
+   `TREE_SNOW_BASE`/`TREE_SNOW_CROWN` in `vegetation.js` (how flocked the trees
+   look). All named constants, all documented where they sit.
+4. **The LOD residual is structural** and needs no more shader work: both fixes
+   were tried and measured worse (see 2026-08-10). Only `TILE_SEGMENTS` and
+   `SPLIT_FACTOR` remain, and both are frame-rate trades.
+
+Deferred by the user, **do not re-raise unprompted**: the mobile pass and the
+satellite/orthophoto basemap.
+
 ## Status as of 2026-08-10
 
 **The footsteps were judged by ear, three real faults came back with the verdict,
@@ -534,7 +672,8 @@ did.** So it snowed, it sounded like snow, the air went white - and the ground i
 was supposedly lying on kept its summer colour.
 
 **Fixed** with the pattern `forest.js` already uses: a shared uniform holder
-(`TERRAIN_SNOW`) driven by `main.js` each frame, so `terrain.js` still knows
+(`TERRAIN_SNOW` — renamed `SNOW_LEVEL` and moved into `src/snow.js` the next day,
+see 2026-08-11) driven by `main.js` each frame, so `terrain.js` still knows
 nothing about `weather.js`. The mix goes on last, over rock and forest floor
 alike, gated by the **same slope term the rock already uses** - what is too steep
 for soil is too steep for snow, which is what the existing comment there had

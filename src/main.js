@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { loadTerrain, TERRAIN_SNOW } from './terrain.js';
+import { loadTerrain } from './terrain.js';
+import { SNOW_LEVEL } from './snow.js';
 import { loadTrails } from './trails.js';
 import { loadPOI, poiInfoHTML } from './poi.js';
 import { loadWater } from './water.js';
@@ -145,8 +146,10 @@ creditLines.modified =
 
 let originReady = false; // geo.js's setLocalOrigin() runs inside loadTerrain() - localToWGS84() throws before that
 let terrainUpdate = null; // quadtree LOD needs the camera every frame (src/terrain.js)
+let terrainSurface = null; // dev handle only, see the __pngp block at the end
 const terrainPromise = loadTerrain().then((result) => {
   const { object, manifest, sampleRenderedHeight, update } = result;
+  terrainSurface = result;
   scene.add(object);
   terrainUpdate = update;
   terrainUpdate(camera); // pick the first tile set before the opening frame, not after it
@@ -530,6 +533,20 @@ renderer.domElement.addEventListener('click', () => {
 if (import.meta.env.DEV) {
   window.__pngp = {
     camera, controls, scene, renderer, lighting, audio,
+    // The drawn surface and the grid it is drawn from. A probe that wants to
+    // stand somewhere chosen by terrain (dense canopy, a north face, a given
+    // elevation) needs both, and the alternative is a second loadTerrain() that
+    // re-decodes 19 MB to answer a question the running page already knows -
+    // or, worse, bbox numbers copied into a tool, which is the kind of thing
+    // that went stale the one time this bbox was rebuilt.
+    //
+    // Getters, like the wildlife and the birds below: the terrain arrives from a
+    // promise, so there is no `terrain` in scope out here. Naming one directly
+    // is a ReferenceError that takes the whole module down with it, and since
+    // this block is the last thing main.js runs, the symptom is a page that
+    // loads, renders and simply never publishes the handle.
+    getGroundHeight: () => terrainSurface?.sampleRenderedHeight,
+    getManifest: () => terrainSurface?.manifest,
     getPoiIndex: () => poiIndex,
     getWildlife: () => wildlife, // loads late, so a getter rather than the value
     getBirds: () => birds,
@@ -743,12 +760,14 @@ renderer.setAnimationLoop(() => {
   wildlife?.update(timer.getDelta(), camera);
   birds?.update(timer.getDelta(), camera);
   lighting.applyState(); // re-grades every frame so an in-progress weather transition stays live
-  // Snow on the ground. weather.js has accumulated this since phase 4 and both
-  // the haze and the footsteps have always read it; the terrain never did, so it
-  // snowed without the ground ever going white (found 2026-08-10 by the user
-  // simply watching and waiting). Driven here rather than inside terrain.js so
-  // the terrain keeps knowing nothing about the weather.
-  TERRAIN_SNOW.value = weather?.mod.snow ?? 0;
+  // How much snow has fallen and not yet melted. weather.js has accumulated this
+  // since phase 4 and both the haze and the footsteps have always read it; the
+  // terrain never did, so it snowed without the ground ever going white (found
+  // 2026-08-10 by the user simply watching and waiting). Driven here rather than
+  // inside terrain.js so nothing downstream has to know about weather.js: this
+  // one holder now feeds the ground, the trees and the footsteps alike
+  // (src/snow.js decides which of them is actually snowy, and where).
+  SNOW_LEVEL.value = weather?.mod.snow ?? 0;
 
   fpsFrames += 1;
   fpsAccum += timer.getDelta();

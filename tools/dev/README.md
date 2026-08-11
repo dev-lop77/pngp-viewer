@@ -50,6 +50,21 @@ Both start scripts:
   fly speed is `controls.js`'s business) and pitches down, which is the
   only way to judge what reads at landscape scale — forest cover, LOD,
   band transitions.
+- `probe-snow.mjs ["Place"] [--wooded=elevM] [--climb=m] [--back=m]` — watches
+  lying snow settle and melt in the real page. Shoots two series: `lying-*`
+  pins the snow level under a **clear sky**, which is the only way to see what
+  the snow itself does (switching the weather to Snowfall also drops a cloud
+  deck, doubles the haze and fills the frame with falling particles — the first
+  version of this probe could not tell any of that from snow on the ground), and
+  `build-*`/`melt-*` shoot the real weather over real wall-clock time. Level is
+  read from `snow.js`'s own holder per shot, never inferred from the pixels.
+  `--wooded=1800` stands in the densest canopy near that elevation instead of at
+  a named place, which is the only way to see the trees at all — they draw within
+  440 m of the camera. Two things it learned the hard way: reading a WebGL canvas
+  back with `drawImage()` after the frame is presented returns an empty buffer
+  *silently* (it reported 0.000 luma for every shot, snow and all — measure the
+  screenshot instead), and at ~1 fps the level read just before a shot is up to
+  one frame ahead of the pixels, so only the pinned rows are exact.
 - `solve-albedo.mjs [hex ...]` — inverts BRDF → lights → exposure → ACES
   to turn "what this should look like on screen" into the albedo hex to
   put in the code. Needed because the two are far apart here: Lambert
