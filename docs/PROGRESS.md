@@ -163,6 +163,12 @@ guess.
 
 ### How to resume
 
+**The session closed with nothing owed, nothing unjudged and the live site level
+with `main`** — the first time all three have been true at once. What is left is
+only what the user might *want*: the LOD normal blend (measured a dead end, see
+2026-08-10), and tuning the snow constants if living with it suggests different
+numbers. Both are theirs to raise.
+
 Everything is committed and **all ten suites pass**: `audio`, `birds`,
 `controls-focus`, `mouselook`, `rendered-height`, `snow`, `terrain-albedo`,
 `vegetation`, `viewstate`, `wildlife`. The audio one still needs a **dev** server
@@ -176,11 +182,12 @@ count is ten — counted with `ls tools/test-*.mjs`, not by adding one to the nu
 last written down. Same failure mode as the bundle size that had drifted to
 792 kB while the doc still said 774.
 
-1. **A listen, and it is a small one — the eye is already satisfied.** The user
-   looked and approved ("ho controllato, direi ok"), including on the live site.
-   What nobody has judged by ear is the footstep surface following the snowline:
-   walk in a wood during a storm and then in a low valley, and the crunch should
-   stop. Everything else about the audio has been approved since 2026-08-10.
+1. ~~**A listen.**~~ **Done, and it was the last unjudged thing in the session:
+   "verificato come ok."** The user walked a storm from a wood down into a low
+   valley and the crunch stopped where the snowline says it should. Every part of
+   today's work — the ground, the trees, the footsteps, the fps and the keys — has
+   now been judged by the user's own eye or ear. **Nothing is owed and nothing is
+   unjudged.**
 2. ~~**Republish.**~~ **Done the same day, by the user, and verified** — the live
    site is level with `main` at `2790083`, the first time since `ff33294`. The new
    bundle took ~20 s to turn over (four polls still served the old one, which is
@@ -189,9 +196,15 @@ last written down. Same failure mode as the bundle size that had drifted to
    site** by driving the weather `<select>`, since a production build has no
    `window.__pngp` to pin anything with: ground luma 0.307 → 0.487 → 0.307 across
    clear → Snowfall → clear, with the trees pale rather than green.
-   **The dropdown fix below landed after that**, so the live site is one commit
-   behind again — worth a second republish, since the bug it fixes is one a
-   visitor meets by touching the weather control.
+   **Then a second republish**, for the dropdown fix, which the user ran the same
+   day. Verified the same way and one step further: the bundle turned over after
+   ~100 s this time (`index-n6LF9Rk3.js`, byte-identical to the local build, so
+   that build is deterministic), `verify.mjs` was clean, and the fix itself was
+   exercised **on the live site** — where there is no `window.__pngp`, so position
+   came from the HUD's nearest-POI readout, which is all a visitor has. Walking
+   after the weather picker and after clicking the time slider both moved the
+   camera (20 → 1 → 25 → 47 m past Le Pont), and `S` with the picker focused left
+   the weather alone. **The live site is level with `main` at `5b4b96c`.**
 3. **Knobs, if the snow wants tuning after a real look**: `SNOW_LINE_TOP_M` /
    `SNOW_LINE_BOTTOM_M` (where the line starts and ends), `SNOW_LINE_BLEND_M` (how
    soft the margin is), `SNOW_ASPECT_M` (how much a north face favours snow),
