@@ -731,7 +731,22 @@ pngp-viewer/
 │                              than strafe, with strafing moved to Q/E. Together those
 │                              make keyboard-only navigation complete. Built on three's own PointerLockControls addon (not
 │                              hand-rolled mouselook) - see §7 for why and the real bug this
-│                              exposed in the old POI marker sizing
+│                              exposed in the old POI marker sizing.
+│                              Since movement is not gated on pointer lock, the only thing
+│                              standing between a keystroke and the camera is
+│                              isTypingTarget(), and it has to be exactly right: it means
+│                              "somebody is writing words" (the POI search box), NOT "a form
+│                              control has focus". It was the latter until 2026-08-11, which
+│                              silently killed W/A/S/D after any use of the time slider
+│                              (input type=range) or the weather picker (select) - the user
+│                              found it. Exported, so main.js's F/G/B/M handlers share the
+│                              one definition rather than the three copies they had.
+│                              A focused control now KEEPS focus, deliberately: arrow keys
+│                              still drive the slider and the picker, and the movement
+│                              handler preventDefault()s what it consumes so a letter cannot
+│                              also reach a <select> as type-ahead - which it did, silently
+│                              switching the weather to Snowfall when you walked backwards.
+│                              Guarded by tools/test-controls-focus.mjs
 │   ├── viewstate.js        Done, 2026-08-05. Saving, restoring and sharing where you
 │                              are - agreed with the user in the discussion they asked
 │                              for, and deliberately THREE mechanisms rather than one:

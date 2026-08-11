@@ -207,7 +207,14 @@ export class WalkFlyControls {
 
     window.addEventListener('keydown', (e) => {
       if (isTypingTarget(document.activeElement)) return;
-      if (e.code === 'KeyF') { this.mode = this.mode === 'walk' ? 'fly' : 'walk'; return; }
+      if (e.code === 'KeyF') {
+        // Cancelled for the same reason the movement keys below are: a focused
+        // <select> would otherwise take it as type-ahead as well as us taking it
+        // as a mode toggle.
+        e.preventDefault();
+        this.mode = this.mode === 'walk' ? 'fly' : 'walk';
+        return;
+      }
       if (MOVE_KEYS.has(e.code)) {
         // Space scrolls the page by default, and movement now works without
         // pointer lock (see update()), so the browser's own handling is no
@@ -338,6 +345,37 @@ export class WalkFlyControls {
   }
 }
 
-function isTypingTarget(el) {
-  return !!el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA');
+// Input types that swallow characters, because somebody is writing words into
+// them: the POI search box is the one this exists for - typing "Cogne" must not
+// walk the camera across the park.
+const TEXT_INPUT_TYPES = new Set([
+  'text', 'search', 'url', 'email', 'tel', 'password', 'number',
+  'date', 'time', 'datetime-local', 'month', 'week',
+]);
+
+// Whether keystrokes belong to the page rather than to the camera. Exported so
+// main.js's own key handlers (F/G/B/M) share this one definition instead of
+// keeping copies of it - there were three, and they would have had to be fixed
+// three times.
+//
+// This used to be `INPUT || SELECT || TEXTAREA`, which is wrong twice over and
+// the user found it on 2026-08-11: the time-of-day slider is an
+// `<input type="range">` and the weather picker is a `<select>`, so touching
+// either one silently killed W/A/S/D until something else took the focus - and
+// clicking the scene is what took it, which is why "click the screen and they
+// come back" was the symptom. Neither control has anything to do with typing.
+//
+// A form control keeping focus is fine now, and better than blurring it: arrow
+// keys still adjust the slider and still cycle the weather, which is how a
+// keyboard user drives them. The letter keys cannot reach a focused <select> as
+// type-ahead because the movement handler preventDefault()s the ones it consumes
+// - checked, not assumed: with the weather picker focused, 'S' would otherwise
+// match "Snowfall" and walking backwards would change the weather
+// (tools/test-controls-focus.mjs asserts it does not).
+export function isTypingTarget(el) {
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  if (el.tagName === 'TEXTAREA') return true;
+  if (el.tagName !== 'INPUT') return false;
+  return TEXT_INPUT_TYPES.has(el.type);
 }

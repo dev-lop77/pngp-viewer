@@ -18,7 +18,7 @@ import { localToWGS84, wgs84ToLocal } from './geo.js';
 import {
   headingDegrees, compassLabel, pitchDegrees, nearestPOI, directionFromHeadingPitch,
 } from './nav.js';
-import { WalkFlyControls, EYE_HEIGHT_M } from './controls.js';
+import { WalkFlyControls, EYE_HEIGHT_M, isTypingTarget } from './controls.js';
 import {
   buildHash, parseHash, load as loadViewState, save as saveViewState,
 } from './viewstate.js';
@@ -559,8 +559,7 @@ if (import.meta.env.DEV) {
   let goSpecies = 0;
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'KeyG' || !wildlife) return;
-    const el = document.activeElement;
-    if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA')) return;
+    if (isTypingTarget(document.activeElement)) return;
     const name = wildlife.species[goSpecies % wildlife.species.length];
     goSpecies += 1;
     const found = wildlife.findNearest(name, camera.position.x, camera.position.z);
@@ -587,8 +586,7 @@ if (import.meta.env.DEV) {
   let birdSpecies = 0;
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'KeyB' || !birds) return;
-    const el = document.activeElement;
-    if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA')) return;
+    if (isTypingTarget(document.activeElement)) return;
     const name = birds.species[birdSpecies % birds.species.length];
     birdSpecies += 1;
     const found = birds.findNearest(name, camera.position.x, camera.position.z);
@@ -639,15 +637,19 @@ function setAudioEnabled(on) {
 }
 envAudio.addEventListener('change', () => {
   setAudioEnabled(envAudio.checked);
-  // Same reason the credits toggle blurs itself: controls.js ignores the
-  // movement keys while a form control has focus, so leaving this checked box
-  // focused would silently stop W/S working.
+  // Same reason the credits toggle blurs itself, and it is NOT the reason this
+  // comment used to give ("controls.js ignores the movement keys while a form
+  // control has focus"): that was true of every control until 2026-08-11 and is
+  // now true of none of them. What is still true is narrower and only applies to
+  // a checkbox and a button - Space is a movement key, controls.js cancels it,
+  // and Space is also how you toggle a focused checkbox. So this one hands focus
+  // back; the weather picker and the time slider deliberately do not, because
+  // keeping focus is how their arrow keys work and no movement key collides.
   envAudio.blur();
 });
 window.addEventListener('keydown', (event) => {
   if (event.code !== 'KeyM') return;
-  const el = document.activeElement;
-  if (el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA')) return;
+  if (isTypingTarget(document.activeElement)) return;
   setAudioEnabled(!audio.enabled);
 });
 // The sound setting is a preference, not part of the view: it is restored from

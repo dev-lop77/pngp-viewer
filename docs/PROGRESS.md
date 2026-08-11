@@ -7,7 +7,8 @@ Read this first at the start of each session. Update it before ending one.
 **Both things owed to the user are closed by their own verdict: "Test visivo ok,
 frame rate ok."** The snow on the ground looks right in their browser, and the
 frame-rate reading — the one number only they could take, open since late July —
-came back good. Nothing is waiting on them.
+came back good, then **32 fps steady on a re-check after the day's work**. Nothing
+is waiting on them.
 
 They then opened their own deferred topic and decided it in one line: **the
 vegetation needs fixing, and yes to altitude + aspect + slope, deterministic,
@@ -66,7 +67,7 @@ the walker's position. One storm, two altitudes: 1,700 m reads `snow`, 700 m rea
 
 ### What was measured, and the four things that went wrong first
 
-`tools/test-snow.mjs` (new, the eighth suite) measures rendered pixels against
+`tools/test-snow.mjs` (new) measures rendered pixels against
 `snow.js`'s own CPU twin as a **bracket**: cover is monotonic in effective
 elevation, so evaluating the twin at both extremes of the ±100 m wobble gives a
 strict interval the measurement must fall inside. That is the honest form here —
@@ -108,25 +109,89 @@ steepness as well as in aspect — **three variables, one number**. The south fa
 now scanned for at the north face's own elevation, and the slope term is divided
 out. It then separated cleanly: 0.68 held against 0.04 at the same level.
 
-**Not measured, and I am not going to pretend otherwise**: the frame cost of the
-two extra height taps the trees now make per vertex. It is ~0.9 M texture fetches
-a frame, each one texel from a tap already being made and so cache-resident, but
-headless renders this scene at 1 fps with SwiftShader and cannot answer the
-question. The user's reading today was taken **before** this change.
+**The one number headless could not answer, answered by the user the same day:
+"L'FPS è fisso a 32 come prima, per me è ottimo."** That was asked for explicitly
+as a re-check *after* the change, because their first reading predated it — so the
+two extra height taps the trees now make per vertex (~0.9 M texture fetches a
+frame, each one texel from a tap already being made and so cache-resident) cost
+nothing measurable on real hardware. **32 fps steady is also the first hard
+frame-rate number since late July**, and it stands with vegetation, wildlife,
+birds, audio, snow and snow-laden trees all live.
+
+### The movement keys, killed by a dropdown
+
+Reported by the user the same day, after the fps reading: **changing the time of
+day or the weather stopped W/A/S/D working until they clicked the scene.** Their
+own description contained the diagnosis — "if I then press ESC they keep working" —
+because clicking the scene is what moved the focus.
+
+One predicate, `controls.js`'s `isTypingTarget()`, treated **every `INPUT` and
+`SELECT`** as "somebody is typing". The time-of-day control is an
+`<input type="range">` and the weather picker is a `<select>`, so touching either
+one swallowed every movement key from then on. Movement has not been gated on
+pointer lock since 2026-08-03, so that predicate is the *only* thing standing
+between a keystroke and the camera, and it has to mean what it says: somebody is
+writing words, which is the POI search box and nothing else.
+
+**It had been patched twice before, one control at a time.** The credits button and
+the sound checkbox both call `blur()` on themselves, and the comment on the second
+one named this exact cause — so the workaround was applied to two of the four
+controls and forgotten on the two the user found. That is why this is fixed at the
+predicate and asserted, rather than given a third `blur()`.
+
+Two things worth keeping:
+
+- **A focused control now keeps focus, on purpose.** Blurring it would have been
+  the smaller change, but arrow keys are how a keyboard user drives a slider and a
+  picker, and blurring on `change` takes that away. The two controls that still
+  blur have a real reason the others do not: **Space** is a movement key, and Space
+  is also how you toggle a focused checkbox or re-press a focused button.
+- **The old code did not merely swallow the key — it did something else with it.**
+  Standing on the fixed test with the predicate reverted: `S` with the weather
+  picker focused walked 0.0 m *and switched the weather to Snowfall*, because a
+  `<select>` takes letters as type-ahead and "Snowfall" starts with S. The
+  `preventDefault()` the fix relies on was therefore not a theory; `tools/test-controls-focus.mjs`
+  asserts it.
+
+`tools/test-controls-focus.mjs` (new) drives the real page, and two
+disciplines made it worth having. It **asserts the focus it believes it has set**,
+because the first version used `page.selectOption()` alone — which does not leave
+the element focused, so the case reproduced nothing and passed for free. And it
+was **run against the reverted predicate** to confirm it fails: 3 checks, including
+the user's exact "moved 0.0 m". A regression test never run against the bug is a
+guess.
 
 ### How to resume
 
-Everything is committed and all **eight** suites pass (`test-snow.mjs` is new; the
-audio one still needs a **dev** server, `tools/dev/start-dev.sh`).
+Everything is committed and **all ten suites pass**: `audio`, `birds`,
+`controls-focus`, `mouselook`, `rendered-height`, `snow`, `terrain-albedo`,
+`vegetation`, `viewstate`, `wildlife`. The audio one still needs a **dev** server
+(`tools/dev/start-dev.sh`); the rest run against either.
 
-1. **A look and a listen, and they are small ones.** The snow-laden trees and the
-   snowline are the kind of thing headless has been wrong about five times; the
-   fast way to see both is `Weather → Snowfall` and then watching the *edge* of the
-   white, not the middle. For the ear, walk in a wood during a storm and then in a
-   low valley — the crunch should stop.
-2. **Republish.** The site is now **five commits behind**. `tools/dev/deploy.sh`,
-   then poll the served `index.html` until it names the new bundle and run
-   `node tools/verify.mjs <public URL>` — "returns 200" proves nothing.
+**And a correction to carry, since it is the kind that survives by being repeated:
+this doc has said "all seven suites pass" since 2026-08-10 and there were eight.**
+The enumeration on 2026-08-07 lists seven names and quietly omits
+`test-mouselook.mjs`, which exists and passes. Two suites landed today, so the
+count is ten — counted with `ls tools/test-*.mjs`, not by adding one to the number
+last written down. Same failure mode as the bundle size that had drifted to
+792 kB while the doc still said 774.
+
+1. **A listen, and it is a small one — the eye is already satisfied.** The user
+   looked and approved ("ho controllato, direi ok"), including on the live site.
+   What nobody has judged by ear is the footstep surface following the snowline:
+   walk in a wood during a storm and then in a low valley, and the crunch should
+   stop. Everything else about the audio has been approved since 2026-08-10.
+2. ~~**Republish.**~~ **Done the same day, by the user, and verified** — the live
+   site is level with `main` at `2790083`, the first time since `ff33294`. The new
+   bundle took ~20 s to turn over (four polls still served the old one, which is
+   why "returns 200" proves nothing), `tools/verify.mjs` reported webgl2 and no
+   errors, and the thing the deploy existed to ship was measured **on the live
+   site** by driving the weather `<select>`, since a production build has no
+   `window.__pngp` to pin anything with: ground luma 0.307 → 0.487 → 0.307 across
+   clear → Snowfall → clear, with the trees pale rather than green.
+   **The dropdown fix below landed after that**, so the live site is one commit
+   behind again — worth a second republish, since the bug it fixes is one a
+   visitor meets by touching the weather control.
 3. **Knobs, if the snow wants tuning after a real look**: `SNOW_LINE_TOP_M` /
    `SNOW_LINE_BOTTOM_M` (where the line starts and ends), `SNOW_LINE_BLEND_M` (how
    soft the margin is), `SNOW_ASPECT_M` (how much a north face favours snow),
