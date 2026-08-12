@@ -23,8 +23,10 @@ import { chromium } from 'playwright';
 import { decode } from 'fast-png';
 import {
   GRASS, SHRUB, SHRUB_SHARE, BLADES_PER_TUFT, GRASS_TINT, SHRUB_TINT,
-  GRASS_SINK_FRACTION, GRASS_MIN_H, GRASS_MAX_H, coverLattice, shrubShareAt,
+  GRASS_SINK_FRACTION, GRASS_MIN_H, GRASS_MAX_H, COVER_GRID_SEGMENTS,
+  coverLattice, shrubShareAt,
 } from '../src/groundcover.js';
+import { TILE_SEGMENTS, MAX_DEPTH } from '../src/terrain.js';
 import {
   ELEV_MIN_M, ELEV_MAX_M, COVER_MIN, COVER_MAX, FOUND_RADIUS_M,
 } from '../src/edelweiss.js';
@@ -107,6 +109,19 @@ check(shrubShareAt(200) === SHRUB_SHARE[0][1] && shrubShareAt(9000) === 0,
   'below the first node it holds, above the last it is zero - so nothing is dwarf shrub on a summit');
 check(Math.max(...SHRUB_SHARE.map(([, v]) => v)) < 1,
   'the belt never claims ALL the cover is shrub, so grass exists at every elevation it does');
+
+// THE GRID THE COVER STANDS ON MUST BE THE TERRAIN'S FINEST ONE. This is the
+// invariant behind the defect the user found on their first look: the shader used to
+// sample the height TEXTURE, which is the bilinear surface, while the terrain draws
+// flat triangles between the same vertices. Measured at their own vantage, within
+// 25 m: mean +0.18 m, p95 +1.56 m, worst +3.73 m, and 47% of tufts floating by more
+// than their whole height - with the error on both signs, so no sink could absorb it.
+// The shader now interpolates the same triangle heightfield.js does, on this grid,
+// and if MAX_DEPTH or TILE_SEGMENTS ever moves without this following, everything
+// starts floating again silently.
+check(COVER_GRID_SEGMENTS === TILE_SEGMENTS * 2 ** MAX_DEPTH,
+  `the cover samples the terrain's own finest grid (${COVER_GRID_SEGMENTS} segments)`,
+  `terrain.js gives ${TILE_SEGMENTS * 2 ** MAX_DEPTH}`);
 
 // The bug that rendered nothing at all, in a form that cannot come back: a sink
 // expressed as a FRACTION of the plant's own height can never bury it, whereas the

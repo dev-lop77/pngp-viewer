@@ -610,6 +610,11 @@ if (import.meta.env.DEV) {
     // this block is the last thing main.js runs, the symptom is a page that
     // loads, renders and simply never publishes the handle.
     getGroundHeight: () => terrainSurface?.sampleRenderedHeight,
+    // The TRUE bilinear height as well as the drawn one. They differ wherever the
+    // tile grid is coarser than the data, and anything placed in a shader samples
+    // the former while the eye sees the latter - so a probe needs both to tell
+    // "floating" from "correct".
+    getBilinearHeight: () => terrainSurface?.sampleHeight,
     getManifest: () => terrainSurface?.manifest,
     getPoiIndex: () => poiIndex,
     getWildlife: () => wildlife, // loads late, so a getter rather than the value

@@ -845,6 +845,24 @@ shapes recur:
    park** — the tallest blade's tip sat 1 cm below ground. No error, no warning,
    0.00% of pixels changed everywhere. The sink is now a *fraction* of the plant's
    own height, which cannot make that mistake.
+   **And that was the wrong lesson to stop at.** The comment written at the time
+   claimed the residual disagreement was "bounded, because the cover is only drawn
+   within 50 m where the LOD is at its finest" — asserted, not measured. The user
+   found it on their first look: *"erba e cespugli galleggiano in aria."* Measured at
+   their own vantage, over 784 points within 25 m, bilinear minus drawn came to
+   **mean +0.18 m, p95 +1.56 m, worst +3.73 m, and −0.64 m at p05** — so 47% of tufts
+   floated by more than their whole height, and because the error has *both* signs no
+   sink of any size could have absorbed it. The fix is to stop sampling the wrong
+   surface: `drawnElevation()` quantises to the terrain's finest tile grid and
+   interpolates the same triangle `sampleRenderedHeightfield()` does, which
+   `tools/test-rendered-height.mjs` measures as within 0.05 m of the drawn geometry.
+   It costs four taps where the old version used three, and the aspect comes out
+   *exact* rather than z-only, because the same four corners give both gradients.
+   The grid is asserted against `TILE_SEGMENTS × 2^MAX_DEPTH` rather than copied, so
+   changing the terrain's LOD cannot silently lift the vegetation off it again.
+   (The trees have the same disagreement and hide it under a 1.5 m sink because they
+   are 5–16 m tall. Dropping that sink in favour of this function is a possible
+   follow-up, not done.)
 3. **An absolute splay.** 0.3 m of outward lean on a 0.2 m blade is a starfish lying
    on the ground, not a spray standing in it. The lean is now a fraction of height,
    carried as its own attribute *because* the base width is absolute and the two

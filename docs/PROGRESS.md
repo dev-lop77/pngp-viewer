@@ -97,6 +97,48 @@ and 0.26 m it came to 54.08, leaving an 8 cm band where slots duplicate on one s
 and gap on the other. The lattice now divides the window by the count and hands the
 shader that pitch.
 
+### The user found the sixth, and it was the one that mattered
+
+They opened the viewer, sent a share link, and wrote: **"erba e cespugli galleggiano
+in aria."** They were right, and the defect was mine twice over — once in the code
+and once in a comment that claimed it could not happen.
+
+`terrain.js` draws tiles whose *vertices* sit at bilinear heightfield values and
+whose surface between them is a **flat triangle**. A shader sampling the texture gets
+the bilinear value instead — a curved surface through the same vertices — so on a
+convex cell it sits above the drawn triangle. Measured at their own vantage, over 784
+points within 25 m of the camera, bilinear minus drawn:
+
+| | |
+|---|---|
+| mean | **+0.18 m** |
+| p95 | **+1.56 m** |
+| worst | **+3.73 m** |
+| p05 | **−0.64 m** |
+
+Against blades 0.1–0.28 m tall, **47% floated by more than their whole height** — and
+since the error has both signs, no constant sink could ever have absorbed it. The
+comment I had written said the residual was "bounded, because the cover is only drawn
+within 50 m, where the LOD is at its finest". That was reasoning, not a measurement,
+and it was wrong: the finest LOD cell is still 20.5 m of flat triangle.
+
+The fix samples the right surface. `drawnElevation()` quantises to the terrain's
+finest tile grid and interpolates the same triangle `heightfield.js`'s
+`sampleRenderedHeightfield()` does — the function the walking camera, the POI markers
+and the flowers already stand on, and which `tools/test-rendered-height.mjs` measures
+as within 0.05 m of the drawn geometry. Four taps instead of three, and the aspect is
+now **exact** instead of z-only, because the same four corners give both gradients.
+The grid is asserted against `TILE_SEGMENTS × 2^MAX_DEPTH` in the test rather than
+copied, so moving the terrain's LOD cannot lift the vegetation off it again in
+silence. Verified by re-shooting their exact view at pitch −28°, −35° and −60°:
+every base is seated, and nothing is over-corrected into the ground.
+
+**The lesson is not "measure more", it is narrower than that.** Both the burial bug
+and this one came from copying a solution — the trees' 1.5 m sink — to a case whose
+scale is different by an order of magnitude, and then *explaining away* the residual
+instead of measuring it. The trees hide the same disagreement because they are
+5–16 m tall.
+
 ### Two instrument lessons
 
 **A pass is the worst place to stand to look at the ground.** The probe picked a

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { attachAtmo } from './atmosphere.js';
 import { BASEMAP, BASEMAP_MIX, BASEMAP_SCALE, basemapGlsl } from './basemap.js';
 import { LANDCOVER_MASK } from './landcover.js';
+import { TILE_SEGMENTS, MAX_DEPTH } from './terrain.js';
 import { SNOW_LEVEL, snowGlsl, snowColorGlsl } from './snow.js';
 
 // Grass and shrubs (2026-08-12) - the user's own topic, and the thing the ground
@@ -143,6 +144,34 @@ const SHRUB_MAX_H = 0.55;
 const SHRUB_SPREAD_MIN = 1.1; // radius as a multiple of height
 const SHRUB_SPREAD_MAX = 1.7;
 
+// THE SURFACE THE TERRAIN ACTUALLY DRAWS, which is not the one the height texture
+// holds - and getting this wrong is what made the user's first look report grass and
+// shrubs "galleggiano in aria".
+//
+// terrain.js draws a quadtree of tiles whose VERTICES sit at bilinear heightfield
+// values, and whose surface between them is a flat triangle. A shader sampling the
+// texture gets the bilinear value instead, which is a curved surface through those
+// same vertices - so on a convex cell it sits ABOVE the drawn triangle and on a
+// concave one below. Measured at the user's own vantage, over 784 points within 25 m:
+// mean +0.18 m, p95 +1.56 m, worst +3.73 m, and -0.64 m at p05. Against blades
+// 0.1-0.28 m tall, 47% of them floated by more than their whole height, and because
+// the error has BOTH signs no constant sink can absorb it.
+//
+// So the placement samples the drawn surface instead: quantise to the terrain's
+// finest tile grid, take its four corner heights, and interpolate the same triangle
+// heightfield.js's sampleRenderedHeightfield() does - the function the walking
+// camera, the POI markers and the flowers already stand on, which
+// tools/test-rendered-height.mjs measures as within 0.05 m of the drawn geometry.
+//
+// It costs FOUR taps of the height texture where the old version used three (one
+// for the height, two for the aspect), because the same four corners give both
+// gradients - so the aspect comes out exact rather than as the z-only
+// approximation vegetation.js documents.
+//
+// The grid must be the terrain's own finest one, which is asserted rather than
+// copied: tools/test-groundcover.mjs fails if MAX_DEPTH or TILE_SEGMENTS moves.
+const COVER_GRID_SEGMENTS = TILE_SEGMENTS * 2 ** MAX_DEPTH;
+
 // Sunk as a FRACTION of its own height, not by an absolute depth - and this is
 // the one number in this file that was got badly wrong first, so it is worth the
 // paragraph.
@@ -249,7 +278,7 @@ export const GROUNDCOVER_DENSITY = { value: 1 };
 // rather than a second copy that could drift from them.
 export {
   GRASS, SHRUB, SHRUB_SHARE, BLADES_PER_TUFT, SHRUB_TRIANGLES, GRASS_TINT, SHRUB_TINT,
-  GRASS_SINK_FRACTION, GRASS_MIN_H, GRASS_MAX_H,
+  GRASS_SINK_FRACTION, GRASS_MIN_H, GRASS_MAX_H, COVER_GRID_SEGMENTS,
 };
 
 function glsl(n) {
@@ -426,7 +455,6 @@ function cushionGeometry() {
 function createLayer({ kind, layer, manifest, heightTexture }) {
   const { xmin, ymin, xmax, ymax } = manifest.bboxCrsUnits;
   const { min: elevMin, max: elevMax } = manifest.elevationRangeM;
-  const { y: resY } = manifest.resolutionMPerPx;
   const worldWidth = xmax - xmin;
   const worldDepth = ymax - ymin;
   const isGrass = kind === 'grass';
@@ -478,6 +506,33 @@ ${basemapGlsl()}
       vec2 s = texture2D( uHeightMap, uv ).rg;
       return ( ( s.r * 256.0 + s.g ) / 257.0 ) * ${glsl(elevMax - elevMin)} + ${glsl(elevMin)};
     }
+    // The height of the surface the terrain DRAWS at a world point, plus its two
+    // gradients, from four taps of the corner heights of the terrain's finest tile
+    // cell. A transcription of heightfield.js's sampleRenderedHeightfield(),
+    // including its choice of diagonal - f.x + f.y <= 1 - which is the one that
+    // matches three's PlaneGeometry triangulation.
+    //
+    // grad.x is dh/dx. grad.y is (north - south) / cell, i.e. -dh/dz: +Z is South
+    // (docs/ARCHITECTURE.md section 6), so the smaller-z corners are the northern
+    // pair, and this is the sign convention snow.js's aspect term expects.
+    float drawnElevation( vec2 wxz, out vec2 grad ) {
+      vec2 g = vec2( ( wxz.x + ${glsl(worldWidth / 2)} ) / ${glsl(worldWidth / COVER_GRID_SEGMENTS)},
+                     ( wxz.y + ${glsl(worldDepth / 2)} ) / ${glsl(worldDepth / COVER_GRID_SEGMENTS)} );
+      vec2 i = floor( g );
+      vec2 f = g - i;
+      vec2 c0 = vec2( i.x * ${glsl(worldWidth / COVER_GRID_SEGMENTS)} - ${glsl(worldWidth / 2)},
+                      i.y * ${glsl(worldDepth / COVER_GRID_SEGMENTS)} - ${glsl(worldDepth / 2)} );
+      float h00 = coverElevation( coverUv( c0 ) );
+      float h10 = coverElevation( coverUv( c0 + vec2( ${glsl(worldWidth / COVER_GRID_SEGMENTS)}, 0.0 ) ) );
+      float h01 = coverElevation( coverUv( c0 + vec2( 0.0, ${glsl(worldDepth / COVER_GRID_SEGMENTS)} ) ) );
+      float h11 = coverElevation( coverUv( c0 + vec2( ${glsl(worldWidth / COVER_GRID_SEGMENTS)}, ${glsl(worldDepth / COVER_GRID_SEGMENTS)} ) ) );
+      grad = vec2( ( ( h10 + h11 ) - ( h00 + h01 ) ) / ${glsl((2 * worldWidth) / COVER_GRID_SEGMENTS)},
+                   ( ( h00 + h10 ) - ( h01 + h11 ) ) / ${glsl((2 * worldDepth) / COVER_GRID_SEGMENTS)} );
+      float lower = h00 + f.x * ( h10 - h00 ) + f.y * ( h01 - h00 );
+      float upper = h11 + ( 1.0 - f.x ) * ( h01 - h11 ) + ( 1.0 - f.y ) * ( h10 - h11 );
+      return f.x + f.y <= 1.0 ? lower : upper;
+    }
+
     // Hash without sin(): world coordinates reach +/-42 km here, and sin() of a
     // number that large loses enough float precision to produce visible
     // repetition. Same one vegetation.js uses.
@@ -499,7 +554,10 @@ ${basemapGlsl()}
     vec2 uv = coverUv( slot );
 
     float cover = texture2D( uCoverMask, uv ).r;
-    float h = coverElevation( uv );
+    // The DRAWN height, not the texture's own: see drawnElevation() above. The four
+    // corner taps also hand back both gradients, so the aspect below is free.
+    vec2 coverGrad;
+    float h = drawnElevation( slot, coverGrad );
 ${shrubShareGlsl()}
     // The one mask feeds both layers; the belt decides how much of it is this one.
     float mine = cover * ${isGrass ? '( 1.0 - share )' : 'share'};
@@ -512,14 +570,10 @@ ${shrubShareGlsl()}
     float dist = length( cameraPosition.xz - slot );
     float near = 1.0 - smoothstep( ${glsl(layer.fadeStartM)}, ${glsl(layer.visibleM)}, dist );
 
-    // Aspect from two extra taps of the height texture, one texel north and one
-    // south - the same two-tap shortcut vegetation.js justifies: leaving the
-    // east-west slope out of the normalisation costs a few metres of effective
-    // elevation against a term that spans 320 m.
-    float dv = ${glsl(resY)} / ${glsl(worldDepth)};
-    float gradZ = ( coverElevation( uv + vec2( 0.0, dv ) ) - coverElevation( uv - vec2( 0.0, dv ) ) )
-                / ${glsl(2 * resY)};
-    float aspectZ = gradZ * inversesqrt( 1.0 + gradZ * gradZ );
+    // The ground normal's z, exactly - not vegetation.js's z-only approximation,
+    // because drawnElevation() already had to fetch the corners that give both
+    // gradients. Negative faces north (snow.js's SNOW_ASPECT_M).
+    float aspectZ = coverGrad.y * inversesqrt( 1.0 + dot( coverGrad, coverGrad ) );
     // Slope was baked out of the mask at build time, so there is nothing growing
     // on ground too steep to hold snow either - hence no bare term.
     float snow = snowCover( slot, h, aspectZ, 0.0 );
