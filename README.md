@@ -28,6 +28,15 @@ Inspired by [ode-to-yosemite](https://github.com/shlokkhemani/ode-to-yosemite).
   marmots, foxes and squirrels that live where their species actually would —
   elevation, slope and tree cover decide where — and react to you when you come
   close, each in its own way.
+- **Grass and dwarf shrub** under your feet, growing where a satellite measurement
+  says vegetation actually grows rather than where an altitude band guesses it might:
+  meadow in the valleys, rhododendron and juniper thickening towards the treeline,
+  thin alpine turf above it, nothing on the glaciers. It bends in the wind and is
+  buried by snow. How much of it is drawn is a control, because it is the most
+  expensive thing in the scene.
+- **Edelweiss**, rare and deterministic, on open stony slopes between 1,850 and
+  2,980 m. Walk near one and the viewer says so — a shared link leads to the same
+  flower.
 - **Sound**, entirely procedural, no audio files: wind that follows the altitude and
   the exposure of the ground you are standing on, leaves when you are under trees,
   running water audible from the bank, rain, and marmot alarm whistles.
@@ -57,11 +66,12 @@ elevation merged from three sources:
   (Version 1.1), Istituto Nazionale di Geofisica e Vulcanologia (INGV),
   [doi:10.13127/tinitaly/1.1](https://doi.org/10.13127/tinitaly/1.1) — all three
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-- Ground imagery: *Contains modified Copernicus Sentinel data 2025* — Sentinel-2
-  L2A, 8 August and 9 July 2025, under the
+- Ground imagery and vegetation cover: *Contains modified Copernicus Sentinel data
+  2025* — Sentinel-2 L2A, 8 August and 9 July 2025, under the
   [Copernicus Sentinel Data Legal Notice](https://sentinels.copernicus.eu/documents/247904/690755/Sentinel_Data_Legal_Notice).
   The illumination of the acquisition has been divided back out using the
-  elevation above, so the viewer can light the ground with its own moving sun.
+  elevation above, so the viewer can light the ground with its own moving sun. The
+  same two scenes give the NDVI that decides where grass and shrubs grow.
 - Trails: *Dati forniti dalla Struttura Forestazione e Sentieristica della Regione
   Autonoma Valle d'Aosta.* — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 - Places, water and tree cover: © OpenStreetMap contributors —

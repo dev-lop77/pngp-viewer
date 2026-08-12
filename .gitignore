@@ -8,3 +8,7 @@ tools/verify-screenshot.png
 tools/dev/logs/
 
 tools/forest-draft.json
+tools/landcover-osm-draft.json
+tools/landcover-unshipped/
+tools/ndvi-draft.bin
+tools/ndvi-draft.json

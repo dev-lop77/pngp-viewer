@@ -265,6 +265,10 @@
         <div id="nav-heading"></div>
         <div id="nav-position"></div>
         <div id="nav-nearest"></div>
+        <!-- The edelweiss hint. Its own line rather than folded into nav-nearest,
+             which names the closest POI: a flower is not a place, and both can be
+             worth saying at once. -->
+        <div id="nav-flower"></div>
       </div>
     </div>
     <div id="env-controls">
@@ -275,6 +279,18 @@
           <option value="1">Drifting clouds</option>
           <option value="2">Rainstorm</option>
           <option value="3">Snowfall</option>
+        </select>
+      </label>
+      <!-- Ground cover exists as a control, not just a constant, because grass is
+           the most expensive thing in this scene and only the person looking at
+           their own frame counter can judge it. Lush is the default by the user's
+           own choice (2026-08-12): see the maximum first, then cut. -->
+      <label>Ground cover:
+        <select id="env-groundcover">
+          <option value="1">Lush</option>
+          <option value="0.5">Sparse</option>
+          <option value="0.2">Bare</option>
+          <option value="0">Off</option>
         </select>
       </label>
       <!-- Ambient sound belongs with the other environment controls rather than

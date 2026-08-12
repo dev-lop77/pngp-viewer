@@ -9,6 +9,11 @@ import { loadWater } from './water.js';
 import { loadForest, createCoverageSampler } from './forest.js';
 import { loadBasemap, BASEMAP_MIX, BASEMAP_SCALE, BASEMAP_GAIN, BASEMAP } from './basemap.js';
 import { createVegetation } from './vegetation.js';
+import { loadLandcover, createLandcoverSampler, LANDCOVER_MASK } from './landcover.js';
+import {
+  createGroundcover, GROUNDCOVER_DENSITY, GROUNDCOVER_TIME, GROUNDCOVER_WIND,
+} from './groundcover.js';
+import { createEdelweiss, FOUND_RADIUS_M } from './edelweiss.js';
 import { createWildlife } from './wildlife.js';
 import { createBirds } from './birds.js';
 import { createAudio } from './audio.js';
@@ -224,8 +229,22 @@ loadBasemap()
     console.warn('Satellite basemap unavailable - drawing the procedural ground:', err.message);
   });
 
+// The open-vegetation mask, independent of everything else for the third time and
+// for the same reason: src/groundcover.js binds the shared LANDCOVER_MASK holder
+// at compile time, so this can land whenever it lands and the ground simply starts
+// bare. Its credit is Copernicus, already set by the basemap loader from the same
+// scenes - and the wording is prescribed, so it must not be duplicated in a
+// second, differently-worded line.
+const landcoverPromise = loadLandcover().catch((err) => {
+  console.warn('Landcover mask unavailable - continuing without grass or shrubs:', err.message);
+  return null;
+});
+
 let wildlife = null; // animals carry state between frames, so they need the loop
 let birds = null; // same, and they need the POI list too (see below)
+let groundcover = null; // the density knob has to reach it after the HUD changes
+let landcoverCoverAt = null; // dev handle only: the CPU twin of what the shader samples
+let edelweiss = null; // patches are decided on the CPU, so the loop drives them
 
 // Trees need the terrain's height texture (they displace onto the same surface)
 // but NOT the mask, thanks to the shared holder.
@@ -255,6 +274,25 @@ Promise.all([terrainPromise, forestPromise]).then(async ([terrain, forest]) => {
       onAlarm: (event) => audio.call(event),
     });
     scene.add(wildlife.object);
+  }
+
+  // Grass, shrubs and the flowers. The mask is awaited HERE rather than in the
+  // Promise.all above so that a slow (or failed) landcover download cannot hold up
+  // the trees and the animals, which is the same argument the POI list gets below.
+  const landcover = await landcoverPromise;
+  if (landcover) {
+    groundcover = createGroundcover({ manifest: terrain.manifest, heightTexture: terrain.heightTexture });
+    scene.add(groundcover.object);
+    applyGroundcoverDensity(); // the control may already have been touched, or restored
+
+    // ONE CPU decoder for the mask, exactly as canopyAt is shared above: it costs
+    // a 9.6 MB getImageData and keeps 2.4 MB, so a second one would be pure waste.
+    const coverAt = createLandcoverSampler({ manifest: landcover.manifest, texture: landcover.texture });
+    landcoverCoverAt = coverAt; // dev handle only, see the __pngp block at the end
+    // sampleRenderedHeight for the same reason the walking camera and the animals
+    // use it: a flower has to sit on the surface that is actually drawn.
+    edelweiss = createEdelweiss({ sampleGroundHeight: terrain.sampleRenderedHeight, coverAt });
+    scene.add(edelweiss.object);
   }
 
   // The same canopy sampler drives the leaf-rustle layer - standing in a wood
@@ -596,6 +634,39 @@ if (import.meta.env.DEV) {
     // the lying-snow level from outside must pin THIS object, not one it imported
     // for itself.
     snowLevel: SNOW_LEVEL,
+    // Grass, shrubs and the flowers. The holders themselves, again for the reason
+    // spelled out above the basemap block: a probe importing '/src/groundcover.js'
+    // by bare path after any HMR reload gets a SECOND module instance whose holders
+    // nothing reads. `counts` reads the LIVE instanceCount, which is what tells
+    // "the density knob reached the geometry" from "it set a field nobody reads".
+    groundcover: {
+      density: GROUNDCOVER_DENSITY,
+      wind: GROUNDCOVER_WIND,
+      time: GROUNDCOVER_TIME,
+      apply: () => groundcover?.applyDensity(),
+      getStats: () => groundcover?.stats,
+      counts: () => groundcover?.layers.map((l) => ({ kind: l.kind, drawn: l.geometry.instanceCount, of: l.count })),
+      // The CPU twin of the value the vertex shader samples, so a probe can ask
+      // "what does the mask say HERE" instead of inferring it from pixels.
+      coverAt: (x, z) => landcoverCoverAt?.(x, z) ?? null,
+      getMaskSize: () => {
+        const img = LANDCOVER_MASK.value?.image;
+        return { width: img?.width ?? 0, height: img?.height ?? 0 };
+      },
+      mask: LANDCOVER_MASK,
+      // The layer meshes themselves, so a probe can A/B ONE layer at a time. The
+      // first render measurement of this feature reported 21.9% of pixels changed
+      // and was believed - it was entirely the shrubs, and the grass it was
+      // supposed to be measuring was drawing nothing at all. One number for two
+      // layers is not a measurement of either.
+      getLayers: () => groundcover?.layers,
+    },
+    edelweiss: {
+      getDiag: () => edelweiss?.diag,
+      // So a probe can walk to a real flower instead of hunting for one: the same
+      // patchFor() the renderer uses, not a second guess at it.
+      nearest: (x, z, cells) => edelweiss?.findNearestPatch(x, z, cells),
+    },
     // Same discipline again, for the sky's altitude (src/sky.js): the holder
     // itself, so a probe can compare two altitudes from ONE camera, plus the model
     // it is driving so a test can bracket a pixel without re-deriving Preetham on
@@ -687,6 +758,20 @@ const envWeather = document.getElementById('env-weather');
 envWeather.addEventListener('change', () => {
   weather?.set(Number(envWeather.value)); // no-op if terrain (and so weather's cloud deck sizing) hasn't loaded yet
 });
+
+// Ground cover density. The knob is free by construction: src/groundcover.js
+// shuffles its lattice, so drawing the first N instances of it thins the cover
+// evenly everywhere instead of cutting a spatial band out of it. Declared before
+// the loaders' callback can call it - applyGroundcoverDensity is hoisted as a
+// function declaration, the const `groundcover` it reads is not, which is why it
+// tests for null rather than assuming.
+const envGroundcover = document.getElementById('env-groundcover');
+function applyGroundcoverDensity() {
+  GROUNDCOVER_DENSITY.value = Number(envGroundcover.value);
+  groundcover?.applyDensity();
+}
+envGroundcover.addEventListener('change', applyGroundcoverDensity);
+GROUNDCOVER_DENSITY.value = Number(envGroundcover.value);
 
 // Ambient sound: the checkbox and 'M' are two views of the same state, so both
 // paths go through here.
@@ -807,6 +892,7 @@ const compassNeedle = document.getElementById('compass-needle');
 const navHeadingEl = document.getElementById('nav-heading');
 const navPositionEl = document.getElementById('nav-position');
 const navNearestEl = document.getElementById('nav-nearest');
+const navFlowerEl = document.getElementById('nav-flower');
 let navAccum = 0;
 
 function formatLatLon(lat, lon) {
@@ -835,6 +921,14 @@ renderer.setAnimationLoop(() => {
   // one holder now feeds the ground, the trees and the footsteps alike
   // (src/snow.js decides which of them is actually snowy, and where).
   SNOW_LEVEL.value = weather?.mod.snow ?? 0;
+  // Grass and shrubs bend in the same wind audio.js turns into hiss, so the two
+  // cannot disagree about how windy it is. The clock is separate from the water's
+  // because this one must keep running while the water is still (src/groundcover.js).
+  GROUNDCOVER_TIME.value = timer.getElapsed();
+  GROUNDCOVER_WIND.value = weather?.mod.wind ?? 0;
+  // The flowers are CPU-placed, so unlike the grass they need the loop. Cheap: 25
+  // cached cells and at most a few hundred matrices (src/edelweiss.js).
+  edelweiss?.update(camera);
 
   fpsFrames += 1;
   fpsAccum += timer.getDelta();
@@ -906,6 +1000,21 @@ renderer.setAnimationLoop(() => {
       ? `${Math.round(nearest.distanceM)} m`
       : `${(nearest.distanceM / 1000).toFixed(1)} km`);
     navNearestEl.textContent = nearest ? `Near ${nearest.poi.name} (${nearDist})` : '';
+
+    // The edelweiss hint. Two states worth distinguishing: close enough that it
+    // counts as found, and close enough to be worth walking towards.
+    if (navFlowerEl) {
+      const d = edelweiss?.diag;
+      if (!d || d.nearestM === null) {
+        navFlowerEl.textContent = d?.foundCount ? `Edelweiss found: ${d.foundCount}` : '';
+      } else if (d.nearestM <= FOUND_RADIUS_M) {
+        navFlowerEl.textContent = `Edelweiss, right here (${d.foundCount} found)`;
+      } else {
+        navFlowerEl.textContent =
+          `Edelweiss ${Math.round(d.nearestM)} m away, ${Math.round(d.nearestElevM)} m`
+          + (d.foundCount ? ` · ${d.foundCount} found` : '');
+      }
+    }
 
     poiIndex?.updateMarkers(camera);
   }

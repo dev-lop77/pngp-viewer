@@ -65,6 +65,30 @@ Both start scripts:
   *silently* (it reported 0.000 luma for every shot, snow and all — measure the
   screenshot instead), and at ~1 fps the level read just before a shot is up to
   one frame ahead of the pixels, so only the pinned rows are exact.
+- `probe-groundcover.mjs` — grass, shrubs and edelweiss in the real page, and the
+  one place the cost of them is written down. **Every layer is measured alone**: a
+  single combined figure read 21.9% once and was believed, and all of it was the
+  shrubs while the grass drew nothing. Four vantages spanning the mask's own
+  gradient, including a glaciated summit as the control — anything drawn there means
+  the mask is not being read. Three things it learned the hard way: a **pass is the
+  worst place to stand** to look at the ground (on a saddle a camera pitched down is
+  looking at a valley 400 m off, and the layer reports 0.00% while working), a
+  **point sample of the mask is not comparable to an area effect** (one 41 m texel
+  read 0.000 where the grass around it was plainly drawn), and a holder main.js
+  drives per frame — `GROUNDCOVER_WIND`, `SNOW_LEVEL` — **cannot be pinned by
+  assignment**, only by redefining its accessor. The frame times it prints are
+  SwiftShader's and are only good as ratios between settings.
+- `probe-landcover.mjs [--radius=m] [--dir=]` — reads the shipped masks and asks
+  whether the data says "grass" where a visitor actually stands. No browser. This is
+  what caught the OSM route being empty inside the park; `--dir=tools/landcover-unshipped`
+  reproduces that table from the retired pipeline rather than trusting the note.
+- `probe-ndvi.mjs` — the NDVI distribution inside the park by elevation and by
+  whether OSM calls it wooded. It chooses `build-landcover.mjs`'s two thresholds, so
+  they come from the measured distribution rather than a textbook range.
+- `verify-mask-raster.mjs` — rebuilds the forest mask through the shared rasteriser
+  in `tools/lib/mask-raster.mjs` and compares it to the shipped PNG byte for byte.
+  Run it after touching that file: "I only moved the code" is exactly the claim that
+  is easy to believe and cheap to check.
 - `solve-albedo.mjs [hex ...]` — inverts BRDF → lights → exposure → ACES
   to turn "what this should look like on screen" into the albedo hex to
   put in the code. Needed because the two are far apart here: Lambert

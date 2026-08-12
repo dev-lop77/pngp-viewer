@@ -2,6 +2,218 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## Grass, shrubs and edelweiss (2026-08-12) — built, not yet judged
+
+**The user opened their own next topic: "iniziamo dall'introduzione di erba ed
+arbusti e magari qualche stella alpina."** It is topic 3 of the four optional
+extras they raised on 2026-08-11, and it is the one the satellite session had
+already pointed at: *"at 20.5 m/px the ground within 30 m of a walking camera is one
+or two texels, so it is a flat colour… Filling that near field is what topic 3 is
+for."*
+
+They chose three things when asked: **a real data mask** over a model of altitude;
+the edelweiss as **something to find**, not only something to render; and **lush by
+default with a knob** — see the maximum first, then cut.
+
+**What is owed: their eye, and their frame counter.** Nothing here has been judged.
+The cost is stated below in the only terms this machine can honestly produce.
+
+### The data decision was wrong first, and measuring is what caught it
+
+I recommended OSM and gave them a count to justify it: 861 `natural=scrub`, 1347
+`natural=heath`, 2679 `landuse=meadow`, 555 `natural=grassland`, 584 `natural=fell`
+— *more* features than the 569 `natural=wood` the working forest mask is built from.
+The counts were real. Then the mask was built and measured **inside the park
+boundary**, which is a different question:
+
+| band | grass | shrub | wood |
+|---|---|---|---|
+| 800–1600 m | 0.011 | 0.008 | 0.217 |
+| 1600–2200 m | 0.011 | 0.004 | 0.208 |
+| 2200–2700 m | 0.006 | 0.003 | 0.007 |
+| 2700–3000 m | 0.003 | 0.000 | 0.000 |
+
+Nearly all 6024 polygons lie **outside** the park, in the inhabited valley floors
+where meadows get tagged. Above the treeline OSM says nothing, so grass scattered
+from it would have been absent everywhere a visitor walks. **The feature count in
+the bbox (4044 km²) had been read as evidence about cover in the park (582 km²).**
+
+The replacement is **Sentinel-2 NDVI**, from the same granules as the ground
+photograph. It measures vegetation per pixel instead of relying on a mapper having
+been there, and in August it separates the classes with room to spare — open,
+non-wooded ground inside the park, median NDVI: 0.827 at 800–1600 m, 0.663 at
+1600–2200, 0.396 at 2200–2700, 0.075 at 2700–3000, 0.004 above 3000. Cover at the
+spawn went from **0.013 to 0.681**; at the Nivolet from **0.000 to 0.205**; on the
+Gran Paradiso summit it is 0.000, which is correct.
+
+Both thresholds are read off that distribution rather than a textbook: 0.15 because
+even the 95th percentile of rock above 3000 m is 0.137, and 0.55 because that is the
+75th percentile of open ground at 2200–2700 m. The OSM pipeline is **kept and still
+runs**, writing into `tools/landcover-unshipped/` so it cannot ship — it is the
+reproducible proof of the negative result, and `tools/dev/probe-landcover.mjs`
+regenerates the table above.
+
+**One texture ships, not two.** Deriving grass and shrub separately cost 4409 kB,
+and the split is a function of elevation the vertex shader already samples — a
+derived value being shipped as data. The belt moved into `src/groundcover.js`. Size
+was then measured on both remaining knobs, and 8 levels at half resolution won at
+**605 kB** (+4.8% of a 12.6 MB first load), with the mean cover preserved to four
+decimals by every cell of that table.
+
+### Five silent bugs, and what each one teaches
+
+Not one of them produced a console error, and three of them looked like "the effect
+is just weak".
+
+1. **Empty grass slots did not collapse.** A blade's width is absolute, not a
+   fraction of its height — but writing `radius = 1.0` meant a slot with no tuft
+   kept its full 0.3 m splay at height zero. On flat ground those 48,400 flat
+   triangles stayed buried; on a summit, where the drawn terrain departs from the
+   bilinear height by metres, they punched through and put **8% of the frame on a
+   glacier where the mask says nothing grows**. The control failing was the signal.
+2. **An absolute sink buried the entire park.** Trees sink 1.5 m; scaled down to
+   0.35 m against blades 0.11–0.34 m tall, the tallest blade's tip sat 1 cm *below*
+   ground. The probe read **0.00% of pixels changed at every vantage**, which is the
+   only reason it was found. The sink is a fraction of the plant's own height now,
+   which cannot make that mistake.
+3. **An absolute splay.** 0.3 m of outward lean on a 0.2 m blade is a starfish lying
+   on the ground. The lean is a fraction of height and carried as its own attribute,
+   *because* the base width is absolute and the two cannot share a scale.
+4. **The two layers shared one compiled shader** — the expensive one.
+   `Material.customProgramCacheKey()` returns `onBeforeCompile.toString()` by
+   default, and both layers are built by the same factory, so their hooks have
+   identical source and differ only in a closure the cache key cannot see. Every
+   other ingredient matched, so three reused the grass program and the shrub branch
+   **never compiled**. It cost three consecutive retunes that changed nothing, and
+   the thing that finally proved it was setting the shrub tint to **0.06** and
+   getting byte-identical pixels. *A change that does nothing is evidence.*
+5. **One number for two layers.** The first render measurement read 21.9% and was
+   believed. All of it was the shrubs; the grass drew nothing. Both the probe and the
+   test now measure each layer alone, and the test says so in as many words.
+
+A sixth, found by the test suite rather than by looking: `perSide` must be a whole
+number, so `perSide × spacing` is only accidentally equal to the window — at 54 m
+and 0.26 m it came to 54.08, leaving an 8 cm band where slots duplicate on one side
+and gap on the other. The lattice now divides the window by the count and hands the
+shader that pitch.
+
+### Two instrument lessons
+
+**A pass is the worst place to stand to look at the ground.** The probe picked a
+*colle* for its belt vantage; on a saddle the ground ahead falls away, so a camera
+pitched down 22° is looking at a valley 400 m off, and the layer reported 0.00%
+while working perfectly. It now excludes passes and peaks and prints how far the
+ground actually is at the centre of the frame.
+
+**A point sample of the mask is not comparable to an area effect.** One 41 m texel
+read 0.000 at the Nivolet while the grass around it was plainly drawn. The probe now
+reports the mean over the disc the scatter draws in.
+
+And one that repeated a known trap twice, which is worth stating as a rule:
+**a holder main.js drives every frame cannot be pinned by assignment.** `SNOW_LEVEL`
+and `GROUNDCOVER_WIND` are both rewritten from the weather on every tick, so
+`holder.value = x` survives exactly one frame. It cost two wrong readings — a snow
+check that measured a 3.47% flicker and an unchanged luma, and a wind check that
+reported the grass moving *more* in calm than in a gale, because both cases were
+really running at the weather's own 0.3. Both tools now redefine the holder's
+accessor. The holders that nothing drives per frame — `GROUNDCOVER_DENSITY`,
+`BASEMAP_MIX`, `SKY_ALTITUDE_OVERRIDE` — can still be assigned normally, and that is
+the distinction to check before trusting a pin.
+
+The wind check needed one more thing: **the animals and the birds move by
+themselves**, and at 10–14% of the crop they drown a bending blade completely. Both
+tools hide them before measuring motion.
+
+### What it looks like, and what it costs
+
+Grass reads as tussocks in the near ground rather than as turf, and that is a budget
+fact rather than a tuning failure: the achievable count is ~30 blades/m², and thin
+leaf-width triangles read as scattered straws at any count. Wide chunky clumps cover
+several times the area for the same triangle count — width is free in a way count is
+not — and they match what this project already does everywhere else. Dwarf shrub is
+a scatter of knee-high cushions, not a carpet; a carpet would need forty times the
+instances.
+
+At full density: grass 43,264 instances × 8 triangles, shrub 13,924 × 8 =
+**457,504 triangles**. Under SwiftShader, which is a CPU rasteriser at ~1 fps and
+therefore only good for **ratios**, the knob costs ×1.00 / ×1.43 / ×1.87 / ×2.45 at
+0 / 0.2 / 0.5 / 1. **Their fps counter is the only instrument for the real number**,
+and the knob exists so that answer is a click rather than a rebuild.
+
+The colour is the ground's own: a tuft samples the same `basemapAlbedo()` the terrain
+is drawn with and tints it towards leaf. That was chosen because of a measurement
+they already own — open alpine ground reads G/R **1.00** in the imagery, grey-olive
+— so bright green tufts would fight the photograph and a tint of it cannot. Measured
+at the spawn: the bare ground is luma 0.262, grass 0.259, shrub 0.259, i.e. both
+layers are *darker* than what they stand on, which is where a plant belongs. (The
+shrubs were +10% brighter and G/R 1.10 until this was measured — their facets face
+the sky while the slope around them is turned away from a 25° midday sun.)
+
+`weather.js` gained a **`wind`** field, which it had never had: audio.js was deriving
+its own hiss strength from altitude, exposure and a private gust walk, which is fine
+for a sound but is not a number anything else can read — and reading it would have
+tied the grass to whether the sound is switched on.
+
+### Measured, and one suite it broke
+
+`tools/test-groundcover.mjs` is new: **32 checks**, a node half (lattice, belt,
+geometry invariants) and a browser half. The two that exist because of specific
+bugs are worth naming: it reads the **compiled shader sources out of the GL context**
+and asserts that two programs carry the placement code with *different* tints, and
+it measures each layer **alone** against a noise floor, with a glaciated summit as
+the control — 0.00% drawn where the mask says 0.000. It also asserts the shuffle
+does something, by running the same binning on row order and finding 12 of 16 bins
+of the window empty.
+
+Snow: pinned, 99.99% of pixels change and the near ground goes luma 0.252 → 0.603.
+Wind: **0.00% of pixels move in calm, 25.60% in a gale.**
+
+**`tools/test-sky.mjs` started failing, and not on an assertion** — a 30 s
+`page.screenshot` timeout. The cover draws 57,000 instances with
+`frustumCulled = false`, so its vertex cost is paid even with the camera pitched 65°
+into the sky, and SwiftShader frames went from ~708 ms to ~1737 ms. The fix is the
+right one rather than a longer timeout: that suite now **switches the cover off**,
+since the dome is what it measures. Only `test-sky` and `test-groundcover` screenshot
+the live page, so the exposure is contained; the rest build their own scenes.
+The other twelve suites pass unchanged.
+
+**The shared rasteriser was extracted and proved, not assumed.**
+`tools/lib/mask-raster.mjs` now holds the scanline fill, the quantiser and the 4-bit
+PNG writer for both mask pipelines, and `tools/build-forest.mjs` was switched over
+and re-run: **same content hash `c7b761454fa107a1`, same 1,009,425 bytes, same
+1,604,007 wooded pixels.** Only the manifest's `generatedAt` differed, and that was
+restored rather than committed as noise. `tools/dev/verify-mask-raster.mjs` does the
+same comparison into a temp directory and is what to run after touching that file.
+
+One trap it surfaced on the way: **`fast-png` does not expand a 4-bit image.** It
+hands back the packed rows, so reading them as one sample per byte silently returns
+the top half of the image with pixel pairs fused — which reported "no forest
+anywhere" on a mask that is 16.6% wooded. `readQuantisedMask()` is the exact inverse
+of the writer and lives beside it so they cannot drift.
+
+**The production build was verified as a visitor would, because `__pngp` is
+dev-only.** Driving the real `Ground cover` dropdown on a `vite build` served from
+`tools/dev/start-preview.sh`: off → lush changed **30.68%** of the near ground
+against a **0.02%** floor, with no console or page errors, and the flower line
+correctly empty at the 1955 m spawn. First load goes from 12.6 MB to about
+**13.2 MB** (+4.9%). The frame is kept at `tools/dev/logs/keep-prod-groundcover.png`.
+
+### Edelweiss is built the other way round, deliberately
+
+They asked for something to *find*, and that is the opposite of grass: the HUD and
+the geometry must agree about one specific position. So patches are decided on the
+**CPU**, on a 320 m lattice, and the instanced matrices and the distance readout are
+read from the same array — `wildlife.js` makes the same choice for herds, and
+`snow.js` documents the reason a shader rarity plus a JS twin would not work.
+
+Habitat is altitude (1850–2980 m), openness (the cover mask, low but not zero —
+stony grassland), slope and sun. Substrate is not: edelweiss favours the Cogne-side
+calcschists and no shipped dataset knows where those are, so the code says so rather
+than implying otherwise. The HUD tells you the distance and the elevation when one
+is within 90 m, and counts the ones you have come within 6 m of. **That count is
+per session and does not persist** — a one-line follow-up in `viewstate.js` if they
+want it, deliberately not built unasked.
+
 ## The sky thins with altitude (2026-08-12) — accepted, and nothing owed
 
 **Both things this session built were judged by the user and accepted, and the

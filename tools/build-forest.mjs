@@ -20,11 +20,10 @@
 //
 // Usage: node tools/build-forest.mjs   (after tools/fetch-forest.mjs)
 
-import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, readdirSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import proj4 from 'proj4';
-import { encode } from 'fast-png';
 import { decodeHeightfield } from '../src/heightfield.js';
+import { rasterisePolygons, writeQuantisedMask } from './lib/mask-raster.mjs';
 
 const DRAFT = 'tools/forest-draft.json';
 const OUT_DIR = 'public/data';
@@ -56,65 +55,12 @@ function toPixel([lon, lat]) {
 }
 
 const coverage = new Float32Array(width * height);
-let skipped = 0;
-
-for (const polygon of draft.polygons) {
-  // All rings of one polygon share an edge list: even-odd then subtracts inners.
-  const edges = [];
-  let minY = Infinity;
-  let maxY = -Infinity;
-  for (const ring of polygon.rings) {
-    const pts = ring.points.map(toPixel);
-    if (pts.length < 2) continue;
-    // Close the ring if the source didn't (relation members legitimately don't).
-    const closed = pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1];
-    const seq = closed ? pts : [...pts, pts[0]];
-    for (let i = 0; i < seq.length - 1; i++) {
-      const [x0, y0] = seq[i];
-      const [x1, y1] = seq[i + 1];
-      if (y0 === y1) continue; // horizontal edges never cross a scanline
-      edges.push([x0, y0, x1, y1]);
-      minY = Math.min(minY, y0, y1);
-      maxY = Math.max(maxY, y0, y1);
-    }
-  }
-  if (!edges.length) {
-    skipped++;
-    continue;
-  }
-
-  const rowStart = Math.max(0, Math.floor(minY));
-  const rowEnd = Math.min(height - 1, Math.ceil(maxY));
-  const xs = [];
-
-  for (let py = rowStart; py <= rowEnd; py++) {
-    for (let s = 0; s < SUB_ROWS; s++) {
-      const yc = py + (s + 0.5) / SUB_ROWS;
-      xs.length = 0;
-      for (const [x0, y0, x1, y1] of edges) {
-        if (y0 <= yc === y1 <= yc) continue;
-        xs.push(x0 + ((yc - y0) * (x1 - x0)) / (y1 - y0));
-      }
-      if (xs.length < 2) continue;
-      xs.sort((a, b) => a - b);
-      const row = py * width;
-      for (let k = 0; k + 1 < xs.length; k += 2) {
-        let xa = xs[k];
-        let xb = xs[k + 1];
-        if (xb <= 0 || xa >= width) continue;
-        xa = Math.max(xa, 0);
-        xb = Math.min(xb, width);
-        const first = Math.floor(xa);
-        const last = Math.min(width - 1, Math.ceil(xb) - 1);
-        for (let px = first; px <= last; px++) {
-          // Exact horizontal overlap of the span with this pixel.
-          const overlap = Math.min(xb, px + 1) - Math.max(xa, px);
-          if (overlap > 0) coverage[row + px] += overlap / SUB_ROWS;
-        }
-      }
-    }
-  }
-}
+// The scanline fill, the quantisation and the 4-bit PNG writer live in
+// tools/lib/mask-raster.mjs since 2026-08-12, when tools/build-landcover.mjs needed
+// exactly the same three things. The extraction was verified rather than assumed:
+// tools/dev/verify-mask-raster.mjs rebuilds this mask through the shared code and
+// compares it to the shipped PNG byte for byte.
+const { skipped } = rasterisePolygons({ polygons: draft.polygons, width, height, toPixel, into: coverage, subRows: SUB_ROWS });
 
 // Slope is baked in here rather than tested at runtime. Trees stop around
 // 35-40 deg, and the alternative - four extra height-texture taps per vertex,
@@ -134,59 +80,34 @@ const elevAt = (px, py) => {
 const cosFull = Math.cos((SLOPE_FULL_DEG * Math.PI) / 180);
 const cosNone = Math.cos((SLOPE_NONE_DEG * Math.PI) / 180);
 
-const data = new Uint8Array(width * height);
-let wooded = 0;
-let partial = 0;
 let slopeRemoved = 0;
 for (let py = 0; py < height; py++) {
   for (let px = 0; px < width; px++) {
     const i = py * width + px;
-    let c = Math.min(1, coverage[i]); // polygons overlap; coverage is not additive beyond full
-    if (c > 0) {
-      const dzdx = (elevAt(px + 1, py) - elevAt(px - 1, py)) / (2 * resX);
-      const dzdy = (elevAt(px, py + 1) - elevAt(px, py - 1)) / (2 * resY);
-      const normalY = 1 / Math.sqrt(dzdx * dzdx + dzdy * dzdy + 1);
-      // Ascending clamp, mirroring the terrain shader's `bare` term.
-      const keep = Math.min(1, Math.max(0, (normalY - cosNone) / (cosFull - cosNone)));
-      if (keep < 1) slopeRemoved += c * (1 - keep);
-      c *= keep;
+    const c = Math.min(1, coverage[i]); // polygons overlap; coverage is not additive beyond full
+    if (c <= 0) {
+      coverage[i] = 0;
+      continue;
     }
-    const step = 255 / (COVERAGE_LEVELS - 1);
-    data[i] = Math.round(Math.round((c * 255) / step) * step);
-    if (c > 0.5) wooded++;
-    else if (c > 0) partial++;
+    const dzdx = (elevAt(px + 1, py) - elevAt(px - 1, py)) / (2 * resX);
+    const dzdy = (elevAt(px, py + 1) - elevAt(px, py - 1)) / (2 * resY);
+    const normalY = 1 / Math.sqrt(dzdx * dzdx + dzdy * dzdy + 1);
+    // Ascending clamp, mirroring the terrain shader's `bare` term.
+    const keep = Math.min(1, Math.max(0, (normalY - cosNone) / (cosFull - cosNone)));
+    if (keep < 1) slopeRemoved += c * (1 - keep);
+    coverage[i] = c * keep;
   }
 }
 
-// Written at PNG's own 4-bit sample depth rather than as 8-bit bytes. The mask
-// has only COVERAGE_LEVELS = 16 values, so four bits hold it exactly, and the
-// decoder - fast-png here, the browser in the viewer - performs the standard
-// sample-depth scaling on the way out, which for 4->8 bits is exactly x17. Since
-// every value written above is already a multiple of 17, what comes back is
-// byte-identical to the 8-bit file this replaces: verified in the real browser by
-// rendering the same forest edge before and after and diffing every pixel, not
-// just by round-tripping it here. Costs 1.13 -> 0.96 MB, and not one line of the
-// loader: three's TextureLoader never sees the difference.
-const rowBytes = Math.ceil(width / 2);
-const nibbles = new Uint8Array(rowBytes * height); // PNG starts each row on a byte
-for (let py = 0; py < height; py++) {
-  for (let px = 0; px < width; px++) {
-    const level = Math.round(data[py * width + px] / 17); // 0..15
-    const at = py * rowBytes + (px >> 1);
-    nibbles[at] |= (px & 1) ? level : level << 4;
-  }
-}
-const png = encode({ width, height, data: nibbles, channels: 1, depth: 4 });
-const hash = createHash('sha256').update(png).digest('hex').slice(0, 8);
-const fileName = `forest.${hash}.png`;
-
-for (const f of readdirSync(OUT_DIR)) {
-  if (/^forest\.[0-9a-f]{8}\.png$/.test(f) && f !== fileName) {
-    unlinkSync(`${OUT_DIR}/${f}`);
-    console.log(`Removed stale ${f}`);
-  }
-}
-writeFileSync(`${OUT_DIR}/${fileName}`, png);
+const written = writeQuantisedMask({
+  dir: OUT_DIR,
+  prefix: 'forest',
+  width,
+  height,
+  values: coverage,
+  levels: COVERAGE_LEVELS,
+});
+const { fileName, bytes: pngBytes, hash, fullPixels: wooded, partialPixels: partial } = written;
 
 const forestManifest = {
   schemaVersion: 1,
@@ -211,7 +132,7 @@ const forestManifest = {
     slopeLimit: `canopy attenuated from ${SLOPE_FULL_DEG} deg to zero at ${SLOPE_NONE_DEG} deg, baked in`,
     pixelsLostToSlope: Math.round(slopeRemoved),
   },
-  file: { name: fileName, bytes: png.byteLength, sha256Prefix: hash },
+  file: { name: fileName, bytes: pngBytes, sha256Prefix: hash },
   source: {
     name: draft.source.name,
     attribution: draft.source.attribution,
@@ -230,7 +151,7 @@ const forestManifest = {
 writeFileSync(`${OUT_DIR}/forest.json`, `${JSON.stringify(forestManifest, null, 2)}\n`);
 
 console.log(
-  `\n${fileName}: ${(png.byteLength / 1024).toFixed(0)} kB\n` +
+  `\n${fileName}: ${(pngBytes / 1024).toFixed(0)} kB\n` +
     `wooded (>50%): ${wooded.toLocaleString()} px = ${((wooded / (width * height)) * 100).toFixed(1)}% of the bbox\n` +
     `edge pixels:   ${partial.toLocaleString()}\n` +
     `lost to slope: ${Math.round(slopeRemoved).toLocaleString()} px worth of canopy above ${SLOPE_FULL_DEG} deg\n` +

@@ -156,6 +156,19 @@ page.on('pageerror', (e) => pageErrors.push(String(e)));
 page.on('console', (m) => { if (m.type() === 'error') pageErrors.push(m.text()); });
 
 await page.goto(url, { waitUntil: 'load' });
+// The ground cover is switched off before anything is measured. It is not what this
+// suite is about, and since 2026-08-12 it draws 57,000 instances with
+// frustumCulled = false - so its vertex cost is paid on every frame even with the
+// camera pitched 65 degrees into the sky. Under SwiftShader that made frames ~2.5x
+// slower and this file's first screenshot time out at 30 s, which reads as a broken
+// sky rather than as a heavier scene.
+await page.waitForFunction(() => window.__pngp?.groundcover !== undefined, null, { timeout: 90000 })
+  .then(() => page.evaluate(() => {
+    window.__pngp.groundcover.density.value = 0;
+    window.__pngp.groundcover.apply();
+  }))
+  .catch(() => {}); // an older build without it, or a mask that failed to load
+
 await page.waitForFunction(() => window.__pngp?.sky && window.__pngp.camera.position.y !== 3000,
   null, { timeout: 180000 });
 
@@ -215,7 +228,9 @@ for (const m of ALTITUDES) {
     }, { cam: CAM, pitch: o.pitch });
     await page.waitForTimeout(3500); // headless renders this scene at ~1 fps
 
-    const img = decode(await page.screenshot());
+    // 120 s, not the 30 s default: a SwiftShader frame here is over a second, and a
+    // default-timeout screenshot fails as a TimeoutError rather than as a bad pixel.
+    const img = decode(await page.screenshot({ timeout: 120000 }));
     readings[m].live = await page.evaluate(() => window.__pngp.sky.lengths());
     for (const deg of o.angles) {
       const at = await pixelFor(deg);

@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "grid": "heightfield.json's bboxCrsUnits and row order at 1/2 of its resolution - UVs are normalised, so the terrain's own UV mapping addresses this unchanged",
+  "crs": "EPSG:23032",
+  "bboxCrsUnits": {
+    "xmin": 329116,
+    "ymin": 5036775,
+    "xmax": 413000,
+    "ymax": 5085000
+  },
+  "dimensions": {
+    "width": 2048,
+    "height": 1178
+  },
+  "resolutionMPerPx": {
+    "x": 40.958984,
+    "y": 40.955414
+  },
+  "downscaleFromHeightfield": 2,
+  "rowOrientation": "row 0 = north edge (ymax); row N-1 = south edge (ymin)",
+  "encoding": {
+    "channels": 1,
+    "depth": 8,
+    "meaning": "fraction of the pixel covered by this class, 0 = none, 255 = full",
+    "quantisedTo": "8 levels, stored at PNG sample depth 4 and scaled x17 on decode",
+    "levels": 8
+  },
+  "mask": {
+    "file": {
+      "name": "landcover.6ef0ff78.png",
+      "bytes": 619548,
+      "sha256Prefix": "6ef0ff78"
+    },
+    "meaning": "fraction of the pixel carrying open vegetation - not tree canopy, not cliff",
+    "coveredPixels": 1036203,
+    "partialPixels": 756518,
+    "meanCover": 0.4501
+  },
+  "derivation": {
+    "measured": "how much vegetation, from Sentinel-2 NDVI per pixel",
+    "modelledElsewhere": "whether that vegetation is grass or dwarf shrub - an elevation belt in src/groundcover.js, deliberately NOT shipped as a second texture because it is a function of a value the shader already has",
+    "vegetationFraction": "smoothstep(0.15, 0.55, ndvi)",
+    "ndviThresholdsChosenBy": "tools/dev/probe-ndvi.mjs - NDVI_BARE is above the 95th percentile of bare rock above 3000 m, NDVI_FULL is the 75th percentile of open ground at 2200-2700 m",
+    "canopy": "open vegetation suppressed by the OSM canopy mask at 1",
+    "slopeLimit": "cover attenuated from 35 deg to zero at 52 deg",
+    "rejectedAlternative": "OSM natural=scrub/heath/grassland + landuse=meadow. Built and measured (tools/build-landcover-osm.mjs): inside the park it covers 0.011 of a pixel below 2200 m and 0.003 above 2700 m, because open vegetation is not surveyed there. Not shipped."
+  },
+  "source": {
+    "ndvi": {
+      "name": "Copernicus Sentinel-2 L2A (Collection 1), surface reflectance bands B08/B04",
+      "via": "AWS Open Data via the Earth Search STAC API (https://earth-search.aws.element84.com/v1)",
+      "attribution": "Contains modified Copernicus Sentinel data 2025",
+      "license": "Copernicus Sentinel Data Legal Notice",
+      "licenseUrl": "https://sentinels.copernicus.eu/documents/247904/690755/Sentinel_Data_Legal_Notice"
+    },
+    "canopy": {
+      "name": "OpenStreetMap contributors",
+      "attribution": "(c) OpenStreetMap contributors",
+      "license": "ODbL 1.0",
+      "licenseUrl": "https://opendatacommons.org/licenses/odbl/1-0/"
+    },
+    "scenesUsed": [
+      {
+        "id": "S2A_T32TLR_20250808T103728_L2A",
+        "datetime": "2025-08-08T10:38:33.570000Z",
+        "scene": "base 2025-08-08",
+        "pixelsContributed": 8427701
+      },
+      {
+        "id": "S2A_T32TMR_20250808T103728_L2A",
+        "datetime": "2025-08-08T10:38:28.993000Z",
+        "scene": "base 2025-08-08",
+        "pixelsContributed": 315246
+      },
+      {
+        "id": "S2A_T32TLR_20250709T103044_L2A",
+        "datetime": "2025-07-09T10:38:37.530000Z",
+        "scene": "patch 2025-07-09",
+        "pixelsContributed": 200435
+      },
+      {
+        "id": "S2A_T32TMR_20250709T103044_L2A",
+        "datetime": "2025-07-09T10:38:32.972000Z",
+        "scene": "patch 2025-07-09",
+        "pixelsContributed": 27002
+      }
+    ]
+  },
+  "generatedBy": "tools/build-landcover.mjs",
+  "generatedAt": "2026-08-12T12:10:00.687Z"
+}

@@ -13,22 +13,22 @@ const MODES = [
   {
     key: 'clear', label: 'Clear skies',
     cover: 0.12, dark: 0.06, hazeMul: 1, vfAdd: 0, exposureMul: 1, grey: 0,
-    glowMul: 1, starsMul: 1, snow: 0, wet: 0, rain: 0,
+    glowMul: 1, starsMul: 1, snow: 0, wet: 0, rain: 0, wind: 0.3,
   },
   {
     key: 'clouds', label: 'Drifting clouds',
     cover: 0.52, dark: 0.26, hazeMul: 1.35, vfAdd: 0, exposureMul: 0.95, grey: 0.22,
-    glowMul: 0.6, starsMul: 0.3, snow: 0, wet: 0, rain: 0,
+    glowMul: 0.6, starsMul: 0.3, snow: 0, wet: 0, rain: 0, wind: 0.55,
   },
   {
     key: 'storm', label: 'Rainstorm',
     cover: 1.0, dark: 0.62, hazeMul: 3.2, vfAdd: 1.0e-4, exposureMul: 0.76, grey: 0.78,
-    glowMul: 0, starsMul: 0, snow: 0, wet: 1, rain: 1,
+    glowMul: 0, starsMul: 0, snow: 0, wet: 1, rain: 1, wind: 1.0,
   },
   {
     key: 'snow', label: 'Snowfall',
     cover: 0.95, dark: 0.3, hazeMul: 2.4, vfAdd: 0.7e-4, exposureMul: 0.9, grey: 0.6,
-    glowMul: 0.05, starsMul: 0, snow: 1, wet: 0, rain: 0,
+    glowMul: 0.05, starsMul: 0, snow: 1, wet: 0, rain: 0, wind: 0.7,
   },
 ];
 
@@ -37,7 +37,14 @@ const MODES = [
 // MODES were ever reordered, and a link is meant to outlive that.
 export const WEATHER_KEYS = MODES.map((m) => m.key);
 
-const LERP_KEYS = ['cover', 'dark', 'hazeMul', 'vfAdd', 'exposureMul', 'grey', 'glowMul', 'starsMul', 'wet', 'rain'];
+// `wind` joined this list on 2026-08-12, when src/groundcover.js needed something
+// to bend the grass with and found that the weather had no wind at all: audio.js
+// had been deriving its own from altitude, exposure and a private gust walk, which
+// is fine for a hiss but is not a number anything else can read - and reading it
+// would have tied the visuals to whether the sound is switched on. So the state
+// lives here now, with the rest of the weather, and it is 0..1: how hard it is
+// blowing before altitude and exposure scale it.
+const LERP_KEYS = ['cover', 'dark', 'hazeMul', 'vfAdd', 'exposureMul', 'grey', 'glowMul', 'starsMul', 'wet', 'rain', 'wind'];
 // Time constants of the lying-snow accumulator, seconds. See update().
 const SNOW_BUILD_TAU_S = 6;
 const SNOW_MELT_TAU_S = 12;
