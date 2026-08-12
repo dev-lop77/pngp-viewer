@@ -2,6 +2,29 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## ASK THEM ABOUT THE SHRUBS (their own request, 2026-08-12)
+
+**Open this before anything else.** Closing the day, the user said: *"segnati di
+richiedermi dei cespugli."* So the shrub shape is a question to PUT TO THEM, not a
+decision to make.
+
+What it is about: a dwarf-shrub cushion is an **octahedron** (`cushionGeometry()` in
+`src/groundcover.js`, 8 triangles), and at close range it reads as an angular dark
+**pyramid** rather than a cushion. It is consistent with the cone spruces and it is
+cheap, which is why it was chosen — but I raised it as theirs to judge and they asked
+to be asked. Rounder costs about 8 more triangles per bush, on 13,924 instances, and
+`SHRUB_TRIANGLES` in that file is what the cost tables and the stats read.
+
+Also still unsaid by them, and not to be assumed:
+
+- **the frame rate with the cover live.** They have never reported one. The last
+  reading, 32 fps, predates all of this and the cover is the heaviest thing in the
+  scene (457,504 triangles at Lush). The `Ground cover` control exists precisely so
+  their answer is a click.
+- **the overall verdict on the look.** They said *"molto bene"* to the floating fix,
+  which is not the same as accepting grass and shrubs. Grass reads as tussocks rather
+  than turf, deliberately and for a measured reason (see below).
+
 ## Grass, shrubs and edelweiss (2026-08-12) — built, not yet judged
 
 **The user opened their own next topic: "iniziamo dall'introduzione di erba ed
