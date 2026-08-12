@@ -258,10 +258,65 @@ agreement *worse*, not exact — which is the opposite conclusion. Retracted bef
 reached the code. **Check that two numbers live in the same space before calling them
 equal.**
 
+### Republished by the user, and verified as the real thing
+
+They ran `tools/dev/deploy.sh` themselves. **The live site was built from `52ee4d6`
+and carries everything in `main` that reaches it** — the only later commit is this
+documentation, which is not deployed. (`main` is local-only; `gh-pages` is the only
+branch with a remote.) Verified rather than assumed, in the order that matters:
+
+- The served `index.html` was polled until it named the bundle that had just been
+  built (`index-CRN5KK_E.js`) rather than merely returning 200. It turned over in
+  **~5 s** this time, against 16 s, 20 s and 100 s on earlier deploys — so the wait
+  is not a constant and polling for the *name* remains the only honest check. The
+  served name matching the local one also re-confirms the build is deterministic.
+- Every asset with `Accept-Encoding: gzip, deflate, br`: `index.js` 0.21 MB,
+  `basemap.56ba707b.webp` **1.75 MB** (no gzip, correctly — WebP is already
+  compressed), `heightfield.bin` 9.38 MB, `forest.png` 0.96 MB. With trails, water
+  and POI, **first load ≈ 12.6 MB, from 10.7** — the +17% the satellite session
+  predicted, now measured on the wire.
+- `node tools/verify.mjs` against the public URL: WebGL2, context not lost, **no
+  console or page errors** — which for two shader changes means both programs
+  compiled.
+- The licence condition is **live in the credits panel**, read out of the running
+  page: *"Contains modified Copernicus Sentinel data 2025"*.
+
+**And the altitude sky was measured on the live site, which needed a different
+instrument.** A production build has no `window.__pngp`, so nothing can be pinned;
+the sky is reached the way a *visitor* reaches it, through a share link carrying
+`mode=fly` and an altitude (`viewstate.js`'s format, honoured at `main.js:458`).
+Camera pitch 75 puts the frame centre at exactly 75° of elevation, so the sample
+needs no projection arithmetic. Same place, same time, only the altitude differing:
+
+| link | HUD confirms | sky at 75° | luma | B/R |
+|---|---|---|---|---|
+| 2100 m | `alt 2100 m · pitch +75°` | 0.445/0.668/0.874 | 0.635 | 1.96 |
+| 4061 m | `alt 4061 m · pitch +75°` | 0.329/0.573/0.826 | 0.539 | 2.51 |
+
+**luma ×0.849 on the live site.**
+
+**The first attempt returned the two readings byte-identical, and that is worth
+recording because on this project it is a known signature rather than a surprise.**
+Two causes stacked, both about the same mistake — assuming a navigation happened:
+
+1. **A URL differing only in its fragment is a same-document navigation.** The second
+   `page.goto()` changed only the hash, so the document never reloaded, `main.js`
+   never re-read `pendingView`, and the camera stayed where the first link had put
+   it. Both "altitudes" were one frame.
+2. **A hash wins once and is then consumed** (`viewstate.js`, by design), and the
+   autosave takes over afterwards — so even a real reload in the same profile would
+   have followed the saved view rather than the link. A fresh browser context per
+   altitude fixes both, and reading the **HUD** back is what proves the link took:
+   `alt 2100 m` and `alt 4061 m` in the page's own text, which is also all a visitor
+   has.
+
+The rule this keeps restating: *ask the thing that knows.* Not "I navigated, so the
+state changed" — read the state back.
+
 ### How to resume
 
-**Nothing is owed and nothing is unjudged.** What is left is only what the user might
-want.
+**Nothing is owed, nothing is unjudged, and the live site carries every committed
+change that reaches it** — the second time all three have been true at once.
 
 1. ~~**The look, in their browser.**~~ **CLOSED the same day: "cielo ok."**
 2. **The one thing left to watch is the far skyline**, and it is the measured cost of
