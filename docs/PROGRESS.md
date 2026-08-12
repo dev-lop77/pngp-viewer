@@ -2,6 +2,485 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## The sky thins with altitude (2026-08-12) — accepted, and nothing owed
+
+**Both things this session built were judged by the user and accepted, and the
+frame rate came back level.** Their three verdicts, in their own words:
+
+- satellite ground: *"Io lascierei così com'è, è già un buon passo in avanti."*
+- the sky: *"cielo ok"*
+- the frame rate: *"fps a 32 quindi ok"*
+
+**That fps reading is the one that was missing.** It is the same 32 fps as before
+either change, and this time it was taken with the satellite ground *and* the
+altitude sky both live — so the extra texture fetch per pixel of a full-screen
+surface costs nothing measurable on their hardware. The number is no longer stale.
+
+They also asked for the spent probe images to be deleted to save disk, which was
+done: `tools/dev/logs/` went from **38 MB to 1.6 MB**, keeping only the three
+`keep-*` frames and the two active server logs. It is gitignored scratch, so nothing
+tracked was touched — but several doc references pointed into it, and those now name
+**the instrument that regenerates the frames** rather than a path that is gone.
+
+**They then opened their own next topic, from looking at the colours: the sky
+should change with altitude — "Clear skies dovrebbe diventare sempre più blu, fino
+al classico blu scuro valdostano."** They chose the scope when asked: **the dome
+only**, not the haze and not the ambient light.
+
+### The shader already contained the physics, including both constants
+
+three's `Sky` addon (Preetham) has these in its fragment shader:
+
+```glsl
+const float rayleighZenithLength = 8.4E3;
+const float mieZenithLength      = 1.25E3;
+```
+
+They are the zenith optical path lengths, and for an atmosphere thinning
+exponentially the zenith column is (sea-level coefficient) × (scale height) — so
+**each constant *is* its own scale height**, 8.4 km of air and 1.25 km of aerosol.
+Standing at *h* leaves `L(h) = L0 · exp(-(h - ref) / L0)`. So no number had to be
+invented, and `src/sky.js` **reads the scale heights back out of the addon** rather
+than writing them down a second time where they could drift.
+
+Cost: the two `const float`s become uniforms, so the shader multiplies by a
+uniform where it multiplied by a constant. **Zero extra per-pixel maths, two
+uniform writes a frame.** Bundle 801.95 → **803.41 kB raw / 226.16 kB gzipped**,
++1.46 kB.
+
+**The patch throws if it cannot find or recognise either constant**, and that is
+the load-bearing part. A missed string replace would leave the sky at its
+sea-level column *forever and silently*, which on screen is indistinguishable from
+"the altitude effect is too weak to notice" — the same shape as `onBeforeCompile`
+on a material nobody uses, or `logarithmicDepthBuffer`'s chunks quietly absent from
+a `ShaderMaterial`. It also asserts each parsed value is still ~the scale height it
+is being used as, because a three.js upgrade that retuned it would break the
+identification with nothing to report it. All three failure modes are tested.
+
+### The reference is the spawn, and that was not a taste call
+
+`SKY_REF_ALTITUDE_M` = 1950 m, **measured**: `camera.position.y` at the default Le
+Pont spawn is 1954.6 m. All five time-of-day presets were tuned and approved by the
+user's eye standing there, so at that altitude the model hands the shader the
+addon's own numbers bit for bit, and only departures from it show. Applying the
+physics absolutely would have darkened the spawn too and reopened five closed
+presets by fiat. (My first estimate in conversation was 1400 m, from memory of the
+valley floor; the spawn is 550 m higher and it matters, so it was measured.)
+
+### The correction: I named the wrong half before measuring it
+
+**Told to the user, before any code: the aerosol collapse would be the dramatic
+half** — high skies are deep because the whitening haze has gone, and spawn →
+summit the aerosol column falls to 18% of itself against the air column's 78%.
+The reasoning is sound and the numbers are right. **In this project's presets it is
+very nearly irrelevant.**
+
+At the Midday preset (turbidity 4, mieCoefficient 0.004) the Mie term is **1.1%**
+of the blue channel's zenith optical depth and 2.6% of the red's, against
+Rayleigh's 0.635 and 0.122. Removing 88% of ~1% buys nothing. And altitude cannot
+reach the in-scattering ratio at all — `(betaRTheta + betaMTheta) / (betaR + betaM)`
+has no path length in it — so `Fex` is the only door and Rayleigh owns it.
+
+So this is a **Rayleigh** effect: a darker, more saturated zenith. If "the haze
+burns off as you climb" is ever wanted too, the lever is not `sky.js` — it is a
+*higher* turbidity low down in `lighting.js`, which is a palette decision.
+
+### Measured (tools/dev/probe-sky.mjs), Midday, clear, one camera
+
+**These are the numbers as shipped, i.e. after the `rayleigh` change two sections
+below.** The physics-only readings, at the old `rayleigh` 2.5, are kept in "The user
+did not see it, and they were right" for the record.
+
+| pinned altitude | zenith rgb | luma | B/R | horizon (5°) luma |
+|---|---|---|---|---|
+| 400 m DEM floor | 0.48/0.69/0.88 | 0.658 | 1.85 | 0.914 |
+| 1200 m low valley | 0.42/0.65/0.86 | 0.613 | 2.07 | 0.909 |
+| **1950 m spawn = ref** | 0.37/0.61/0.84 | 0.573 | 2.29 | 0.905 |
+| 2612 m Nivolet | 0.33/0.57/0.82 | 0.538 | 2.52 | 0.900 |
+| 3200 m high pass | 0.29/0.54/0.81 | 0.509 | 2.75 | 0.895 |
+| 4061 m Gran Paradiso | 0.25/0.50/0.78 | 0.467 | 3.15 | 0.888 |
+
+Spawn → summit by elevation angle, which is the whole argument for the dome-only
+scope holding together: **zenith luma ×0.815, 40° ×0.828, 12° ×0.943, horizon
+×0.981.** The per-preset fog colour was tuned against the *horizon* sky, and the
+horizon sky is the part that barely moves — so leaving the fog untouched is not a
+shortcut, it is correct. (At the old `rayleigh` the same figures were ×0.884 and
+×0.992; deepening the sky raised both, and the horizon is still well inside the 3%
+`test-sky.mjs` asserts.)
+
+### What caps this is the grade, and it answers an open question from 2026-07-31
+
+**In linear light the zenith at the spawn is `0.200/0.647/1.679` — a properly deep
+blue, B/R 8.4.** The blue channel is far over 1.0, so ACES compresses it and lifts
+red through its input matrix's channel crosstalk; what reaches the screen is B/R
+**1.56**. A 27% linear drop arrives as 12% on screen. The blue the user is asking
+for exists in the physics and the grade throws most of it away.
+
+**That also settles the caveat sitting in `lighting.js:36` since 2026-07-31**,
+where Midday's sun elevation was backed off from 38° to 25° because the Preetham
+model "clipped to flat white", flagged as *possibly* a SwiftShader precision
+artifact and never confirmed either way. **It is not SwiftShader.** The linear
+value was derived by hand from the model and ACES arithmetic and reproduces the
+measured ratios: the sky is simply over-exposed at `exposure` 0.75. Which also
+means the altitude term pushes *away* from the clipping, so a higher midday sun may
+now be affordable — a follow-on, not done.
+
+### The strength knob, and why it is asymmetric
+
+`SKY_ALTITUDE_STRENGTH` (a holder, like `BASEMAP_GAIN`, so a probe can sweep it
+from one camera) multiplies the exponent. Swept and measured at the summit — and
+**at the valley too, which is what forced the design**:
+
+| strength | 4061 m luma / B-R | 1200 m luma / B-R |
+|---|---|---|
+| **1 = physics** | 0.654 / 1.87 | 0.769 / 1.47 |
+| 1.5 | 0.609 / 2.09 | 0.782 / 1.43 |
+| 2 | 0.560 / 2.37 | 0.795 / 1.39 |
+| 3 | 0.461 / 3.17 | 0.821 / 1.32 |
+| 4 | 0.366 / 4.67 | 0.848 / 1.25 |
+| 6 | 0.209 / 25.67 | 0.902 / 1.14 |
+
+The exponent is symmetric by nature, so every bit of exaggerated climb is an equal
+exaggeration of the descent — and the descent is where it does damage: at strength
+3 the valley sky *whitens* and flattens, at 6 it is very nearly white. **So the
+strength applies only above the reference**; below it the honest exponent stands,
+because down there the physics is mild and needs no help. That asymmetry is easy to
+"simplify" away by reading the formula alone, so `test-sky.mjs` asserts it.
+
+**That table was measured before the fix it caused, and re-running `--sweep` now
+will not reproduce it**: with the asymmetry in place the 1200 m column is flat at
+0.769 / 1.47 for every strength, which is the whole point. It is kept as measured
+because it is the evidence, not the current behaviour.
+
+### Measured, and the trap was in the test again
+
+`tools/test-sky.mjs` (new, 19 checks) is in two halves because two different things
+break. A **node half** exercises the patch and all three of its failure modes with
+no browser at all — three's Sky addon is pure JS at import time, so the string
+surgery and the guards can be driven directly, including the cases that must throw.
+A **browser half** measures screenshots, never a canvas readback: no
+`preserveDrawingBuffer`, so a `drawImage()` readback returns an empty buffer and
+reports 0.000 for everything without complaining. For the sky the screenshot is
+also the only honest instrument because it carries ACES and the exposure, which is
+most of what decides the colour — a linear render target would measure a different
+sky.
+
+The altitude is pinned through `window.__pngp.sky`, the page's own holder, so every
+reading comes from one camera in one session, and the suite **asserts the pin moved
+the sky** rather than merely set a field — the discipline the basemap suite had to
+learn when a second Vite module instance let "photo" and "procedural" come out
+identical to the byte and every bracket pass anyway.
+
+Two faults on the way, both in the measuring:
+
+1. **The HUD is DOM drawn over the canvas, and the nav panel sits dead centre at
+   the top of the frame — exactly where the zenith sample lands.** Left visible,
+   both the probe and the suite would have been reading a grey panel at the single
+   most important angle and reporting "the zenith does not move" no matter what the
+   shader did. Both hide the overlay now.
+2. **The clamp caught my own check.** "One air scale height up the column is 1/e"
+   was asserted at 1950 + 8400 = 10,350 m, which is past `SKY_ALT_MAX_M` (9000) and
+   therefore clamped, so it failed — correctly. The clamp exists because fly mode
+   has no altitude cap whatsoever (`controls.js` just adds on Space) and Preetham is
+   a ground-observer fit being extrapolated. The check now uses half a scale height,
+   inside the window.
+
+And one framing note worth keeping: the first A/B screenshots were taken looking
+**horizontally**, which is precisely the part of the dome that barely moves. They
+showed almost nothing and were nearly reported as "the effect is subtle". Pitched up
+30°, the same pair separates clearly. **Point the instrument at where the effect
+is, or measure the one place it isn't.**
+
+### The user did not see it, and they were right
+
+Their verdict on the physics-exact version: *"Onestamente non vedo molta differenza
+salendo di quota. Non voglio però rovinare i colori della scena."*
+
+**Both halves of that were correct, and the first one was my reporting error.** The
+×0.884 quoted to them is spawn → *summit*, 1950 → 4061 m. The walk anyone actually
+does is spawn → Nivolet, 1950 → 2612 m, and the same table gives **×0.966 there:
+3.4%.** Below anyone's threshold. They walked the modest pair while I quoted the
+dramatic one. The physics-only profile, for the record:
+
+| altitude | zenith luma | B/R | horizon luma |
+|---|---|---|---|
+| 1200 m | 0.769 | 1.47 | 0.928 |
+| 1950 m | 0.740 | 1.56 | 0.927 |
+| 2612 m | 0.715 | 1.64 | 0.924 |
+| 4061 m | 0.654 | 1.87 | 0.920 |
+
+**On the second half — the fear of ruining the scene's colours — the answer is that
+the lever cannot reach them, and that is now measured rather than argued.** There is
+no `PMREMGenerator`, no `scene.environment`, no `envMap` and no `CubeCamera`
+anywhere in `src/`: the dome is drawn and never read back, and the terrain, trees and
+water are lit by a real `DirectionalLight` + `AmbientLight` whose colours come from
+separate preset fields. Across the whole `rayleigh` sweep the ground rendered
+**`0.262/0.237/0.177` at every single value**, byte-identical, and `scene.fog.color`
+never moved. The one lever that *would* grade the whole picture is `exposure`, and it
+was never on the table.
+
+### The user chose a deeper baseline, and the sweep found the real trade
+
+Their choice was to deepen the base blue as well, not only amplify the climb, and
+then **`rayleigh` 1.6 from four measured full-frame candidates** they looked at. The
+frames themselves were deleted at their request once the verdict was in
+(`tools/dev/logs/` is gitignored scratch and had grown to 38 MB); regenerate any of
+them with `node tools/dev/probe-sky.mjs --rayleigh`, which is the instrument and
+outlives the artefact.
+
+| `rayleigh` | zenith B/R at spawn | spawn→Nivolet | spawn→summit | sky/haze step at the far skyline |
+|---|---|---|---|---|
+| 2.5 (was) | 1.52 | +0.08 | +0.29 | 0.11 |
+| 2.0 | 1.78 | +0.12 | +0.44 | ~0.17 |
+| **1.6 (chosen)** | 2.19 | +0.19 | +0.73 | 0.21 |
+| 1.3 | 2.79 | +0.34 | +1.32 | 0.28 |
+
+**Why deepening the baseline is the same fix as making the altitude term visible**:
+the sky was sitting deep in ACES's compression shoulder (linear blue 1.679), where
+everything desaturates toward white. Move it down the curve and the *same* physics
+in `sky.js` has room to show — the altitude effect roughly doubles without one line
+of `sky.js` changing.
+
+**And the cost, which is real and specific to this lever**: unlike the altitude term
+(zenith-weighted, horizon ×0.98) this deepens the *whole* dome, so the horizon sky
+pulls away from the fog colour — a separate preset field, deliberately left as
+approved. The step was already there at 0.11 of red and this doubles it to 0.21. It
+lives in a thin band past ~20 km where the haze is strong. Only the Midday preset
+moved; Dawn, Golden hour and Dusk are meant to be warm and hazy.
+
+**A near-miss worth recording, because it would have been a decision built on
+nothing.** The sweep showed the horizon sky reading luma 0.707 at `rayleigh` 1.3, and
+`scene.fog.color`'s luma is also 0.707 — announced as "the value where the two things
+that must agree, agree". **It was a coincidence between two different colour spaces**:
+the horizon pixel is post-ACES and post-sRGB, the fog uniform is the linear value the
+shader is handed. Compared properly, as rendered pixels, lowering `rayleigh` makes the
+agreement *worse*, not exact — which is the opposite conclusion. Retracted before it
+reached the code. **Check that two numbers live in the same space before calling them
+equal.**
+
+### How to resume
+
+**Nothing is owed and nothing is unjudged.** What is left is only what the user might
+want.
+
+1. ~~**The look, in their browser.**~~ **CLOSED the same day: "cielo ok."**
+2. **The one thing left to watch is the far skyline**, and it is the measured cost of
+   the `rayleigh` change rather than a fault: the pale haze band past ~20 km now steps
+   0.21 of red away from the sky above it, double the 0.11 that was already there.
+   They accepted the sky without singling it out, so it is not a problem — but if it
+   ever reads wrong, **the fix is not `rayleigh`**: it is letting the fog colour
+   follow, which is the "dome + air" scope they declined at the outset, and which is
+   worth re-offering with this measurement in hand rather than re-deriving.
+3. **`SKY_ALTITUDE_STRENGTH` is still at 1 and untouched.** It was offered and they
+   chose the baseline route instead. If the climb still reads weak after a real walk,
+   2–3 is the range and it only ever affects altitudes above the reference.
+4. **A follow-on this unlocked**: `lighting.js`'s 38° → 25° midday sun was backed off
+   because of clipping now known to be exposure, not SwiftShader. Both this change
+   and the altitude term push away from that clipping, so a higher midday sun may now
+   be affordable.
+5. **Knobs**: `SKY_REF_ALTITUDE_M`, `SKY_ALTITUDE_STRENGTH`, `SKY_ALT_MIN_M` /
+   `SKY_ALT_MAX_M` in `src/sky.js`, and Midday's `rayleigh` in `src/lighting.js`.
+   Instruments: `tools/dev/probe-sky.mjs`, with `--sweep` for the strength table and
+   `--rayleigh` for the baseline sweep incl. the ground-invariance check.
+
+## Satellite imagery — built 2026-08-11, **accepted by the user 2026-08-12**
+
+**Closed by their own verdict: "Io lascierei così com'è, è già un buon passo in
+avanti."** Nothing was tuned after it, the `SATURATION` question below was put to
+them and they let the measured data stand, and it is committed. The section below
+is the original writeup, kept as the record of how it was built and decided.
+
+*(Original note, 2026-08-11: the session ended on the user's call — "per oggi
+dobbiamo terminare qui" — with topic 1 built and measured but not yet seen in their
+own browser.)*
+
+### What was decided, and by whom
+
+The user chose both of the two questions that shaped it: **the photo carries the
+ground colour everywhere**, de-shaded, with the procedural detail kept as a
+near-field modulation (not "photo far, procedural near", and not a light tint);
+and **20.5 m/px now**, with real resolution explicitly deferred to their topic 2
+rather than paid for here. Everything else below was mine and is reversible
+through named constants.
+
+### The source, and the licence that picked it
+
+**Copernicus Sentinel-2 L2A (Collection 1)**, surface-reflectance bands
+B04/B03/B02, as COGs on AWS Open Data through the Earth Search STAC API — no
+account, no key. Free, full and open under the EU legal notice, **read from the
+European Commission document itself** rather than from a summary: reproduction,
+distribution, communication to the public and modification are all granted, and
+modified data must carry *"Contains modified Copernicus Sentinel data 2025"*
+verbatim. `tools/test-basemap.mjs` asserts that exact string, because it is a
+licence condition and not a caption.
+
+**EOX's ready-made "Sentinel-2 cloudless" mosaic was rejected**, and it was the
+obvious shortcut — a global cloud-free basemap, one WMTS call. It is
+**CC BY-NC-SA 4.0**: non-commercial *and* share-alike, more restrictive than
+everything this site already publishes (CC BY 4.0, ODbL). Worth writing down
+because the tempting answer and the correct one differed.
+
+**Scene choice was measured inside the real park boundary**, not on the granule,
+because a granule-wide cloud figure says nothing about where the cloud sits. The
+2025-08-08 pass reads **0.01% cloud-affected inside the park** (2.11% over the
+whole bbox, all of it one patch in the south-east corner, outside the park) and is
+the least snowy of the cloud-free summer passes: snow/ice on **7.4%** of the park
+against 15.4% on 2025-07-09, which still looks like winter up high. Two granules
+of one datatake cover the bbox **100.00%** (measured, 0.00% nodata) and share one
+illumination, so there is no seam. The 2025-07-09 pass, cloud-free over the entire
+bbox, fills the corner.
+
+### The two real problems, and what happened to them
+
+**1. A photograph contains one sun; this terrain's sun moves.** Measured on the
+Aug-8 geometry (azimuth 152.7°, elevation 58.0°): mean cos of incidence 0.745,
+minimum 0.004 — real shadowed faces. Draped as-is, every north face would be dark
+twice and at sunset the shading inside the texture would still point south-east.
+**Divided back out at build time using this project's own DEM** — a C-correction,
+`rho * (cos(zenith) + C) / (cos(incidence) + C)`, with cos of incidence from slope
+and aspect at each granule's own sun angles. The plain cosine correction was tried
+first and **blew 8.95% of the map to white**, which is what C = 0.30 exists to
+damp. Cast shadows are *not* corrected and the script says so: a face behind a
+ridge is dark for a reason no per-pixel formula can see.
+
+**2. Reflectance is not this project's albedo scale, and the gap is a factor of
+3.4.** This is the "albedo is not appearance" landmine arriving from the other
+direction: Sentinel gives physical reflectance (5-8% for conifer forest), while
+every colour literal here was solved backwards through the BRDF, the rig and ACES
+to reach an approved on-screen brightness. So one measured gain brings the photo
+onto that scale. `tools/dev/probe-basemap.mjs` measured it by rendering both looks
+**from one camera in one session** and sweeping: the matching gain came out 3.86
+at Le Pont, 3.39 at Rifugio Vittorio Emanuele, ~4.6 at the Nivolet and ~2.6 at the
+two wide landscape views. **The spread is the finding, not an error** — a
+photograph has more contrast between land covers than a function of altitude does,
+so no single number can put both ends where the bands had them. 3.4 is the mean;
+at it the five vantages read x0.955, x1.00, x1.04, x0.927, x1.05 of the approved
+brightness. The cost, measured: 9.1% of the park saturates past albedo 1.0, nearly
+all of it glacier, which the nival band was already pushing as bright as this rig
+can reach.
+
+### What still applies over the photo, and what does not
+
+Kept, and each for a stated reason: **the slope-rock override**, because an
+orthophoto is a plan projection — a vertical face gets a handful of texels at any
+resolution, and draping them over its true area smears whatever sat at its foot up
+the whole wall; **lying snow**, unchanged, on top; **the terrain's own two-octave
+noise**, as a mean-1 multiplier (`BASEMAP_DETAIL` 0.10), because at 20.5 m the near
+field is a few texels wide.
+
+Dropped: **the OSM forest tint**, faded out by the same mix. Where the photo draws,
+it already knows where the woods are and says so better than a polygon average —
+dense canopy measures G/R **1.40** in the imagery against the tint's 1.54, i.e. the
+same green, from the real extent.
+
+**The near field is no worse than before, and that is worth stating plainly**: at
+20.5 m/px the ground within 30 m of a walking camera is one or two texels, so it is
+a flat colour — but the bands were also a smooth function of elevation there, so it
+was already a flat colour. What changes is that the colour is now right. Filling
+that near field is what topic 3 (grass and shrubs) is for.
+
+### One finding the user should decide on
+
+**Sentinel-2 true colour is honest and reads drab.** Measured with the real canopy
+mask: dense forest G/R 1.40 (properly green), open alpine ground 1800-2600 m G/R
+**1.00** — grey-olive, where the band model painted it green. That is what August
+alpine grassland mixed with rock actually looks like from orbit, but it is not what
+the eye remembers from standing there. A `SATURATION` knob is in the build script
+(default 1.0 = the data as measured); a variant at 1.5 was built and looked at, and
+**it mostly removes blue rather than adding green** — the honest fix for a greener
+look is a channel-wise grade, which is a palette decision and therefore theirs.
+
+### Measured, and the trap that cost the most
+
+`tools/test-basemap.mjs` (new, 12+ checks) asserts each rendered point **against
+the texel the build put at that point's own coordinates** — which makes it a
+georeferencing test as much as a calibration one: a flipped V or a bbox typo would
+put a glacier's texel on a valley floor and every point would miss at once. A
+bracket, not an equality, for the same reason `test-snow.mjs` is one. Five points
+pass: dense forest 1441 m, valley floor 1381 m, open ground 2314 m, high rock
+3037 m, ice 3524 m, plus a cliff. Also asserted: the four covers span 0.905 of
+albedo (so the texture is not uniform), forest is greener than rock, the cliff
+still reads as rock, and snow still covers the photo (luma 0.256 → 0.947 against
+the snow colour's 0.946).
+
+**The trap, and it bit twice — the second time inside the test itself: after any
+HMR reload, a probe's own `import('/src/basemap.js')` is a DIFFERENT MODULE
+INSTANCE from the page's.** Vite serves the edited module to the page as
+`/src/basemap.js?t=<stamp>` and rewrites the imports *inside* every module it
+serves, so a bare-path import hands you a second copy with its own untouched
+holders. Pinning that copy changes nothing on screen and reads back exactly what
+you just wrote. First it reported the texture "not loaded" while the page was
+drawing it; then, in the test, the mix silently stayed at the 1 that `main.js`'s
+own loader had set — **"procedural" and "photo" came out identical to the byte and
+every bracket passed anyway**. The holders are published on `window.__pngp`
+(`basemap`, and `snowLevel` beside it) and both tools go through that now. The test
+gained the assertion that would have caught it: *switching the mix must move the
+ground*.
+
+**It also broke a sibling suite, which is the honest cost of a shared holder**:
+`test-terrain-albedo.mjs` builds its own terrain inside the real page, so
+`main.js`'s loader switched the mix to 1 under it and all seven bands "failed"
+against a photograph. It now pins the mix to 0 with a getter — an assignment would
+have been switched back on when that loader resolved mid-suite.
+
+### Numbers
+
+- **1.83 MB** WebP q80 for 4096×2355 (the heightfield's own grid), i.e. **+17% on
+  a 10.88 MB first load**, ~39 MB of VRAM plus mipmaps. Rejected at the user's
+  choice: 10 m/px, which measured **6.5 MB** and ~154 MB of VRAM.
+- Bundle **801.95 kB / 225.50 kB gzipped**, up 8.6 kB from 793.34.
+- The build is deterministic: a second run wrote the byte-identical
+  `basemap.56ba707b.webp`.
+- **Eleven suites now.** `basemap`, `terrain-albedo`, `snow` and `vegetation` were
+  run after the change and pass; `audio`, `birds`, `controls-focus`, `mouselook`,
+  `rendered-height`, `viewstate`, `wildlife` were **not re-run** (nothing they
+  touch changed, but that is an argument, not a measurement).
+
+### How to resume
+
+1. ~~**The look, in their browser.**~~ **CLOSED 2026-08-12: accepted as it stands.**
+   The A/B pairs and the source-imagery previews have been deleted since (see the
+   top section); `tools/dev/probe-basemap.mjs` regenerates the pairs and
+   `tools/basemap-source/build-basemap.py --use-cache` the previews.
+2. ~~**Then the frame rate.**~~ **CLOSED 2026-08-12: "fps a 32 quindi ok."** So the
+   extra texture fetch per pixel of a full-screen surface costs nothing measurable
+   on their hardware — the reading is the same 32 fps as before it existed, and this
+   one was taken *with* the satellite ground and the altitude sky both live. If it
+   ever does cost, `BASEMAP_DETAIL` and the texture's `anisotropy` (4) are the cheap
+   levers before resolution is.
+3. **Knobs, all named**: `BASEMAP_GAIN` and `BASEMAP_DETAIL` in `src/basemap.js`;
+   `SATURATION`, `FULL_SCALE`, `C_CORRECTION`, `WEBP_QUALITY` and the scene ids in
+   `tools/basemap-source/build-basemap.py` (rebuild with `--use-cache` — 10 s
+   instead of 2 minutes).
+4. **Uncommitted**, and a republish is a separate decision after they have judged
+   it: the live site is level with `main` at `5b4b96c` and this would be the first
+   change to fall behind it.
+5. **Topics 2 and 3 are untouched** and neither was discussed. See the list below.
+
+## Three optional extras, opened by the user 2026-08-11 (second session)
+
+With the roadmap closed and nothing owed, the user opened three **non-mandatory**
+explorations of their own and asked for all three to be recorded before any work
+starts. They are listed here in their order, which is also the order they chose to
+work them: **start with 1.** None of them is committed to yet — each needs its own
+discussion before anything is built, per the standing rule on this project.
+
+1. **Satellite / orthophoto imagery** — **BUILT the same day, awaiting their eye.**
+   See the section above this one for everything about it. Note this is the topic
+   *deferred* since 2026-08-03 and marked "do not re-raise unprompted" — it is open
+   now only because the user opened it themselves. It is not a free addition: the
+   ground albedo is currently procedural (five Alpine bands + OSM forest tint +
+   slope rock + lying snow, all solved backwards from an intended on-screen colour),
+   so real imagery either replaces that per-pixel work or has to coexist with it,
+   and it lands on a first load already at 10.88 MB.
+2. **Higher-resolution models: terrain, fauna, flora** — an *option* the user can
+   turn up, not a new default. Terrain currently ships at 20.5 m/px (`MAX_DIM` 4096
+   in `tools/process-heightmap.mjs`) over a real 10 m/px source, so the data for a
+   finer step already exists; the animals and trees are low-poly by design.
+3. **More flora: grass, shrubs** (blueberry, juniper named as examples).
+   `src/vegetation.js` draws trees only, so everything below tree height is
+   currently the terrain's own colour.
+
 ## Status as of 2026-08-11
 
 **Both things owed to the user are closed by their own verdict: "Test visivo ok,
@@ -1842,11 +2321,12 @@ chosen. Currently 1.8% do, all chamois, against a 25% limit.
 
 New `tools/dev/shoot-wildlife.mjs` photographs a herd. It has to chase: every
 species flees, so a camera aimed once and screenshotted a second later
-photographs empty hillside. Shots of all three are in `tools/dev/logs/`.
+photographs empty hillside. Shots of all three were in `tools/dev/logs/`, which was
+cleared on 2026-08-12; that tool regenerates them.
 
 **On brightness in those shots: they look very dark, and that was checked rather
-than assumed.** `tools/dev/logs/trees-cretaz-ground.png` from 2026-08-03 - the
-same lighting, which the user confirmed as good in Firefox - is just as dark, and
+than assumed.** A `trees-cretaz-ground.png` from 2026-08-03 - the
+same lighting, which the user confirmed as good in Firefox - was just as dark, and
 `test-terrain-albedo.mjs` still passes to within 0.002. So this is the known
 SwiftShader behaviour and not a regression. It is exactly the trap documented
 below: never retune lighting against a headless screenshot.

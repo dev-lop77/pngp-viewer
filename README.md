@@ -21,7 +21,9 @@ Inspired by [ode-to-yosemite](https://github.com/shlokkhemani/ode-to-yosemite).
 - **Water**: 198 lakes, 10 rivers, 47 glaciers and 3 waterfalls, with animated flow,
   ripple and mist.
 - **Sky and weather**: a time-of-day cycle from dawn to night, plus clear skies,
-  drifting clouds, rainstorm and snowfall.
+  drifting clouds, rainstorm and snowfall. The sky deepens as you climb, because
+  the air column above you really does thin — the same reason the zenith goes dark
+  blue on a high col and stays milky in the valley.
 - **Life**: about 28,000 trees placed from a real canopy mask, and ibex, chamois,
   marmots, foxes and squirrels that live where their species actually would —
   elevation, slope and tree cover decide where — and react to you when you come
@@ -55,6 +57,11 @@ elevation merged from three sources:
   (Version 1.1), Istituto Nazionale di Geofisica e Vulcanologia (INGV),
   [doi:10.13127/tinitaly/1.1](https://doi.org/10.13127/tinitaly/1.1) — all three
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+- Ground imagery: *Contains modified Copernicus Sentinel data 2025* — Sentinel-2
+  L2A, 8 August and 9 July 2025, under the
+  [Copernicus Sentinel Data Legal Notice](https://sentinels.copernicus.eu/documents/247904/690755/Sentinel_Data_Legal_Notice).
+  The illumination of the acquisition has been divided back out using the
+  elevation above, so the viewer can light the ground with its own moving sun.
 - Trails: *Dati forniti dalla Struttura Forestazione e Sentieristica della Regione
   Autonoma Valle d'Aosta.* — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 - Places, water and tree cover: © OpenStreetMap contributors —

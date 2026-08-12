@@ -36,6 +36,21 @@ page.on('console', (msg) => {
 
 await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
+// The satellite ground OFF, and PINNED off (2026-08-11). This suite's subject is
+// the procedural band mapping, but the page it runs inside loads the satellite
+// texture and switches the shared mix to 1 - so left alone, every band here would
+// be asserted against a photograph and all seven would "fail". Two details:
+//   - it goes through window.__pngp, because that is the holder instance the
+//     terrain shader is bound to (a test-side `import('/src/basemap.js')` can be a
+//     second copy - see the note at the top of tools/test-basemap.mjs);
+//   - it is a getter, not an assignment, because main.js's own loader resolves
+//     later and would otherwise switch it back on mid-suite.
+await page.waitForFunction(() => window.__pngp !== undefined, null, { timeout: 60000 });
+await page.evaluate(() => {
+  const mix = window.__pngp.basemap.mix;
+  Object.defineProperty(mix, 'value', { get: () => 0, set: () => {}, configurable: true });
+});
+
 const result = await page.evaluate(async () => {
   const THREE = await import('/node_modules/three/build/three.module.js');
   const {

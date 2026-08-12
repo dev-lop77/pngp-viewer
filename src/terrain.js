@@ -4,6 +4,7 @@ import { sampleHeightfield, sampleRenderedHeightfield, decodeHeightfield } from 
 import { attachAtmo } from './atmosphere.js';
 import { FOREST_MASK } from './forest.js';
 import { SNOW_LEVEL, snowGlsl, snowColorGlsl } from './snow.js';
+import { BASEMAP, BASEMAP_MIX, BASEMAP_SCALE, basemapGlsl } from './basemap.js';
 
 // Quadtree-LOD terrain (docs/ARCHITECTURE.md §12's tile/LOD item, pulled
 // forward from phase 7 on 2026-08-03). It replaced a single 256x147 mesh
@@ -251,6 +252,7 @@ export async function loadTerrain(dataUrl = `${import.meta.env.BASE_URL}data`) {
     varying vec2 vTerrainXZ;
     uniform sampler2D uForestMask;
 ${snowGlsl()}
+${basemapGlsl()}
 
     float terrainHash( vec2 p ) {
       return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453123 );
@@ -283,11 +285,29 @@ ${bandMix}
       // rock term below.
       vec2 fUv = vec2( ( vTerrainXZ.x + ${glsl(worldWidth / 2)} ) / ${glsl(worldWidth)},
                        ( ${glsl(worldDepth / 2)} - vTerrainXZ.y ) / ${glsl(worldDepth)} );
+      // Faded out by the satellite mix: where the photo is carrying the colour
+      // it already shows the real forest, at its real extent and in its real
+      // colour, so tinting from the OSM polygons on top would be the same claim
+      // made twice - and the weaker of the two claims at that.
       float wood = texture2D( uForestMask, fUv ).r;
-      albedo = mix( albedo, ${glslRgb(FOREST_FLOOR_COLOR)}, wood * ${glsl(FOREST_FLOOR_MIX)} );
+      albedo = mix( albedo, ${glslRgb(FOREST_FLOOR_COLOR)},
+                    wood * ${glsl(FOREST_FLOOR_MIX)} * ( 1.0 - uBasemapMix ) );
+
+      // The satellite albedo (src/basemap.js), replacing the elevation bands and
+      // the forest tint rather than sitting on top of them - the whole point of
+      // the photo is that it knows where this particular hillside is wooded,
+      // grassy or bare, which a function of altitude can only approximate. What
+      // it does NOT know is anything the elevation bands were never doing
+      // either: see the two terms below, both of which still apply over it.
+      albedo = mix( albedo, basemapAlbedo( fUv, wobble ), uBasemapMix );
 
       // Steep ground is bare whatever its altitude - nothing roots on a cliff,
-      // and snow doesn't sit on one either. Ascending edges only: GLSL leaves
+      // and snow doesn't sit on one either. It survives the satellite mix above
+      // for a second reason: a view from orbit is a plan projection, so a
+      // vertical face is a handful of texels no matter how sharp the imagery, and
+      // draping those over its true area smears whatever happened to be at its
+      // foot up the whole wall. This term is what still says "rock" there.
+      // Ascending edges only: GLSL leaves
       // smoothstep undefined when edge0 >= edge1, so this can't be written as
       // a descending smoothstep on n.y.
       float bare = 1.0 - smoothstep( ${glsl(SLOPE_ROCK_TO)}, ${glsl(SLOPE_ROCK_FROM)}, n.y );
@@ -309,6 +329,12 @@ ${bandMix}
     // the terrain, and this way neither has to wait for the other.
     shader.uniforms.uForestMask = FOREST_MASK;
     shader.uniforms.uSnow = SNOW_LEVEL; // declared by snowGlsl(), driven from main.js
+    // Same arrangement again, for the same reason: the satellite texture is a
+    // separate download and the mix stays 0 until it lands, so this material
+    // compiles and draws the procedural ground whether it ever arrives or not.
+    shader.uniforms.uBasemap = BASEMAP;
+    shader.uniforms.uBasemapMix = BASEMAP_MIX;
+    shader.uniforms.uBasemapScale = BASEMAP_SCALE;
 
     let vs = shader.vertexShader;
     vs = patch(vs, '#include <displacementmap_pars_vertex>', `#include <displacementmap_pars_vertex>\n${HELPERS}`);

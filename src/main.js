@@ -7,11 +7,16 @@ import { loadTrails } from './trails.js';
 import { loadPOI, poiInfoHTML } from './poi.js';
 import { loadWater } from './water.js';
 import { loadForest, createCoverageSampler } from './forest.js';
+import { loadBasemap, BASEMAP_MIX, BASEMAP_SCALE, BASEMAP_GAIN, BASEMAP } from './basemap.js';
 import { createVegetation } from './vegetation.js';
 import { createWildlife } from './wildlife.js';
 import { createBirds } from './birds.js';
 import { createAudio } from './audio.js';
 import { installAtmosphere } from './atmosphere.js';
+import {
+  installSkyAltitude, updateSkyAltitude, SKY_ALTITUDE_OVERRIDE, SKY_ALTITUDE_STRENGTH,
+  skyAltitudeLengths,
+} from './sky.js';
 import { Lighting } from './lighting.js';
 import { Weather, WEATHER_KEYS } from './weather.js';
 import { localToWGS84, wgs84ToLocal } from './geo.js';
@@ -24,6 +29,7 @@ import {
 } from './viewstate.js';
 
 installAtmosphere(); // patch the fog chunks before any material compiles (phase 4, docs/ARCHITECTURE.md §7)
+installSkyAltitude(); // before `new Sky()` below - the constructor CLONES the uniforms, so a later addition never reaches the material (src/sky.js)
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x9fc9e8, 20000, 140000);
@@ -128,7 +134,7 @@ window.addEventListener('keydown', (event) => {
 const creditLines = {};
 // Fixed order rather than Object.values(): the keys are filled in by whichever
 // fetch finishes first, so the overlay used to reshuffle between loads.
-const CREDIT_ORDER = ['dem', 'trails', 'osm', 'modified'];
+const CREDIT_ORDER = ['dem', 'basemap', 'trails', 'osm', 'modified'];
 function renderCredits() {
   document.getElementById('credits').innerHTML = CREDIT_ORDER.filter((k) => creditLines[k])
     .map((k) => creditLines[k])
@@ -197,6 +203,26 @@ const forestPromise = loadForest().catch((err) => {
   console.warn('Forest mask unavailable - continuing without trees:', err.message);
   return null;
 });
+
+// The satellite ground texture, independent of everything else in the same way
+// and for the same reason (src/basemap.js binds shared holders at compile time).
+// Until it lands - and forever, if it fails - the terrain draws the procedural
+// ground it drew through phase 7, so this is the one loader whose failure is
+// invisible rather than merely survivable.
+loadBasemap()
+  .then(({ manifest }) => {
+    // Prescribed verbatim by the EU legal notice on Copernicus Sentinel data for
+    // adapted or modified data ("Contains modified Copernicus Sentinel data
+    // [Year]"), and the data here IS modified - warped, de-shaded, mosaicked.
+    // Same standing as the VDA DTM's own required wording: not paraphrasable.
+    creditLines.basemap =
+      `${manifest.source.attribution} ` +
+      `(<a href="${manifest.source.licenseUrl}" target="_blank" rel="noopener">legal notice</a>)`;
+    renderCredits();
+  })
+  .catch((err) => {
+    console.warn('Satellite basemap unavailable - drawing the procedural ground:', err.message);
+  });
 
 let wildlife = null; // animals carry state between frames, so they need the loop
 let birds = null; // same, and they need the POI list too (see below)
@@ -550,6 +576,40 @@ if (import.meta.env.DEV) {
     getPoiIndex: () => poiIndex,
     getWildlife: () => wildlife, // loads late, so a getter rather than the value
     getBirds: () => birds,
+    // The satellite ground texture, published as the HOLDERS themselves so a probe
+    // can A/B the ground colour in ONE session from ONE camera - the only honest
+    // way to compare two looks, since two runs differ in animals, birds and gust
+    // (docs/PROGRESS.md 2026-08-10, "a separate render is not the same scene").
+    //
+    // Handed over here rather than left to a probe's own `import('/src/basemap.js')`,
+    // which is a trap: after any HMR reload the page holds the module as
+    // `/src/basemap.js?t=<stamp>` and a bare-path import gets a SECOND instance,
+    // with its own untouched holders. Pinning that one changes nothing on screen
+    // and reads back exactly the value it just wrote.
+    basemap: {
+      mix: BASEMAP_MIX,
+      scale: BASEMAP_SCALE,
+      gain: BASEMAP_GAIN,
+      getTexture: () => BASEMAP.value,
+    },
+    // Published for the same reason, and it closes the same trap: anything pinning
+    // the lying-snow level from outside must pin THIS object, not one it imported
+    // for itself.
+    snowLevel: SNOW_LEVEL,
+    // Same discipline again, for the sky's altitude (src/sky.js): the holder
+    // itself, so a probe can compare two altitudes from ONE camera, plus the model
+    // it is driving so a test can bracket a pixel without re-deriving Preetham on
+    // its own side. `lengths` reads the LIVE uniforms, which is the only way to
+    // tell "the pin reached the shader" from "the pin set a field nobody reads".
+    sky: {
+      altitude: SKY_ALTITUDE_OVERRIDE,
+      strength: SKY_ALTITUDE_STRENGTH,
+      lengthsFor: (m) => skyAltitudeLengths(m),
+      lengths: () => ({
+        rayleighZenithLength: sky.material.uniforms.rayleighZenithLength.value,
+        mieZenithLength: sky.material.uniforms.mieZenithLength.value,
+      }),
+    },
   };
 
   // 'G' stands next to the nearest animal, cycling species on each press. Purely
@@ -762,6 +822,11 @@ renderer.setAnimationLoop(() => {
   wildlife?.update(timer.getDelta(), camera);
   birds?.update(timer.getDelta(), camera);
   lighting.applyState(); // re-grades every frame so an in-progress weather transition stays live
+  // The sky's own air column, which depends on how high the camera is rather than
+  // on the time of day - so it is driven here and not from lighting.applyState().
+  // World Y is real elevation in metres (docs/ARCHITECTURE.md §6), so the camera's
+  // altitude ASL is just its y. Two uniform writes (src/sky.js).
+  updateSkyAltitude(sky, camera.position.y);
   // How much snow has fallen and not yet melted. weather.js has accumulated this
   // since phase 4 and both the haze and the footsteps have always read it; the
   // terrain never did, so it snowed without the ground ever going white (found

@@ -248,6 +248,13 @@ than tiled from a remote source).
 
 There are two stages, kept deliberately separate:
 
+- **`tools/basemap-source/build-basemap.py`** (2026-08-11) — same standing:
+  external, manual, GDAL and network, run when the imagery needs rebuilding
+  rather than on every build. Unlike the DTM scripts a fresh clone *can* run it
+  (nothing is needed but GDAL, numpy and network), and unlike them it writes its
+  product straight into `public/data/`, because that product is 1.8 MB rather
+  than 150. `--use-cache` re-encodes from the last composited reflectance
+  instead of downloading again.
 - **`tools/dtm-source/*.sh`** and **`tools/trails-source/*.sh`** —
   external, manual, run outside this repo and outside the normal build
   (see §3). Turn the 10 GB native DTM and the whole-region trail dataset
@@ -525,6 +532,50 @@ Two things to know before editing those colours:
 so a future edit that breaks the mapping fails loudly instead of merely looking
 different.
 
+### Satellite ground — `src/basemap.js` (2026-08-11)
+
+The bands above are still in the file and still compile; what changed is that a
+real photograph now carries the ground colour and they cross-fade out under it
+(`uBasemapMix`, 1 once the texture lands, 0 before it and forever if it never
+does). The user opened this as the first of three optional extras and chose the
+photo everywhere, at the heightfield's own 20.5 m/px, with higher resolution
+explicitly deferred to their topic 2.
+
+Source: **Copernicus Sentinel-2 L2A**, two granules of the 2025-08-08 pass plus
+two of 2025-07-09 to fill the south-east corner, as COGs on AWS Open Data via the
+Earth Search STAC API. Free, full and open under the EU legal notice — including
+commercial use and modification — with one prescribed string that must not be
+paraphrased: *"Contains modified Copernicus Sentinel data 2025"*. EOX's
+ready-made cloudless mosaic was rejected on licence (CC BY-NC-SA 4.0, more
+restrictive than anything else here). Built by
+`tools/basemap-source/build-basemap.py`, which documents the scene choice and
+four things that would go wrong silently.
+
+Three decisions matter for anyone editing this:
+
+- **The texture is de-shaded, and that is what makes it usable at all.** A photo
+  contains one sun; this terrain is lit by a sun that moves with the time-of-day
+  slider. The build divides the acquisition's own illumination back out with this
+  project's own DEM (C-correction, cos of incidence from slope and aspect at the
+  granule's real sun angles), turning the image into an approximate albedo map.
+  Without it every north face would be dark twice and every sunset would have the
+  shadows pointing south-east.
+- **Reflectance is not this project's albedo scale**, for exactly the reason §5
+  warns about above: physical reflectance is 5-8% for conifer forest, while the
+  band hexes were solved backwards from an intended on-screen colour. One
+  measured gain (`BASEMAP_GAIN`, 3.4) puts the photo on the same scale;
+  `tools/dev/probe-basemap.mjs` is what measured it, by rendering both looks from
+  one camera in one session and sweeping.
+- **Two terms still apply over the photo**: the slope-rock override, because an
+  orthophoto is a plan projection and a vertical face gets a handful of texels
+  whatever the resolution, and lying snow, which goes on top unchanged. The OSM
+  forest tint fades out instead — where the photo is drawing, it already knows
+  where the woods are, and better.
+
+`tools/test-basemap.mjs` asserts each rendered point against the texel the build
+put at that point's own coordinates (a bracket, since terrain.js still modulates
+by its own noise), which makes it a georeferencing test as much as a colour one.
+
 ### Lying snow — `src/snow.js` (2026-08-11)
 
 The nival band above is *permanent* snow, and a fact about altitude alone.
@@ -568,6 +619,87 @@ inside. `tools/dev/probe-snow.mjs` is the eye — and it pins the level under a
 clear sky, because switching the weather to Snowfall also drops a cloud deck,
 doubles the haze and fills the frame with falling particles, which is most of
 what a naive before/after screenshot actually measures.
+
+### Sky by altitude — `src/sky.js` (2026-08-12)
+
+Two modules own "the air", split by which integral they compute:
+
+| Module | The air … | What it colours |
+|---|---|---|
+| `atmosphere.js` | **between** camera and terrain | distance haze, valley-fog slab, sun inscatter |
+| `sky.js` | **above** the camera | the Sky dome |
+
+three's `Sky` addon (Preetham) already contains the mechanism *and* the two
+numbers, as plain constants in its fragment shader:
+
+```glsl
+const float rayleighZenithLength = 8.4E3;
+const float mieZenithLength      = 1.25E3;
+```
+
+Those are the zenith optical path lengths, and for an exponentially thinning
+atmosphere the zenith column is (sea-level coefficient) × (scale height) — so
+**each constant *is* its own scale height**: 8.4 km of air, 1.25 km of aerosol.
+Standing at *h* leaves `L(h) = L0 · exp(-(h - ref) / L0)`. Nothing is invented or
+tuned; the scale heights are read back out of the addon at install time rather
+than written down a second time, and the installer **throws** if either constant
+has been renamed or retuned by a three.js upgrade.
+
+That throw is the point. A missed string patch would leave the sky at its
+sea-level column *forever and silently*, which looks exactly like "the effect is
+too weak to notice" — the same failure shape as `onBeforeCompile` on an unused
+material or `logarithmicDepthBuffer`'s chunks missing from a `ShaderMaterial`.
+
+Three design points, each measured rather than assumed:
+
+- **The reference is the Le Pont spawn (1950 m), not sea level.** All five
+  time-of-day presets were tuned and approved by eye standing there, so at that
+  altitude the model must hand the shader the addon's own numbers bit for bit.
+  Absolute physics would darken the spawn too and reopen five closed presets.
+- **It is a Rayleigh effect, not the aerosol effect the reasoning predicts.** The
+  tempting story — high skies are deep because the whitening haze is gone — fails
+  here: at the Midday preset the Mie term is **1.1%** of the blue channel's zenith
+  optical depth, so losing 88% of the aerosol column buys nothing. Altitude also
+  never enters the in-scattering ratio, only `Fex`. If "the haze burns off as you
+  climb" is ever wanted, the lever is a *higher* turbidity low down in
+  `lighting.js` — a palette decision, not this file.
+- **Dome-only is self-consistent, and that is why the fog colour is untouched.**
+  The effect is concentrated at the zenith and near-nil at the horizon, because a
+  horizon ray's slant path stays long whatever height it starts from. Spawn →
+  summit: zenith luma ×0.815, horizon ×0.981. The per-preset fog colour was tuned
+  against the *horizon* sky, and the horizon sky is the part that barely moves.
+
+**What caps the whole thing is the grade, not the physics.** In linear light the
+zenith at the spawn is `0.200/0.647/1.679` — a properly deep blue, B/R 8.4. The
+blue channel is far above 1.0, so ACES compresses it and lifts red through channel
+crosstalk; at `rayleigh` 2.5 what reached the screen was B/R **1.56**, and a 27%
+linear drop arrived as 12% on screen.
+
+**So the sky was deepened at the baseline too, and that is what made the altitude
+term visible** — Midday's `rayleigh` 2.5 → **1.6** (2026-08-12, the user's choice
+from four measured candidates). Moving the sky down the ACES curve roughly doubles
+what the *same* physics delivers: spawn → Nivolet goes from +0.08 to +0.19 of B/R
+without a line of `sky.js` changing. Its cost is specific and was measured: unlike
+the altitude term this deepens the whole dome, so the horizon sky pulls 0.21 of red
+away from the untouched fog colour, in a thin band past ~20 km.
+
+**That the sky cannot reach the scene's colours is measured, not argued.** There is
+no `PMREMGenerator`, no `scene.environment`, no `envMap`, no `CubeCamera` in `src/`:
+the dome is drawn and never read back, and the ground is lit by real lights whose
+colours are separate preset fields. Across the whole `rayleigh` sweep the ground
+rendered `0.262/0.237/0.177` at every value, byte-identical, and `scene.fog.color`
+never moved. The one lever that *would* grade everything is `exposure`.
+
+`SKY_ALTITUDE_STRENGTH` can also lie about the exponent, and **applies only above
+the reference** — symmetric, it whitens the valleys as hard as it deepens the
+summits (at strength 3 the 1200 m zenith went luma 0.769 → 0.821, B/R 1.47 → 1.32).
+It is at 1: offered, and the baseline route was chosen instead.
+
+`tools/test-sky.mjs` has both halves: a node half that exercises the patch and all
+three of its failure modes without a browser, and a browser half that measures
+**screenshots** (no `preserveDrawingBuffer`, so a readback would report 0.000 for
+everything) with the altitude pinned through `window.__pngp.sky` — and asserts the
+pin *moved the sky*, not merely that it set a field.
 
 ## 6. Coordinate system & real-world scale
 
@@ -678,6 +810,15 @@ pngp-viewer/
 │                              terrain hack, since our terrain/glaciers use a real
 │                              MeshStandardMaterial (§4/§7 has the full writeup incl. a
 │                              Sky-brightness caveat still needing a real-browser check)
+│   ├── sky.js             Done, 2026-08-12. The air ABOVE the camera: the Sky dome's
+│                              two zenith optical lengths become uniforms and thin with
+│                              camera altitude, so the zenith deepens as you climb and
+│                              the horizon (where the fog colour was tuned) does not
+│                              move. Patches three's addon and THROWS if it cannot -
+│                              a missed patch is silent and looks like a weak effect.
+│                              Reference is the 1950 m spawn, so every lighting.js
+│                              preset still means what it was approved to mean.
+│                              See §5's "Sky by altitude"
 │   ├── atmosphere.js       Done, 2026-07-31. Aerial-perspective fog (haze + grounded
 │                              valley fog + sun-glow inscatter), patched into three.js's
 │                              global fog chunks for every built-in material
@@ -1061,8 +1202,11 @@ phase 7 at earliest).
 Tracked with current status in [docs/PROGRESS.md](PROGRESS.md) — check there
 before assuming anything below is still unresolved.
 
-1. Exact basemap/orthophoto source for later imagery draping, once we get to
-   phase 6/7 polish (§9).
+1. ~~Exact basemap/orthophoto source for later imagery draping~~ — **RESOLVED
+   2026-08-11**: Copernicus Sentinel-2 L2A, 20.5 m/px, de-shaded, see §5's
+   "Satellite ground". Licence verified from the European Commission's own legal
+   notice. Higher resolution (regional orthophotos at 0.2-0.5 m, tiled and
+   loaded on demand) is a separate open topic the user raised the same day.
 2. ~~DEM coverage gap for the Piemonte side of the park~~ — **RESOLVED
    2026-07-30**, do not describe this as an open limitation. The heightmap
    is now a 3-source priority mosaic (VDA > Regione Piemonte 5 m LiDAR WCS >

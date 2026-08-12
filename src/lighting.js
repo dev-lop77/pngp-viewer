@@ -30,7 +30,30 @@ const PRESETS = [
   },
   {
     key: 'day', label: 'Midday',
-    sunElev: 25, sunAzim: 155, turbidity: 4, rayleigh: 2.5, mieC: 0.004, mieG: 0.85,
+    // rayleigh 2.5 -> 1.6 on 2026-08-12, at the user's choice from a measured sweep
+    // (tools/dev/probe-sky.mjs --rayleigh, and the four sky-ray*.png frames they
+    // picked from). Two things it buys, and one it costs:
+    //
+    //   the zenith stops being white-blue      B/R 1.52 -> 2.19
+    //   the altitude term becomes visible      spawn->Nivolet B/R +0.08 -> +0.19
+    //   the sky/haze step at the far skyline   0.11 -> 0.21 of red
+    //
+    // The second is the real reason. The sky is over-exposed at exposure 0.75 - in
+    // linear light the zenith is 0.200/0.647/1.679, so the blue channel sits deep in
+    // ACES's compression shoulder where everything desaturates toward white, and a
+    // 27% linear change arrives as 12% on screen. Lowering rayleigh moves the sky
+    // down the curve, and the SAME physics in src/sky.js then has room to show.
+    //
+    // The cost is real and was measured rather than waved away: unlike sky.js's
+    // altitude term (which is zenith-weighted, horizon x0.992) this deepens the
+    // WHOLE dome, so the horizon sky pulls away from the fog colour - which is a
+    // separate preset field, deliberately left as approved. The step was already
+    // there and this doubles it; it lives in a thin band past ~20 km, where the haze
+    // is strong enough to matter.
+    //
+    // Only this preset moved. Dawn, Golden hour and Dusk are meant to be warm and
+    // hazy, and a deep blue is a high-sun phenomenon.
+    sunElev: 25, sunAzim: 155, turbidity: 4, rayleigh: 1.6, mieC: 0.004, mieG: 0.85,
     // The Sky addon's Preetham model turns out to be extremely sensitive to
     // sun elevation in this three.js version - even the reference project's
     // own exact midday numbers (sunElev 38, turbidity 6, exposure .62)
