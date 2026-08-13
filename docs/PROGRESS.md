@@ -2,6 +2,67 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## TOMORROW STARTS HERE: the 5 m extraction (2026-08-13, closing)
+
+The user is **running `extract-heightmap.sh` with `RES_M=5`** on the machine that
+holds `DTM0508_002_UNICO.ASC` (2.0 m/px, 10 GB). It takes a while. Their words:
+*"domani iniziamo con la nuova estrazione e dove metterla."*
+
+**Do not start by rebuilding anything. Start with these four, in order.**
+
+### 1. WHERE TO PUT IT — their own question, and it has a sharp edge
+
+`DEM/pngp_heightmap.png` is **tracked in git**: 45.6 MB, and `.git` is already
+155 MB. The 5 m native mosaic has **four times the pixels** — roughly 150–200 MB —
+and git history keeps it forever, for a file the viewer never downloads and a
+static host has no use for. `tools/dev/deploy.sh`'s own header already complains
+about "the main history's 123 MB (which includes a 43.5 MB intermediate heightmap)".
+
+So the question is not where the file goes on disk, it is **whether it enters the
+history at all**. `.gitignore` currently ignores no part of `DEM/`. This is the
+user's call, and it is worth putting to them plainly before anything is committed.
+
+### 2. THREE THINGS THE 5 m SOURCE BREAKS in build-height-tier.mjs
+
+The tool is mostly resolution-agnostic — it derives the native resolution from the
+bbox and the raster size, and the base-grid rebuild is written in terms of NW/NH
+against BW/BH — but three constants were sized for a **×2** ratio and the new one
+is **×4**:
+
+- **`DILATE_PX = 6`** (native pixels). It has to cover the footprint that makes one
+  base pixel plus the bilinear reach into it: at ×2 that is 2 + 2×2 ≈ 6. At ×4 it
+  is 4 + 2×4 = 12, so ~14 with slack. Too small and the nodata blend bug of guard 2
+  comes straight back — it is the one that left 343 pixels off the scale.
+- **`RESIDUAL_HALF_RANGE_M = 56`** was *measured* on the 10 m residual (−39 to
+  +53 m). A 5 m residual against the same 20.5 m base carries more detail and will
+  run wider. The build tool throws rather than clipping, so this will announce
+  itself — but re-measure the distribution and set the range from it, do not simply
+  raise it until the error stops.
+- **`FADE_PX = 32`** is in tier pixels, so the fade band halves from 320 m to 160 m.
+  Still far beyond any draw distance, so probably fine — but it is a number that
+  changed meaning without changing value, which is how they get missed.
+
+### 3. `MAX_DEPTH` 8 → 9
+
+84 km / (2⁹ × 32) = 5.12 m. The user reported **frame rate unchanged** at depth 8;
+that is encouraging and it is *not* evidence for 9, which quadruples the finest
+level again. Measure, and expect the per-tile "only inside the tier" rule to matter
+much more than it does now.
+
+### 4. Size is a guess until it is weighed
+
+~25–32 MB gzip is an **estimate**, extrapolated badly: the 0.74 raw→gzip ratio
+measured at 10 m will not hold, because a 5 m residual is higher-frequency and
+compresses worse. Weigh it before quoting it to the user.
+
+### Also open, and theirs to decide
+
+They are **evaluating whether 10 m should become the default**. The numbers given:
+first load 12.6 → 19.6 MB (+56%), because the residual adds to the base rather than
+replacing it. Making it default without paying that would mean regenerating the
+base at 10 m over the park and keeping 20.5 m outside — a different architecture,
+with the real seam this design exists to avoid.
+
 ## High-resolution terrain: BUILT, accepted, not published (2026-08-13)
 
 Topic 2 of the four extras, the last one untouched: *"modelli ad alta risoluzione
