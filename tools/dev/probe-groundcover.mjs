@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Look at grass, shrubs and edelweiss in the real page, and measure them.
+// Look at grass, scree and edelweiss in the real page, and measure them.
 //
 // What it answers, in order of how much it matters:
 //   1. Is anything actually drawn? A/B the density knob from ONE camera in ONE
@@ -38,13 +38,13 @@ const flags = new Map(
 const url = flags.get('url') ?? 'http://localhost:5173';
 
 // Vantages spanning the gradient the mask measures: a valley floor where cover is
-// near 0.7, somewhere inside the dwarf-shrub belt (found by elevation from the POI
-// list rather than named, so it stays right if the belt is retuned), high pasture
+// near 0.7, somewhere around the treeline (found by elevation from the POI
+// list rather than named, so it stays right if anything is retuned), high pasture
 // at the Nivolet, and a glaciated summit where there must be exactly nothing. The
 // last is the control: if anything grows there, the mask is not being read.
 const VIEWS = [
   { place: 'Le Pont', note: 'valley floor' },
-  { belt: [2150, 2400], note: 'inside the dwarf-shrub belt' },
+  { belt: [2150, 2400], note: 'treeline, where turf gives way to stones' },
   { place: 'Colle del Nivolet', note: 'high pasture' },
   { place: 'Gran Paradiso', note: 'glaciated summit - the control' },
 ];
@@ -58,14 +58,15 @@ const VIEWS = [
 // mistaken for a bad feature.
 const BAD_VANTAGE_CATEGORIES = ['pass', 'peak'];
 
-// EVERY LAYER IS MEASURED ALONE. One number for grass-and-shrubs together was the
+// EVERY LAYER IS MEASURED ALONE. One number for both layers together was the
 // most expensive mistake of the session it was written in: it read 21.9% and was
-// believed, and all of it was the shrubs while the grass drew nothing at all. A
+// believed, and all of it was one layer while the grass drew nothing at all. A
 // combined figure cannot fail this way loudly, so it is not used.
-const LAYERS = ['grass', 'shrub'];
+const LAYERS = ['grass', 'scree', 'boulder'];
 
 const PITCH_DEG = -22;
 const CHANGE_THRESHOLD = 6; // per channel, comfortably above screenshot noise
+const COST_FRAMES = 12;
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
 const browser = await chromium.launch({
@@ -98,8 +99,10 @@ if (!ready.stats) {
 console.log(
   `grass ${ready.stats.grass.instances.toLocaleString()} instances x ${ready.stats.grass.trianglesPerInstance} tri ` +
     `(window ${ready.stats.grass.windowM} m, spacing ${ready.stats.grass.spacingM} m, visible ${ready.stats.grass.visibleM} m)\n` +
-    `shrub ${ready.stats.shrub.instances.toLocaleString()} instances x ${ready.stats.shrub.trianglesPerInstance} tri ` +
-    `(window ${ready.stats.shrub.windowM} m, spacing ${ready.stats.shrub.spacingM} m, visible ${ready.stats.shrub.visibleM} m)\n` +
+    `scree ${ready.stats.scree.instances.toLocaleString()} instances x ${ready.stats.scree.trianglesPerInstance} tri ` +
+    `(window ${ready.stats.scree.windowM} m, spacing ${ready.stats.scree.spacingM} m, visible ${ready.stats.scree.visibleM} m)\n` +
+    `boulder ${ready.stats.boulder.instances.toLocaleString()} instances x ${ready.stats.boulder.trianglesPerInstance} tri ` +
+    `(window ${ready.stats.boulder.windowM} m, spacing ${ready.stats.boulder.spacingM} m, visible ${ready.stats.boulder.visibleM} m)\n` +
     `${ready.stats.trianglesAtFullDensity.toLocaleString()} triangles at full density\n`,
 );
 
@@ -145,10 +148,21 @@ async function shot(name) {
 // Mean luma alone is a bad instrument for grass: tufts that are the same
 // brightness as the ground they stand on would move it by nothing at all while
 // covering a third of the frame.
+//
+// It also returns the luma of ONLY THE PIXELS THE LAYER OWNS, and of the bare
+// ground underneath exactly those pixels - which is the pair of numbers a
+// whole-frame mean cannot give, and the reason this exists. On 2026-08-13 the
+// rounder shrub cushion (since removed) made the frame 9.4% darker and doubled its near-black
+// pixels, which read as a lighting regression; measured this way the plants were
+// the SAME brightness (0.1216 -> 0.1223) and simply covered 46% more ground.
+// A frame mean is two questions added together: how much, and how dark.
 function changed(a, b) {
   const n = a.width * a.height;
   let moved = 0;
   let sumAbs = 0;
+  let sumOwn = 0;
+  let sumHidden = 0;
+  const luma = (img, i) => (0.2126 * img.data[i] + 0.7152 * img.data[i + 1] + 0.0722 * img.data[i + 2]) / 255;
   for (let i = 0; i < n; i++) {
     const p = i * a.channels;
     const q = i * b.channels;
@@ -158,10 +172,38 @@ function changed(a, b) {
       Math.abs(a.data[p + 2] - b.data[q + 2]),
     );
     sumAbs += d;
-    if (d > CHANGE_THRESHOLD) moved++;
+    if (d > CHANGE_THRESHOLD) {
+      moved++;
+      sumOwn += luma(b, q);
+      sumHidden += luma(a, p);
+    }
   }
-  return { fraction: moved / n, meanAbs: sumAbs / n };
+  return {
+    fraction: moved / n,
+    meanAbs: sumAbs / n,
+    ownLuma: moved ? sumOwn / moved : null,
+    hiddenLuma: moved ? sumHidden / moved : null,
+  };
 }
+
+// Median frame time with exactly these layers visible. Read against the cover-off
+// frame it is a RATIO, which is the only thing SwiftShader can honestly give -
+// see the header. Timed inside the page with rAF deltas rather than read off the
+// HUD, whose figure is smoothed and would bleed one configuration into the next.
+const timeCover = (kinds, frames) => page.evaluate(async ({ kinds, frames }) => {
+  const P = window.__pngp;
+  for (const l of P.groundcover.getLayers()) l.mesh.visible = kinds.includes(l.kind);
+  // The animals and the birds move by themselves, so they would add their own
+  // work to every configuration unequally.
+  for (const g of [P.getWildlife?.(), P.getBirds?.()]) if (g?.object) g.object.visible = false;
+  const tick = () => new Promise((r) => requestAnimationFrame(() => r(performance.now())));
+  await tick(); await tick(); await tick(); // let the new configuration settle
+  const dt = [];
+  let prev = await tick();
+  for (let i = 0; i < frames; i++) { const now = await tick(); dt.push(now - prev); prev = now; }
+  dt.sort((x, y) => x - y);
+  return dt[dt.length >> 1];
+}, { kinds, frames });
 
 async function stand(view) {
   let place = view.place;
@@ -199,7 +241,11 @@ async function stand(view) {
   // Placed by hand rather than flown, so every shot at this vantage comes from
   // the identical camera and the only difference between them is the cover. Fly
   // mode, because walk mode re-clamps y every frame and would fight this.
-  return page.evaluate(({ pitch }) => {
+  // Both arguments must be destructured. They were not: `radius` was passed and
+  // read but never unpacked, so this threw a ReferenceError on the FIRST vantage
+  // and the probe had not been run since the disc-mean fix that introduced it.
+  // A tool the docs point at as the way to reproduce a number has to be run.
+  return page.evaluate(({ pitch, radius }) => {
     const { camera, controls, getGroundHeight } = window.__pngp;
     controls.mode = 'fly';
     const sample = getGroundHeight();
@@ -283,7 +329,7 @@ for (const view of VIEWS) {
 
 console.log('Is anything drawn? Pixels that changed with ONE layer switched on');
 console.log('(same camera, same session; "floor" is two shots of the identical state)\n');
-const head = ['place', 'alt', 'mask 25m', 'ground', 'floor', 'grass', 'shrub', 'luma bare/grass/shrub'];
+const head = ['place', 'alt', 'mask 25m', 'ground', 'floor', 'grass', 'scree', 'block', 'luma bare/grass/scree'];
 const body = rows.map((r) => [
   r.view.resolved,
   `${Math.round(r.at.y)} m`,
@@ -291,14 +337,27 @@ const body = rows.map((r) => [
   r.at.groundAheadM === null ? '-' : `${r.at.groundAheadM} m`,
   `${(r.floor.fraction * 100).toFixed(2)}%`,
   `${(r.perLayer.grass.fraction * 100).toFixed(2)}%`,
-  `${(r.perLayer.shrub.fraction * 100).toFixed(2)}%`,
-  `${r.bare.luma.toFixed(3)} / ${r.perLayer.grass.colour.luma.toFixed(3)} / ${r.perLayer.shrub.colour.luma.toFixed(3)}`,
+  `${(r.perLayer.scree.fraction * 100).toFixed(2)}%`,
+  `${(r.perLayer.boulder.fraction * 100).toFixed(2)}%`,
+  `${r.bare.luma.toFixed(3)} / ${r.perLayer.grass.colour.luma.toFixed(3)} / ${r.perLayer.scree.colour.luma.toFixed(3)}`,
 ]);
 const w = head.map((h, i) => Math.max(h.length, ...body.map((b) => b[i].length)));
 console.log(head.map((h, i) => h.padEnd(w[i])).join('  '));
 console.log(w.map((n) => '-'.repeat(n)).join('  '));
 for (const b of body) console.log(b.map((c, i) => c.padEnd(w[i])).join('  '));
 for (const r of rows) console.log(`  ${r.view.resolved}: ${r.view.note}`);
+
+// The luma of ONLY the pixels each layer owns, against the bare ground under
+// exactly those pixels. The whole-frame luma in the table above cannot separate
+// "the plants got darker" from "there is more plant" - see changed(). A layer's
+// own luma below its own hidden ground is what "a plant is darker than what it
+// stands on" actually means.
+const dash = (v) => (v === null || v === undefined ? '  -   ' : v.toFixed(4));
+console.log('\nOnly the pixels each layer owns (own luma vs the ground it hides):\n');
+for (const r of rows) {
+  const cell = (k) => `${k} ${dash(r.perLayer[k].ownLuma)} under ${dash(r.perLayer[k].hiddenLuma)}`;
+  console.log(`  ${r.view.resolved.padEnd(30)} ${cell('grass')}  ${cell('scree')}  ${cell('boulder')}`);
+}
 
 // ---------------------------------------------------------------------------
 // Wind: does it move, and is the movement the weather's?
@@ -370,6 +429,31 @@ for (const d of [0, 0.2, 0.5, 1]) {
 const base = costs.find((c) => c.d === 0)?.ms ?? 1;
 for (const c of costs) {
   console.log(`  density ${c.d.toFixed(1)}: ${c.ms.toFixed(0)} ms/frame  (x${(c.ms / base).toFixed(2)} of off)`);
+}
+
+// PER LAYER, AND IN THE BELT. The density knob above moves both layers together,
+// which cannot answer "what did changing one layer's geometry cost" - and it is
+// measured at Le Pont, in the valley. This block stands at the treeline instead,
+// where the two layers actually trade against each other. It is what the
+// 2026-08-13 changes were weighed on: compare a build against a build, at one
+// vantage, and quote the ratio and never the milliseconds.
+await setDensity(1);
+const beltAt = await stand({ belt: [2150, 2400] });
+if (beltAt) {
+  await page.waitForTimeout(3000);
+  const off = await timeCover([], COST_FRAMES);
+  const each = {};
+  for (const kind of LAYERS) each[kind] = await timeCover([kind], COST_FRAMES);
+  const both = await timeCover(LAYERS, COST_FRAMES);
+  console.log(`\n  per layer, standing in the belt at ${Math.round(beltAt.y)} m (mask ${beltAt.cover?.toFixed(3)}):`);
+  console.log(`    cover off:  ${off.toFixed(0)} ms/frame`);
+  for (const kind of LAYERS) {
+    console.log(`    ${kind.padEnd(10)}  ${each[kind].toFixed(0)} ms  (x${(each[kind] / off).toFixed(3)} of off, ` +
+      `its own share ${(each[kind] - off).toFixed(0)} ms)`);
+  }
+  console.log(`    both        ${both.toFixed(0)} ms  (x${(both / off).toFixed(3)} of off)`);
+} else {
+  console.log('\n  ! no belt vantage found, per-layer cost skipped');
 }
 
 // ---------------------------------------------------------------------------

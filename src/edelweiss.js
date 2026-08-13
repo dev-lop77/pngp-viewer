@@ -38,7 +38,13 @@ import { SNOW_LEVEL, snowCoverAt } from './snow.js';
 const CELL_M = 320; // candidate patch sites sit one per cell of this lattice
 const SEARCH_CELLS = 2; // so a 5x5 neighbourhood of cells is considered
 const PATCH_CHANCE = 0.17; // of cells that PASS the habitat test, this many hold a patch
-const PATCH_RADIUS_M = 2.6;
+// TIGHT, at the user's instruction - "i gruppi che siano formati da fiori molto
+// vicini fra loro". It was 2.6 m, which is not a clump but a scattering you have to
+// walk through: at 8 flowers over a 5 m disc the nearest neighbour is a metre away
+// and nothing reads as a group. 0.3 m makes a cushion 30-60 cm across, which is
+// what an edelweiss colony on a ledge actually looks like, and it means the whole
+// patch is inside one glance instead of one walk.
+const PATCH_RADIUS_M = 0.3;
 const FLOWERS_MIN = 4;
 const FLOWERS_MAX = 11;
 const MAX_FLOWERS = 260; // the instanced buffer's ceiling; 25 cells cannot fill it
@@ -62,11 +68,16 @@ const HINT_RADIUS_M = 90;
 // under exactly the snow the ground is being drawn with.
 const SNOW_HIDE = 0.45;
 
-const STEM_MIN_M = 0.05;
-const STEM_MAX_M = 0.13;
 const ROSETTE_MIN_M = 0.026; // radius, so a flower is 5-8 cm across - life size
 const ROSETTE_MAX_M = 0.041;
-const RAYS = 8;
+// The stem is a fixed multiple of the rosette rather than an independent draw, and
+// that is a modelling decision as much as a technical one. Technically: the model
+// is now one geometry carrying stem AND flower, and an InstancedMesh gives it a
+// single uniform scale, so the two cannot vary independently without a second mesh
+// or a custom attribute. Biologically: a bigger edelweiss IS a taller one, so the
+// correlation is the truth rather than a compromise. 2.6 keeps the stem inside the
+// 5-13 cm the two independent draws used to produce.
+const STEM_PER_ROSETTE = 2.6;
 // Albedo again, not appearance (see the warning in src/terrain.js). Edelweiss
 // bracts are matte white and woolly, which is as bright as this rig can render -
 // the same ceiling snow.js hits - and the disc florets are a dull yellow.
@@ -87,26 +98,177 @@ function cellRandom(ix, iz) {
   };
 }
 
-// One rosette: RAYS bracts radiating from a raised centre, drooping at the tips,
-// plus the disc as the centre vertex's own colour. Flat-shaded, vertex-coloured,
-// eight triangles - small enough that a few hundred of them cost nothing, and
-// three-dimensional enough that the star does not vanish edge-on.
-function rosetteGeometry() {
+// A WHOLE PLANT, not a star (2026-08-13). The user looked at the eight-triangle
+// rosette this replaces and said *"non va proprio bene... visto che sono poche
+// devono essere dei bei modelli 3d senza preoccuparci dei poligoni. Che diano
+// soddisfazione."*
+//
+// And they are right that the budget argument never applied here. Everything else
+// in this project is shaped by a triangle count because it is scattered by the
+// tens of thousands; an edelweiss is a RARITY - MAX_FLOWERS is 260 and a typical
+// frame draws about 36. At ~220 triangles each that is 8k triangles on screen,
+// against 458k for the grass and stones. The old shape was cheap for no reason.
+//
+// It was also, literally, a flower with no plant: the instance was placed at
+// f.y + f.stem and the geometry was the rosette alone, so the stem existed as a
+// number and was never drawn. The rosette floated at stem height. Now the origin
+// is the FOOT, on the ground, and the model grows upward from it - which also puts
+// the per-flower lean about the base, where a plant leans from, instead of about a
+// point in mid-air.
+//
+// Leontopodium alpinum, built from what the plant actually is:
+//
+//   - a woolly stem, six-sided and tapering, with a slight lean built in so a
+//     patch is not a set of parallel posts;
+//   - narrow grey-green stem leaves, angled out and up;
+//   - the star: BRACTS lanceolate bracts, widest a third of the way out, arching
+//     up and then drooping past the horizontal at the tip. Not flat - a flat star
+//     disappears edge-on, which is the one thing a flower you are hunting must
+//     not do;
+//   - and in the centre the thing the old shape had no room for at all: a CLUSTER
+//     of separate capitula, the little yellow flower heads. That cluster is what
+//     the eye reads as "edelweiss" at arm's length, and it is why the bracts start
+//     at BRACT_INNER rather than at the axis.
+//
+// Unit space: the FOOT is the origin, +y is up, and one unit is the rosette's
+// radius. The instance carries a single uniform scale, so the stem's length is a
+// fixed multiple of the rosette (STEM_PER_ROSETTE) rather than an independent
+// draw - which is also true of the plant: a bigger edelweiss is a taller one.
+const BRACTS = 9;
+const BRACT_INNER = 0.17; // where a bract starts, just outside the capitula
+const CAPITULA = 7;
+const STEM_SIDES = 6;
+const STEM_LEAVES = 5;
+// Grey-green, and woolly rather than glossy - the stem and leaves of an edelweiss
+// are felted white-green, much paler than alpine turf.
+const STEM_COLOR = 0x8d9270;
+// The bract's base is greener and its blade whiter, which is the gradient that
+// makes the star read as felt rather than as paper.
+const BRACT_BASE_COLOR = 0xcfc9a8;
+
+function edelweissGeometry() {
   const positions = [];
   const colors = [];
   const bract = new THREE.Color(BRACT_COLOR);
+  const bractBase = new THREE.Color(BRACT_BASE_COLOR);
   const disc = new THREE.Color(DISC_COLOR);
-  for (let i = 0; i < RAYS; i++) {
-    const a0 = (i / RAYS) * Math.PI * 2;
-    const a1 = ((i + 0.55) / RAYS) * Math.PI * 2; // < one full step: bracts do not touch
-    // Centre, raised; two tips, drooping outwards.
-    positions.push(0, 0.012, 0);
-    positions.push(Math.cos(a0), 0, Math.sin(a0));
-    positions.push(Math.cos(a1), 0, Math.sin(a1));
-    colors.push(disc.r, disc.g, disc.b);
-    colors.push(bract.r, bract.g, bract.b);
-    colors.push(bract.r, bract.g, bract.b);
+  const stemCol = new THREE.Color(STEM_COLOR);
+  const tri = (a, b, c, ca, cb, cc) => {
+    positions.push(...a, ...b, ...c);
+    colors.push(ca.r, ca.g, ca.b, cb.r, cb.g, cb.b, cc.r, cc.g, cc.b);
+  };
+  // A quad as two triangles, corners in order.
+  const quad = (a, b, c, d, ca, cb, cc, cd) => {
+    tri(a, b, c, ca, cb, cc);
+    tri(a, c, d, ca, cc, cd);
+  };
+
+  // The stem: three rings up to the head, leaning slightly along +x so a clump is
+  // not a set of parallel posts. The lean is in the GEOMETRY rather than the
+  // instance's tilt because the instance's yaw then points it somewhere different
+  // for every flower, for free.
+  const stemRing = (t) => {
+    const y = t * STEM_PER_ROSETTE;
+    const r = 0.085 * (1 - 0.45 * t);
+    const lean = 0.16 * t * t; // curved, not slanted: it bends out as it rises
+    return { y, r, lean };
+  };
+  const ringVerts = (t) => {
+    const { y, r, lean } = stemRing(t);
+    const out = [];
+    for (let i = 0; i < STEM_SIDES; i++) {
+      const a = (i / STEM_SIDES) * Math.PI * 2;
+      out.push([Math.cos(a) * r + lean, y, Math.sin(a) * r]);
+    }
+    return out;
+  };
+  const rings = [ringVerts(0), ringVerts(0.5), ringVerts(1)];
+  for (let s = 0; s < rings.length - 1; s++) {
+    for (let i = 0; i < STEM_SIDES; i++) {
+      const j = (i + 1) % STEM_SIDES;
+      quad(rings[s][i], rings[s][j], rings[s + 1][j], rings[s + 1][i],
+        stemCol, stemCol, stemCol, stemCol);
+    }
   }
+  const head = stemRing(1);
+
+  // Stem leaves: narrow blades, out and up, spiralling by an irrational step so
+  // they never line up with the bracts above them.
+  for (let i = 0; i < STEM_LEAVES; i++) {
+    const a = i * 2.39996; // golden angle
+    const t = 0.18 + (i / STEM_LEAVES) * 0.55;
+    const { y, lean } = stemRing(t);
+    const dx = Math.cos(a);
+    const dz = Math.sin(a);
+    const len = 0.55 - t * 0.18;
+    const base = [dx * 0.06 + lean, y, dz * 0.06];
+    const wid = 0.055;
+    const px = -dz * wid;
+    const pz = dx * wid;
+    const mid = [dx * len * 0.55 + lean, y + len * 0.35, dz * len * 0.55];
+    const tip = [dx * len + lean, y + len * 0.30, dz * len];
+    quad([base[0] + px, base[1], base[2] + pz], [base[0] - px, base[1], base[2] - pz],
+      [mid[0] - px * 0.8, mid[1], mid[2] - pz * 0.8], [mid[0] + px * 0.8, mid[1], mid[2] + pz * 0.8],
+      stemCol, stemCol, stemCol, stemCol);
+    tri([mid[0] + px * 0.8, mid[1], mid[2] + pz * 0.8], [mid[0] - px * 0.8, mid[1], mid[2] - pz * 0.8], tip,
+      stemCol, stemCol, stemCol);
+  }
+
+  // THE STAR. Each bract is a strip of three segments: widest a third out, arching
+  // up and then drooping past the horizontal at the tip, so the star has relief
+  // from every angle instead of vanishing edge-on.
+  const T = [0, 0.35, 0.72, 1];
+  const HALF = [0.11, 0.17, 0.11, 0];
+  const RISE = [0.05, 0.11, 0.06, -0.07];
+  for (let b = 0; b < BRACTS; b++) {
+    // Not a clean 1/BRACTS step: a small alternating offset stops the star from
+    // reading as a machined rosette.
+    const a = ((b + (b % 2) * 0.12) / BRACTS) * Math.PI * 2;
+    const dx = Math.cos(a);
+    const dz = Math.sin(a);
+    const px = -dz;
+    const pz = dx;
+    const at = (k) => {
+      const r = BRACT_INNER + T[k] * (1 - BRACT_INNER);
+      return { cx: dx * r + head.lean, cy: head.y + RISE[k], cz: dz * r, w: HALF[k] };
+    };
+    const side = (k, sgn) => {
+      const p = at(k);
+      return [p.cx + px * p.w * sgn, p.cy, p.cz + pz * p.w * sgn];
+    };
+    const colAt = (k) => (k === 0 ? bractBase : bract);
+    for (let k = 0; k < 2; k++) {
+      quad(side(k, 1), side(k, -1), side(k + 1, -1), side(k + 1, 1),
+        colAt(k), colAt(k), colAt(k + 1), colAt(k + 1));
+    }
+    const p3 = at(3);
+    tri(side(2, 1), side(2, -1), [p3.cx, p3.cy, p3.cz], bract, bract, bract);
+  }
+
+  // The capitula: separate little heads, one central and the rest ringed round it.
+  // Icosahedra, because this is the one part of the plant that is genuinely round
+  // and it is what the eye lands on first.
+  const blob = new THREE.IcosahedronGeometry(1, 0);
+  const blobPos = blob.attributes.position;
+  for (let c = 0; c < CAPITULA; c++) {
+    const central = c === 0;
+    const a = ((c - 1) / (CAPITULA - 1)) * Math.PI * 2 + 0.4;
+    const cr = central ? 0 : 0.135;
+    const rad = central ? 0.085 : 0.07;
+    const cx = Math.cos(a) * cr + head.lean;
+    const cz = Math.sin(a) * cr;
+    const cy = head.y + (central ? 0.115 : 0.095);
+    for (let i = 0; i < blobPos.count; i += 3) {
+      const v = (k) => [
+        blobPos.getX(i + k) * rad + cx,
+        blobPos.getY(i + k) * rad * 0.85 + cy,
+        blobPos.getZ(i + k) * rad + cz,
+      ];
+      tri(v(0), v(1), v(2), disc, disc, disc);
+    }
+  }
+  blob.dispose();
+
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -115,7 +277,7 @@ function rosetteGeometry() {
 }
 
 export function createEdelweiss({ sampleGroundHeight, coverAt }) {
-  const geometry = rosetteGeometry();
+  const geometry = edelweissGeometry();
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
     roughness: 0.95,
@@ -198,12 +360,15 @@ export function createEdelweiss({ sampleGroundHeight, coverAt }) {
           const fz = oz + Math.sin(angle) * r;
           const fy = sampleGroundHeight(fx, fz);
           if (!Number.isFinite(fy)) continue;
+          const rosette = ROSETTE_MIN_M + random() * (ROSETTE_MAX_M - ROSETTE_MIN_M);
           flowers.push({
             x: fx,
             y: fy,
             z: fz,
-            stem: STEM_MIN_M + random() * (STEM_MAX_M - STEM_MIN_M),
-            rosette: ROSETTE_MIN_M + random() * (ROSETTE_MAX_M - ROSETTE_MIN_M),
+            rosette,
+            // Kept as a field because the HUD, the probe and the tests all read it,
+            // but it is derived now - see STEM_PER_ROSETTE.
+            stem: rosette * STEM_PER_ROSETTE,
             yaw: random() * Math.PI * 2,
             // A rosette faces the sky but not perfectly - a few degrees of lean
             // is what keeps a patch from looking stamped out.
@@ -274,7 +439,11 @@ export function createEdelweiss({ sampleGroundHeight, coverAt }) {
 
         for (const f of patch.flowers) {
           if (drawn >= MAX_FLOWERS) break;
-          position.set(f.x, f.y + f.stem, f.z);
+          // THE FOOT, on the ground - not the rosette in mid-air, which is where
+          // this used to place the instance because the stem was a number that
+          // nothing drew. It also puts the lean below about the base, which is
+          // where a plant leans from.
+          position.set(f.x, f.y, f.z);
           // Yaw about up, then a small lean - built as a quaternion product
           // rather than Euler angles so the order is explicit.
           quaternion.setFromAxisAngle(up, f.yaw);

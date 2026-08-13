@@ -739,7 +739,7 @@ pin *moved the sky*, not merely that it set a field.
 
 ### Ground cover — `src/landcover.js`, `src/groundcover.js`, `src/edelweiss.js` (2026-08-12)
 
-Grass, dwarf shrub and edelweiss: the user's own topic, and the gap the satellite
+Grass, scree and edelweiss: the user's own topic, and the gap the satellite
 session had already named. At 20.5 m per texel the ground within 30 m of a walking
 camera is one or two texels, so it is a flat colour — the right colour, since
 2026-08-11, but no substance.
@@ -797,8 +797,9 @@ which reads as bare — a gap can never produce phantom grass.
 textures and cost **4409 kB**. The split between them is a function of *elevation*,
 which the vertex shader samples for every instance it places, so the second texture
 was a derived value shipped as though it were data. The belt model moved to
-`groundcover.js` as `SHRUB_SHARE`, where retuning it costs a shader constant instead
-of a rebuild and a download. Size was then measured on both remaining knobs (kB):
+`groundcover.js` as an elevation belt, where retuning it costs a shader constant
+instead of a rebuild and a download. (That belt is gone with the shrubs; the split
+is now grass-versus-bare, see below.) Size was then measured on both remaining knobs (kB):
 
 | | full 20.5 m | half 41 m |
 |---|---|---|
@@ -823,8 +824,15 @@ the CPU and every instance sits on a fixed world lattice. Then:
   costing nothing — no shader branch, no second buffer. That is what the HUD's
   **Ground cover** control drives. In row order the same prefix leaves 8 of 16 bins
   of the window completely empty: perfect grass ahead of you and none behind.
-- **Two layers, one mask**, split by `SHRUB_SHARE` — a piecewise-linear belt peaking
-  at the treeline, where scrub grows because it is where trees nearly do.
+- **Two layers PARTITION one mask.** Grass takes the vegetated fraction whole;
+  **scree** takes its complement — ground the satellite says nothing grows on —
+  *minus the canopy*, because "not open vegetation" is not "bare": under a wood the
+  mask reads ~0, and `1 - cover` alone would cobble every forest floor in the park.
+  Scree also stops at the **angle of repose** (~38°), which the grass never needed
+  because slope is baked out of the vegetation mask at build time — a complement
+  does not inherit a filter, it inherits its inverse. The layer held **dwarf shrubs**
+  for one day (2026-08-13) and the user removed them; what went with them was
+  `SHRUB_SHARE`, the only *model* in a file that otherwise reads only measurements.
 - **The colour is the ground's own.** A tuft samples the same `basemapAlbedo()` the
   terrain is drawn with and tints it towards leaf, so it cannot fight the
   photograph. This matters because of a measurement the satellite session had
@@ -871,13 +879,15 @@ shapes recur:
    `Material.customProgramCacheKey()` returns `onBeforeCompile.toString()` by
    default; both layers are built by the same factory, so their hooks have identical
    *source* and differ only in a closure the key cannot see. Every other ingredient
-   matched too, so the shrub material ran the grass program and the shrub branch was
+   matched too, so the second material ran the grass program and its own branch was
    **never compiled**. It cost three consecutive retunes that changed nothing —
    including a tint set to 0.06, which left the pixels byte-identical. The fix is one
    line; the lesson is that *a change which does nothing is evidence*.
 5. **One number for two layers.** The first render measurement read 21.9% and was
-   believed. All of it was the shrubs; the grass it was meant to measure drew
-   nothing. Both the probe and the test now measure each layer alone.
+   believed. All of it was one layer; the grass it was meant to measure drew
+   nothing. Both the probe and the test now measure each layer alone — and, since
+   2026-08-13, the luma of only the pixels a layer *owns*, because a frame mean adds
+   "how much" and "how dark" together and cannot be asked either question.
 
 Two instrument lessons came with them. A **pass is the worst place to stand** to
 look at the ground — on a saddle the ground ahead falls away, so a camera pitched
@@ -899,14 +909,106 @@ low but not zero — stony grassland), slope and sun; substrate is not, because 
 this park edelweiss favours the Cogne-side calcschists and no shipped dataset knows
 where those are.
 
-Cost, at full density: grass 43,264 instances × 8 triangles, shrub 13,924 × 8,
-**457,504 triangles**. Under SwiftShader — a ratio between settings, never anybody's
-frame rate — the density knob costs ×1.00 / ×1.43 / ×1.87 / ×2.45 at 0 / 0.2 / 0.5 /
-1. Lush is the default by the user's own choice: see the maximum, then cut.
+**And it is the one thing here that is deliberately expensive.** Every other scatter
+in this file is shaped by a triangle budget because it is drawn by the tens of
+thousands; an edelweiss is a *rarity* — `MAX_FLOWERS` is 260 and a typical frame
+draws about 36. The user made that argument themselves — *"visto che sono poche
+devono essere dei bei modelli 3d senza preoccuparci dei poligoni"* — and it is
+correct: at **224 triangles** each, 36 flowers is 8k triangles against 458k for the
+grass and stones. `edelweissGeometry()` is a whole plant: a curved six-sided woolly
+stem, five spiralled grey-green leaves at the golden angle, nine lanceolate bracts
+that arch up and droop past the horizontal at the tip (a *flat* star vanishes
+edge-on, which is the one thing a flower you are hunting must not do), and a cluster
+of seven separate yellow capitula, which is what the eye actually reads as
+"edelweiss" and why the bracts start outside the axis rather than at it.
+
+The shape it replaced was 8 triangles and had a defect worth recording: **the stem
+was never drawn**. It existed as a number, the instance was placed at
+`f.y + f.stem`, and the geometry was the rosette alone — a flower floating at stem
+height with no plant under it. The origin is the **foot** now, on the ground, which
+also puts the per-flower lean about the base, where a plant leans from. The stem's
+length is a fixed multiple of the rosette rather than an independent draw, because
+one `InstancedMesh` gives the model a single uniform scale — and because a bigger
+edelweiss is a taller one, so the correlation is the truth rather than a compromise.
+
+Patch radius went from 2.6 m to **0.3 m** at the user's instruction (*"i gruppi che
+siano formati da fiori molto vicini fra loro"*). At 2.6 m, eight flowers over a 5 m
+disc put the nearest neighbour a metre away: a scattering you walk through, not a
+clump. At 0.3 m the colony is 30–60 cm across and fits in one glance.
+
+**The test now asserts pixels, not a counter.** It checked `diag.drawn > 0`, which
+counts instance matrices — and on 2026-08-13 that read 36 while a screenshot of the
+same frame contained no flower anywhere (they were 5 cm wide and the colour of the
+ground). It hides and unhides the mesh and measures the difference: 5.19% of the
+near-ground crop at 3 m, where the old model at 4 m produced nothing measurable.
+This was the only layer in §5 not measured against pixels, and the only place a
+rewrite of the model could have silently produced nothing.
+
+The second layer is **scree**: `stoneGeometry()` is an `OctahedronGeometry(1, 0)`
+used exactly as three hands it over, flat-shaded, sunk to its equator so the lower
+half is underground. That is the shape the dwarf shrubs were made of, and it is
+here because of how they failed. Three attempts to make it read as a plant — an
+8-facet pyramid, then an apex-free 16-triangle trapezium, then a smooth-shaded dome
+the user called *"tronchetti"* — all failed for one reason: a hard-edged faceted
+lump is not a plant. It is a stone, and as a stone it needs no work at all. The
+sunk half stops being waste too: a stone half-buried in its own scree is what a
+stone in scree *is*.
+
+What the layer adds is per-instance **yaw** (a hash, a sin and a cos, no triangles)
+without which 13,924 identical octahedra line their facet edges up across a
+hillside. Cobbles run 0.05–0.26 m, deliberately shorter than the grass beside them
+so they sit *in* the turf. Measured from directly overhead at a known height, where
+a pixel is a length rather than a guess about perspective, the field comes out at
+0.56 stones/m² with a median width of **0.28 m** and 3 of 298 over a metre.
+
+**Blocks are a THIRD layer, not a size mode**, and the reason is the constraint that
+shapes this whole file: a layer draws one geometry for every instance. The user
+asked for the boulders' point to be taken off and offered triangles for it, but
+spending them inside the scree would have spent them on all 13,924 cobbles too —
+22 triangles each is 306k rather than 111k, against a reported 25–45 fps. A sparse
+lattice of its own (20 m slots, 49 instances, ~28 in view) costs **1,078 triangles
+in the entire scene**, +0.24%.
+
+`boulderGeometry()` takes the point off **without replacing it with a flat top**,
+which is the entire design: the three shapes before it each lost their apex and
+gained a horizontal plate, and the user's words were *"piramidi"*, *"piramidi"*
+again, and *"tronchetti… stonano moltissimo con il prato"*. So the crown is a ring
+of six at six different heights, capped by a fan of four — non-planar, so those four
+have four different normals under flat shading. Every vertex of both rings is
+jittered in height, radius and azimuth from a seeded generator (`mulberry32`, never
+`Math.random()`, or the park reshuffles on reload). The test asserts the property
+that actually defines a point: **no vertex on the axis above ground**.
+
+The size arithmetic was got wrong first, in one line, twice, by guessing instead of
+working out: `radius = height × spread` with the cobbles' 1.9 gave a 2.1 m boulder a
+**4 m radius**, and one-block-in-forty put **131 blocks in view at once**. Both are
+computable from a lattice spacing and a draw distance, and both are asserted now.
+
+Scree does not move in wind (`STONE_SWAY_M` is a compile-time 0.0, so the whole
+bend term folds out of its program — measured at **0.00%** of pixels moved in a
+full gale), and the grass gained three per-tuft randomisations at the user's
+request: a phase lag, a stiffness, and a second slower wave crossing at an angle
+whose period is incommensurable with the first. All seeded from the cell hash, so a
+tuft keeps its character; all deliberately small, because the travelling wave is
+what makes wind read as weather rather than as jitter.
+
+Cost, at full density: grass 43,264 instances × 8 triangles, scree 13,924 × 8,
+blocks 49 × 22, **458,582 triangles** — essentially back to where it was before the
+16-triangle cushion, since a cobble is an octahedron again and the detailed blocks
+are rare enough to be free. Under SwiftShader, a ratio between settings and
+never anybody's frame rate, the density knob costs ×1.00 / ×1.22 / ×1.72 / ×2.36 at
+0 / 0.2 / 0.5 / 1. Standing at the treeline where the two layers trade against each
+other, grass alone is ×1.98 of a cover-off frame and scree alone ×1.38, both
+together ×2.22. **The grass is now the expensive layer** — it takes the whole mask
+where it used to get only `1 - SHRUB_SHARE` of it — and that is the number to watch
+if the user's 25–45 fps drops. `tools/dev/probe-groundcover.mjs` prints the
+per-layer ratios and the owned-pixel luma. Lush is the default by the user's own
+choice: see the maximum, then cut.
 
 `tools/test-groundcover.mjs` has both halves. The node half checks the lattice
-(including that row order *would* fail), the belt table against its GLSL twin's
-source array, and the geometry invariants that the sink and splay bugs violated.
+(including that row order *would* fail), the stone-size arithmetic that was got
+wrong twice in one line, and the geometry invariants that the sink and splay bugs
+violated.
 The browser half reads the **compiled shader sources out of the GL context** to
 assert that two programs carry the placement code and that their tints differ,
 measures each layer alone against a noise floor, and asserts the glaciated summit
@@ -1150,7 +1252,7 @@ pngp-viewer/
 │                              compile time. Also createLandcoverSampler(), the CPU-side
 │                              lookup edelweiss.js needs. ONE number per pixel - how much
 │                              vegetation is there - because that is all the data measures
-│   ├── groundcover.js      Done, 2026-08-12 (§5). Grass and dwarf shrub, two instanced
+│   ├── groundcover.js      Done, 2026-08-12; scree replaced the shrubs 2026-08-13 (§5). Grass and stones, two instanced
 │                              layers placed in the vertex shader against a wrapped window
 │                              like the trees, with three differences: the lattice is
 │                              SHUFFLED so instanceCount is a free density knob, the
@@ -1159,7 +1261,7 @@ pngp-viewer/
 │                              under it, tinted, so it cannot fight the photograph. Each
 │                              layer sets customProgramCacheKey - without it three reuses one
 │                              compiled program for both and the shrub branch never compiles
-│   ├── edelweiss.js        Done, 2026-08-12 (§5). The user's "something to find": patches
+│   ├── edelweiss.js        Done, 2026-08-12; whole-plant model 2026-08-13 (§5). The user's "something to find": patches
 │                              decided on the CPU on a 320 m lattice, so the HUD readout and
 │                              the instanced matrices come from the same array. Deliberately
 │                              NOT groundcover.js's shader placement, for the reason snow.js
@@ -1401,10 +1503,10 @@ phase-7 polish item to retrofit at the end. Concretely, this means:
   geometry per depth level. Tile borders carry a downward skirt to hide
   the T-junction cracks between differing levels.
 - **Ground cover is the first feature whose cost is a user control (2026-08-12).**
-  Grass and dwarf shrub (§5) are the most expensive geometry in the scene — 457,504
+  Grass and scree (§5) are the most expensive geometry in the scene — 458,582
   triangles at full density — and the reason the density knob exists is that no
   measurement available here can answer "is this affordable". SwiftShader gives a
-  ratio between settings (×1.00 / ×1.43 / ×1.87 / ×2.45) and nothing else; the
+  ratio between settings (×1.00 / ×1.22 / ×1.72 / ×2.36) and nothing else; the
   person's own frame counter is the only instrument for the absolute number, and the
   user has one and reports it. The knob is free by construction rather than by a
   shader branch: the wrapped-window lattice is **shuffled**, so any prefix of it is

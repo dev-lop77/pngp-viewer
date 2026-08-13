@@ -2,30 +2,193 @@
 
 Read this first at the start of each session. Update it before ending one.
 
-## ASK THEM ABOUT THE SHRUBS (their own request, 2026-08-12)
+## Ground cover: ACCEPTED and published (2026-08-13)
 
-**Open this before anything else.** Closing the day, the user said: *"segnati di
-richiedermi dei cespugli."* So the shrub shape is a question to PUT TO THEM, not a
-decision to make.
+Topic 3 of the user's four optional extras is **closed**. They judged it piece by
+piece over one long session, rejected three shrub shapes and the first edelweiss,
+and then accepted what was left and asked for it to go out: *"no, vanno bene così.
+Chiudiamo e pubblichiamo questa parte di modifiche."*
 
-What it is about: a dwarf-shrub cushion is an **octahedron** (`cushionGeometry()` in
-`src/groundcover.js`, 8 triangles), and at close range it reads as an angular dark
-**pyramid** rather than a cushion. It is consistent with the cone spruces and it is
-cheap, which is why it was chosen — but I raised it as theirs to judge and they asked
-to be asked. Rounder costs about 8 more triangles per bush, on 13,924 instances, and
-`SHRUB_TRIANGLES` in that file is what the cost tables and the stats read.
+What they accepted, in their own words as it happened:
 
-Also still unsaid by them, and not to be assumed:
+- the stone colour at the Nivolet — *"per me ok colore sul Nivolet"*
+- the small stones — *"sassi piccoli ok"*
+- the blocks, once their point came off — that was their instruction, and the
+  triangles were theirs to offer
+- the edelweiss as a whole plant in tight clumps — *"vanno bene così"*
 
-- **the frame rate with the cover live.** They have never reported one. The last
-  reading, 32 fps, predates all of this and the cover is the heaviest thing in the
-  scene (457,504 triangles at Lush). The `Ground cover` control exists precisely so
-  their answer is a click.
-- **the overall verdict on the look.** They said *"molto bene"* to the floating fix,
-  which is not the same as accepting grass and shrubs. Grass reads as tussocks rather
-  than turf, deliberately and for a measured reason (see below).
+And the frame rate they gave, which is the number every future change here is
+weighed against: **25–45 fps, "giocabile"**. The 32 fps figure from before the
+ground cover existed must not be quoted again.
 
-## Grass, shrubs and edelweiss (2026-08-12) — built, not yet judged
+**The one topic still untouched** is number 2 of the four: higher-resolution
+terrain, fauna and flora models as an option to turn up rather than a new default.
+Never discussed.
+
+## The edelweiss is a plant now, not a star (2026-08-13)
+
+They went and looked, at a link with the coordinates of a real patch, and said
+*"non va proprio bene... visto che sono poche devono essere dei bei modelli 3d
+senza preoccuparci dei poligoni. Che diano soddisfazione. E i gruppi che siano
+formati da fiori molto vicini fra loro."*
+
+**Their budget argument was right and mine had never applied here.** Everything else
+in this file is shaped by a triangle count because it is scattered by the tens of
+thousands. An edelweiss is a rarity: `MAX_FLOWERS` is 260 and a frame draws about
+36. At **224 triangles** each that is 8k on screen against 458k for grass and
+stones. The old shape was 8 triangles for no reason at all.
+
+It also had a real defect, which is why it could never have satisfied: **the stem
+was never drawn.** It existed as a number, the instance was placed at
+`f.y + f.stem`, and the geometry was the rosette alone — a flower floating at stem
+height with no plant beneath it. The origin is the **foot** now, on the ground, and
+the per-flower lean rotates about it, which is where a plant leans from.
+
+What the model is: a curved six-sided woolly stem; five grey-green leaves spiralled
+at the golden angle so they never line up with the bracts; nine lanceolate bracts,
+widest a third of the way out, arching up and drooping past the horizontal at the
+tip — *not* flat, because a flat star vanishes edge-on and that is the one thing a
+flower you are hunting must not do; and a cluster of seven separate yellow capitula,
+which is what the eye actually reads as "edelweiss" and the reason the bracts start
+outside the axis rather than at it.
+
+Patch radius **2.6 m → 0.3 m**. At 2.6 m, eight flowers over a 5 m disc put the
+nearest neighbour a metre away: that is a scattering you walk through, not a clump.
+At 0.3 m a colony is 30–60 cm across and sits inside one glance.
+
+### The assertion that was a counter, not a measurement
+
+`diag.drawn > 0` counts instance matrices. On this same day it read **36** while a
+screenshot of that exact frame contained no flower anywhere — they were 5 cm wide
+and the colour of the ground, and I briefly believed I had found a bug. The test
+now hides and unhides the mesh and measures the difference: **5.19%** of the
+near-ground crop at 3 m, where the old model at 4 m produced nothing measurable.
+
+Every other layer in this file has been measured against pixels since the day the
+grass shipped. This one never was, and it is exactly where a rewrite of the model
+could have produced nothing in silence. *A counter is not a pixel.*
+
+## The shrubs are gone. The layer is a scree now (2026-08-13)
+
+**Three shapes, three rejections, and the third one settled it.** The dwarf-shrub
+cushion was an octahedron; asked, the user chose to round it, and got a 16-triangle
+apex-free dome. *"A me i cespugli sembrano ancora delle piramidi."* Rounded further
+— indexed geometry, a unit sphere's normals rather than the mesh's own, a crown
+widened to 66% of the foot — and: *"hanno appiattito la faccia superiore e ora
+sembrano dei tronchetti. Stonano moltissimo con il prato."*
+
+Their call: **drop the shrubs entirely, keep the grass, and reuse the original
+octahedron as a pietraia** — smaller, with some larger blocks, and fixed in wind.
+
+**The thing worth carrying forward is why every shape failed.** It was never
+angularity. A hard-edged faceted lump is not a plant, at any facet count — and it
+is exactly a stone. The shape that could not be made to read as vegetation needed
+no work at all to read as scree.
+
+### What was mine, and I owe them the admission
+
+To measure the old shape against the new one I put `src/groundcover.js` in
+`git stash` and left it there while a ten-minute probe ran. **Vite HMRs that file**,
+so for twenty minutes the dev server served the octahedron, and they looked in that
+window and reported the defect as unfixed. Their second report was partly a
+measurement of my own carelessness. Stash-and-measure has to end with the pop in the
+same command, or run from a separate worktree. **Never leave the working tree on the
+old build while they can open the viewer.**
+
+### The rules the two layers follow now
+
+Grass takes the vegetated mask **whole** — it used to get `1 - SHRUB_SHARE` of it —
+and scree takes the complement. That deleted `SHRUB_SHARE`, the only **model** in a
+file that otherwise reads only measurements: a piecewise-linear guess at the Alpine
+belt sequence. Nothing interpolates a belt any more.
+
+Two subtractions, not one, and each was a real bug caught before shipping:
+
+1. **"Not open vegetation" is not "bare".** The mask measures vegetation that is not
+   tree canopy, so under a wood it reads ~0 and `1 - cover` is ~1. That would have
+   put boulders on every forest floor in the park. Scree samples `forest.js`'s
+   canopy mask too — one extra texture fetch, paid only by that layer.
+2. **A complement does not inherit a filter; it inherits its inverse.** Slope is
+   baked out of the vegetation mask at build time, so grass never needed a slope
+   term. Taking the complement *inverts* that: the first build put cobbles all over
+   the Gran Paradiso summit ridge. The chain has no wrong-looking step in it — the
+   ice is buried because `snowCover()` reads 1 there, but snow.js correctly refuses
+   to lie on steep ground, so the steep **rock** came out unsnowed, unvegetated and
+   uncanopied, and therefore scree. A 50° face covered in loose stones. Talus stands
+   at its angle of repose and no steeper; the fade ends at **38°**, and `coverGrad`
+   was already in hand, so it cost a `length()` and a `smoothstep()`.
+
+### The blocks got their point taken off, and it cost 0.24%
+
+*"Massi grandi toglierei la punta aumentando i triangoli."* The constraint that
+decided the shape of the fix: **a layer draws one geometry for every instance**, so
+triangles spent inside the scree would have been spent on all 13,924 cobbles too —
+22 each is 306k rather than 111k. Blocks became a **third layer** with its own
+sparse lattice (20 m slots, 49 instances, ~28 in view): **1,078 triangles in the
+whole scene, +0.24%**.
+
+`boulderGeometry()` takes the point off **without putting a flat top in its place**,
+and that is the whole design. The three shapes before it each lost their apex and
+gained a horizontal plate; the verdicts were *"piramidi"*, *"piramidi"* again, and
+*"tronchetti"*. So the crown is a ring of six at six different heights capped by a
+fan of four — non-planar, so those four cap facets have four different normals under
+flat shading. Both rings are jittered in height, radius and azimuth from a seeded
+generator. The test asserts the property that actually defines a point: **no vertex
+on the axis above ground**.
+
+**A test failed for the right reason when this landed.** The shared-program
+regression check compared the two layers' *tint lines*; scree and boulder are both
+stone, so they share a tint AND a window, and the check broke. The fix was not a
+third discriminator — any hand-picked line can coincide. It now compares whole
+compiled sources and asserts *no two layers share a program*, which is the
+definition of the bug rather than a proxy for it.
+
+### The stone arithmetic, wrong twice in one line
+
+`radius = height × spread`, and the cobbles' spread of 1.9 applied to the boulder
+range gave a 2.1 m block a **4 m radius**: an 8 m object standing in a pasture.
+Blocks needed their own, tighter multiplier. And one boulder in forty sounded rare
+until it was worked out — `π × 60² / 1.1²` slots in view, times the density, is
+**131 blocks on screen at once**. Both quantities are computable from constants
+already in the file, both are asserted now, and both were guessed the first time.
+
+Measured from **directly overhead at a known height**, where a pixel is a length
+rather than a guess about perspective — which mattered, because the perspective view
+had convinced me the stones were far too big and they were not:
+
+| | |
+|---|---|
+| stones per m² | 0.56 |
+| median width | **0.28 m** |
+| p95 / max | 0.62 m / 1.96 m |
+| over 1 m | 3 of 298 |
+
+### Wind, and what was actually verified
+
+Scree is fixed: `STONE_SWAY_M` is a compile-time `0.0`, so the bend term folds out
+of its program entirely. Measured in a full pinned gale: **0.00% of pixels moved**,
+and the compiled scree program contains no wave terms at all.
+
+The grass gained three per-tuft randomisations, at their request for *"un moto
+leggermente più randomico"*: a **phase lag**, a **stiffness**, and a **second slower
+wave** crossing at an angle whose period is incommensurable with the first, so the
+sum never repeats. All seeded from the cell hash, so a tuft keeps its character
+rather than shimmering. All deliberately small — the travelling wave is what makes
+wind read as weather rather than as jitter, and these break its lockstep without
+replacing it. Verified as **present in the compiled program** (`lag`, `gust`,
+`cross`), which is this file's own recurring failure: a constant that is in the
+source but not in the compiled shader is invisible in every other way.
+
+### Cost
+
+**458,582 triangles** — a cobble is 8 triangles again, and the 49 detailed blocks
+add 1,078. Under SwiftShader,
+ratios only: the knob costs ×1.00 / ×1.22 / ×1.72 / ×2.36. At the treeline, grass
+alone is ×1.98 of a cover-off frame, scree alone ×1.38, both ×2.22. **The grass is
+now the expensive layer**, because it takes the whole mask; that is the number to
+watch if their 25–45 fps drops.
+
+## Grass, shrubs and edelweiss (2026-08-12) — the shrub half is superseded, see above
 
 **The user opened their own next topic: "iniziamo dall'introduzione di erba ed
 arbusti e magari qualche stella alpina."** It is topic 3 of the four optional
@@ -199,11 +362,15 @@ not — and they match what this project already does everywhere else. Dwarf shr
 a scatter of knee-high cushions, not a carpet; a carpet would need forty times the
 instances.
 
-At full density: grass 43,264 instances × 8 triangles, shrub 13,924 × 8 =
-**457,504 triangles**. Under SwiftShader, which is a CPU rasteriser at ~1 fps and
-therefore only good for **ratios**, the knob costs ×1.00 / ×1.43 / ×1.87 / ×2.45 at
-0 / 0.2 / 0.5 / 1. **Their fps counter is the only instrument for the real number**,
-and the knob exists so that answer is a click rather than a rebuild.
+At full density, as this shipped on 2026-08-12: grass 43,264 instances × 8 triangles,
+shrub 13,924 × 8 = **457,504 triangles** — since superseded twice: the shrubs are
+gone and the layer is a scree, total 458,582 (see the top of this file). Under
+SwiftShader, which is a CPU rasteriser at ~1 fps and therefore only good for
+**ratios**, the knob then cost ×1.00 / ×1.43 / ×1.87 / ×2.45 at 0 / 0.2 / 0.5 / 1;
+on the current build it reads ×1.00 / ×1.24 / ×1.49 / ×2.34.
+**Their fps counter is the only instrument for the real number** — they gave it on
+2026-08-13, 25–45 fps — and the knob exists so that answer is a click rather than a
+rebuild.
 
 The colour is the ground's own: a tuft samples the same `basemapAlbedo()` the terrain
 is drawn with and tints it towards leaf. That was chosen because of a measurement

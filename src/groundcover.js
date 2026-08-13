@@ -2,10 +2,12 @@ import * as THREE from 'three';
 import { attachAtmo } from './atmosphere.js';
 import { BASEMAP, BASEMAP_MIX, BASEMAP_SCALE, basemapGlsl } from './basemap.js';
 import { LANDCOVER_MASK } from './landcover.js';
+import { FOREST_MASK } from './forest.js';
 import { TILE_SEGMENTS, MAX_DEPTH } from './terrain.js';
 import { SNOW_LEVEL, snowGlsl, snowColorGlsl } from './snow.js';
 
-// Grass and shrubs (2026-08-12) - the user's own topic, and the thing the ground
+// Grass and scree (2026-08-12, remade 2026-08-13) - the user's own topic, and the
+// thing the ground
 // has been missing since the satellite texture landed: at 20.5 m per texel the
 // ground within 30 m of a walking camera is one or two texels, so it is a flat
 // colour. Correct colour, no substance. This file puts substance in it.
@@ -22,15 +24,23 @@ import { SNOW_LEVEL, snowGlsl, snowColorGlsl } from './snow.js';
 //     branch, no second buffer. That is what the HUD's Ground cover control
 //     drives (src/main.js), and it is why the knob is free.
 //
-//  2. TWO LAYERS FROM ONE MASK. src/landcover.js ships a measurement - how much
-//     of a pixel carries vegetation that is not tree canopy - and nothing more.
-//     Whether that vegetation is a pasture or a rhododendron heath is a model,
-//     and it is here, as SHRUB_SHARE: a function of elevation, which the vertex
-//     shader samples anyway. Shipping it as a second texture cost 4.4 MB for a
-//     value that was already derivable.
+//  2. TWO LAYERS PARTITION ONE MASK. src/landcover.js ships a measurement - how
+//     much of a pixel carries vegetation that is not tree canopy - and nothing
+//     more. Grass takes that; SCREE takes its complement, minus the canopy. The
+//     second subtraction is not optional: under a wood the mask reads ~0 because a
+//     canopy is not open vegetation, so 1 - cover alone would cobble every forest
+//     floor in the park.
+//
+//     This slot held DWARF SHRUBS for one day and the user removed them - the
+//     cushions never stopped reading as manufactured objects, through three
+//     shapes. What went with them was the only MODEL in a file that otherwise just
+//     reads measurements: SHRUB_SHARE, a piecewise-linear guess at the Alpine belt
+//     sequence. Nothing interpolates a belt now.
 //
 //  3. THE COLOUR IS THE GROUND'S OWN. A tuft samples the satellite albedo under
-//     it and tints that towards green, rather than carrying an invented palette.
+//     it and tints that towards green, rather than carrying an invented palette;
+//     a stone barely tints it at all, because the pixel under a stone is already
+//     the colour of that rock - the rock is what the satellite saw.
 //     The reason is a measurement from the satellite session: open alpine ground
 //     reads G/R 1.00 in the imagery, grey-olive, where the old band model painted
 //     it green. Bright green tufts on grey-olive ground would fight it. Tinting
@@ -70,16 +80,18 @@ const GRASS = {
   fadeStartM: 15,
   seed: 0x51ed2f7b,
 };
-// Shrubs, budgeted only AFTER the two layers stopped sharing a shader - every
-// number here before that was measured through the grass's own window and spacing,
-// so none of it meant anything. The first honest reading was 924 cushions spread
-// over a 140 m disc, which is 0.015 per square metre: invisible.
+// Scree - stones, not plants (2026-08-13). This slot was a dwarf-shrub layer for a
+// day and the user removed it: the cushions never stopped reading as built objects
+// rather than vegetation. *"Ora sembrano dei tronchetti. Stonano moltissimo con il
+// prato."* Their call was to drop the shrubs entirely, keep the grass, and reuse the
+// original octahedron - the shape whose crime was looking like a mineral object -
+// for the thing it was accidentally good at. So this layer is now a stone field.
 //
-// A scatter you actually notice needs about 0.15 per square metre in the belt,
-// which is ten times the slot density - so the draw distance pays for it again,
-// 60 m instead of 140. Beyond that a knee-high cushion is two pixels and the
-// ground's own colour carries the heath.
-const SHRUB = {
+// The lattice is inherited unchanged, deliberately: 13,924 instances at 1.1 m over
+// a 130 m window, 60 m of draw distance. Keeping it identical is what makes the
+// cost of THIS change attributable - the grass's own share of the mask changed at
+// the same time (see below), and two moving numbers cannot be told apart.
+const SCREE = {
   windowM: 130,
   spacingM: 1.1, // -> (130/1.1)^2 = 13,924 instances
   jitter: 0.42,
@@ -88,8 +100,38 @@ const SHRUB = {
   seed: 0x2f6ea11d,
 };
 
+// Blocks, as their OWN layer rather than as a size mode of the scree - which is
+// the whole reason this exists, so it is worth being plain about (2026-08-13). The
+// user asked for the boulders' point to be taken off and offered triangles to pay
+// for it. But a layer draws ONE geometry for every instance, so spending them
+// inside the scree would have spent them on all 13,924 cobbles as well: 22
+// triangles each is 306k rather than 111k, against a frame rate of 25-45. Blocks
+// are rare, so a layer of their own costs almost nothing and can be as detailed as
+// it likes.
+//
+// The lattice is sized to land at the same rarity the size-mode version produced,
+// about two dozen in view at once: 20 m slots over the same 130 m window is 36
+// instances, and pi * 60^2 / 21.7^2 of them are inside the draw distance.
+const BOULDER = {
+  windowM: 130,
+  spacingM: 20, // -> (130/20)^2 = 36 instances, ~24 within the 60 m draw distance
+  jitter: 0.45,
+  visibleM: 60,
+  fadeStartM: 45,
+  seed: 0x7a31c05f,
+};
+
 const BLADES_PER_TUFT = 8;
-const SHRUB_TRIANGLES = 8; // an octahedron - see cushionGeometry()
+// An octahedron - see stoneGeometry(). This is the shape the shrubs started as, and
+// the whole reason it is back is that the objection to it was never that it was
+// angular: it was that an angular faceted lump is not a plant. It is exactly a
+// stone.
+const STONE_TRIANGLES = 8;
+// A block: a crown ring and an equator, capped by a fan above and a fan down to a
+// buried point below. Derived from the ring size so the stats cannot drift from
+// what boulderGeometry() emits.
+const BOULDER_SIDES = 6;
+const BOULDER_TRIANGLES = BOULDER_SIDES - 2 + BOULDER_SIDES * 2 + BOULDER_SIDES; // 22
 // A blade is one triangle: two base corners and a tip. It is a CLUMP of real
 // blades, not one leaf - 9 cm across - and the width is where this design's whole
 // argument lives, so it is worth stating plainly.
@@ -120,29 +162,35 @@ const GRASS_TALL_TO_M = 1400; // full height at and below here
 const GRASS_SHORT_FROM_M = 2700; // GRASS_SHORT_SCALE at and above here
 const GRASS_SHORT_SCALE = 0.55;
 
-// Dwarf shrub, retuned twice by looking rather than by arithmetic, and both wrong
-// answers are worth keeping because they were wrong in opposite directions.
+// Stone sizes, and they are BIMODAL on purpose - "ovviamente piu' piccoli a parte
+// alcuni massi piu' grandi". A scree slope is overwhelmingly gravel and cobbles
+// with the occasional block that fell whole, and a single continuous size range
+// cannot produce that: it gives one average stone everywhere, which reads as
+// gravel-textured ground rather than as a stone field. So most instances draw from
+// the small range and a measured few draw from the boulder range instead.
 //
-// First: 0.85 m tall with a radius of 2.2 m, which rendered as faceted green balls
-// the size of a car standing in front of the camera. Flattening them made it worse,
-// not better - 2.7 m wide and 0.3 m tall, seen at eye level, is a slab, and a
-// scatter of slabs at a grazing angle merges into a green pavement covering 68% of
-// the frame. Neither reads as a plant.
-//
-// The overhead view is what settled it, and it also corrected a miscount: from
-// above, what looks like 400 bushes in a 26 m disc is about 20 cushions showing ten
-// facets each. The density had been right all along; the SHAPE was wrong.
-//
-// So these are the real proportions of a rhododendron or juniper cushion: knee
-// high and roughly as wide as it is tall, times one and a half. What that cannot
-// give is a continuous heath carpet - 1 m cushions at one per 40 m2 is a scatter,
-// and a carpet would need forty times the instances at twenty triangles each. A
-// scatter of dwarf shrubs over turf is what Valsavarenche actually looks like at
-// this height, so that is what this is, honestly rather than by accident.
-const SHRUB_MIN_H = 0.2;
-const SHRUB_MAX_H = 0.55;
-const SHRUB_SPREAD_MIN = 1.1; // radius as a multiple of height
-const SHRUB_SPREAD_MAX = 1.7;
+// The small range tops out below the grass's own 0.28 m, which is the point: a
+// cobble sitting in turf is half-hidden by it, and that is what makes it read as
+// lying ON the ground rather than placed on it.
+const STONE_MIN_H = 0.05;
+const STONE_MAX_H = 0.26;
+const BOULDER_MIN_H = 0.55;
+const BOULDER_MAX_H = 1.6;
+// Radius as a multiple of height, and the two modes need DIFFERENT multipliers -
+// which is the second half of the same mistake. Cobbles are flattish, wider than
+// they are tall, because a stone that has come to rest has done so on its broad
+// face. Blocks are not: applying the cobbles' 1.9 to a 2.1 m boulder produced a
+// 4 m radius, i.e. an 8 m wide object standing in an alpine pasture. A block is
+// roughly as wide as it is tall.
+const STONE_SPREAD_MIN = 0.8;
+const STONE_SPREAD_MAX = 1.9;
+const BOULDER_SPREAD_MIN = 0.6;
+const BOULDER_SPREAD_MAX = 1.05;
+// Each stone is turned by its own angle. The cheapest thing in the file, and the
+// one that stops 13,924 identically-oriented octahedra from lining their facet
+// edges up across a hillside - which is exactly how the shrubs read as a field of
+// tents. Costs a hash, a sin and a cos in the vertex shader, and not one triangle.
+const STONE_YAW_SEED = 53.9;
 
 // THE SURFACE THE TERRAIN ACTUALLY DRAWS, which is not the one the height texture
 // holds - and getting this wrong is what made the user's first look report grass and
@@ -193,36 +241,52 @@ const COVER_GRID_SEGMENTS = TILE_SEGMENTS * 2 ** MAX_DEPTH;
 // little; the cover is only drawn within 50 m, where the LOD is at its finest, so
 // that is bounded.
 const GRASS_SINK_FRACTION = 0.12;
-// Zero, and not for the same reason: a cushion's geometry already extends below
-// its own origin (see cushionGeometry), so the ground hides its base by
-// construction.
-const SHRUB_SINK_FRACTION = 0;
+// A stone's geometry already extends a full radius below its own origin (an
+// octahedron used unmodified - see stoneGeometry), so the ground hides its base by
+// construction and buries roughly the lower half of it. Which is also what a stone
+// lying in scree looks like.
+const STONE_SINK_FRACTION = 0;
 
-// How much of the open vegetation at a given elevation is dwarf shrub rather than
-// grass, as a piecewise-linear profile in metres. This is the model half of the
-// data (see the header) and it is the Alpine belt sequence: juniper and alder
-// scattered through the valley, rhododendron and blueberry thickening towards the
-// treeline (~2,200 m here) and just above it, then giving way to alpine turf,
-// then to nothing.
+// WHERE THE STONES ARE, and the pleasing part of this change is that it needs no
+// model at all - which the dwarf-shrub belt it replaces very much did.
 //
-// It needs no separate "forest margin" term: the peak already sits AT the
-// treeline, which is where scrub grows because it is where trees nearly do.
-// Retuned downwards at the low end after standing at the spawn and looking: the
-// first curve gave shrub 0.49 of the cover at 1,950 m, i.e. half and half with the
-// grass, and Valsavarenche at that height is grazed pasture with scattered alder
-// and juniper - not half heath. It also mattered more than it looks, because a
-// cushion is 1.9 m across and a tuft is 0.1 m: equal SHARE is nothing like equal
-// screen area, so the shrubs dominated a frame they should have been dotted across.
-// The peak stays at the treeline, where the heath really is the ground cover.
-const SHRUB_SHARE = [
-  [1200, 0.06],
-  [1800, 0.18],
-  [2150, 0.45],
-  [2400, 0.45],
-  [2650, 0.22],
-  [2900, 0.05],
-  [3100, 0.0],
-];
+// The shipped mask measures one thing: how much of a pixel carries vegetation that
+// is not tree canopy. The grass takes that. Scree is its complement - ground the
+// satellite says nothing grows on - so the two layers now partition the same
+// measurement between them instead of splitting one half of it by a
+// piecewise-linear guess about the Alpine belt sequence. Above the treeline that is
+// exactly the boundary a walker sees: turf, then turf-and-stones, then stones.
+//
+// TWO TERMS HAVE TO BE SUBTRACTED, NOT ONE, and forgetting the second would have
+// cobbled every forest floor in the park. "Not vegetation" is not "bare": under a
+// wood the open-vegetation mask reads ~0 because the canopy is not open vegetation,
+// so 1 - cover is ~1 there. The canopy has its own mask (src/forest.js, the one
+// vegetation.js plants trees from), and the scree layer samples it too - one extra
+// texture fetch per vertex, paid only by this layer.
+const SCREE_FROM_BARE = 1.0; // of the ground the mask says carries no open vegetation
+// Even bare ground is not wall-to-wall stone, and at 1.0 a scree slope came out as
+// a paved surface rather than a slope with stones on it. This is the one number
+// here that is taste rather than measurement, and it is the one to turn if the
+// user finds the field too busy or too thin.
+const SCREE_DENSITY = 0.62;
+// THE ANGLE OF REPOSE, and it is not decoration - it is what stops loose stones
+// from being drawn on a cliff. The first build put cobbles all over the Gran
+// Paradiso summit ridge, and the reason is a chain worth writing down: the ice is
+// buried by STONE_BURY because snowCover() reads 1 there, but snow.js correctly
+// refuses to lie on steep ground, so the STEEP rock came out unsnowed, unvegetated,
+// uncanopied - and therefore, by the rule above, scree. A 50-degree face covered in
+// loose stones.
+//
+// Talus stands at its angle of repose and no steeper; past about 35 degrees the
+// stones have already gone downhill and what is left is rock. Faded rather than
+// cut, so a slope does not end on a hard line. Free: drawnElevation() already hands
+// back both gradients, so the slope is a length() of something already fetched -
+// which is the same argument that made the aspect free for the snow.
+//
+// The vegetation mask has slope baked out of it at build time, so the grass never
+// needed this. Scree is derived from the mask's COMPLEMENT, and a complement does
+// not inherit a filter - it inherits its inverse.
+const SCREE_SLOPE_FADE = [0.55, 0.78]; // tan(slope): ~29 deg full, ~38 deg none
 
 // Albedo, not appearance - the warning at the top of src/terrain.js applies to
 // every colour in this project. These are multipliers ON the satellite albedo
@@ -230,29 +294,38 @@ const SHRUB_SHARE = [
 // towards leaf rather than replacing it. Green up, red and blue down, brightness
 // roughly kept.
 const GRASS_TINT = [0.88, 1.16, 0.72];
-// Dwarf shrub is markedly darker than turf - a rhododendron heath reads almost
-// black-green against pasture from a distance, and that contrast is most of what
-// makes the belt visible at all.
+// Stone. Near 1 and very nearly neutral, and both of those are the point: a stone
+// in a scree IS the ground it lies on, geologically and photographically - the
+// satellite pixel under it is already the colour of that rock, because the rock is
+// what the satellite saw. So this barely touches the albedo. It lifts it a little,
+// because a fresh broken face is lighter than the weathered surface averaged into a
+// 20 m texel, and pulls the tiniest amount of green out so a stone in a meadow does
+// not inherit the grass next to it.
 //
-// Darker than the first guess by a measured factor, not by taste. A cushion's
-// facets face the sky while the ground around them is a slope tilted away from a
-// 25-degree midday sun, so identical albedo renders BRIGHTER on the bush: at
-// [0.62, 0.78, 0.62] the shrubs measured luma 0.285 against the ground's 0.259 and
-// G/R 1.10 against 0.98, i.e. they read as glowing green slabs. Scaled to land
-// about 15% darker than the ground they stand on, which is where a plant belongs.
-const SHRUB_TINT = [0.48, 0.6, 0.48];
+// The shrub tint this replaces was [0.48, 0.6, 0.48], i.e. a 0.57-luma multiplier
+// that made the cushions 2.7x darker than the ground - measured only after the
+// owned-pixel instrument existed. Nothing here should repeat that: the test asserts
+// stone is LIGHTER than turf and close to neutral.
+const STONE_TINT = [1.02, 1.0, 0.97];
 // Used only until the satellite texture lands (uBasemapMix is 0 until then), so
 // this is a fraction of a second in practice and never a design decision. Solved
 // the same way as the terrain bands: it looks too light as a swatch.
 const FALLBACK_ALBEDO = 0x93a86a;
 
 // Snow. Grass is BURIED rather than whitened: a 0.2 m tuft under settled snow is
-// gone, and a white tuft standing on white ground would read as debris. A shrub is
-// too tall to vanish, so it is pressed down and flocked instead - which is exactly
-// what a rhododendron cushion looks like in November.
+// gone, and a white tuft standing on white ground would read as debris.
+//
+// Stones are buried the same way and just as completely, which is a decision worth
+// stating because the tempting alternative is wrong. Leaving blocks standing under
+// full cover sounds more realistic - a 1.6 m erratic does poke through real snow -
+// but snowCover() returns how much of the ground is UNDER snow, not how deep it is,
+// so 1.0 means the surface is gone. A glaciated summit reads 1.0, and the control
+// this project has relied on since the grass shipped is that nothing at all is
+// drawn on the Gran Paradiso ice. Stones sitting on a glacier would break it, and
+// break it invisibly.
 const GRASS_BURY = 1.0; // fraction of height removed at full cover
-const SHRUB_PRESS = 0.55;
-const SHRUB_SNOW_MIX = 0.85;
+const STONE_BURY = 1.0;
+const STONE_SNOW_MIX = 0.9;
 
 // Wind. weather.js already drives a wind strength that audio.js turns into hiss;
 // this is the same number made visible. The direction is a constant rather than a
@@ -263,7 +336,34 @@ const WIND_DIR = [0.83, 0.56]; // unit-ish, x and z
 const WIND_WAVE_M = 9; // wavelength of the gust travelling across the field
 const WIND_SPEED = 1.7; // wave crests per second
 const GRASS_SWAY_M = 0.075; // tip travel at full wind
-const SHRUB_SWAY_M = 0.035;
+// Stone does not move in wind, at the user's explicit instruction and because it
+// is a stone. Zero rather than a small number: written as a compile-time 0.0 the
+// whole bend term folds away in the scree program, so the sin() and the dot() that
+// drive the travelling wave cost nothing there rather than being computed and
+// multiplied out.
+const STONE_SWAY_M = 0;
+
+// A GRASS FIELD IS NOT A CHOREOGRAPHY, which one travelling wave plus a per-blade
+// phase very nearly is: every tuft on a wavefront reaches its extreme in the same
+// instant, and the eye picks that up as a sweep rather than as air moving. The
+// user asked for "un moto leggermente piu' randomico" and these are the three
+// cheap ways to give it one, all per-TUFT (from the cell hash, so a tuft keeps its
+// character forever) rather than per-frame.
+//
+// Deliberately small. The wave has to survive: it is what makes a gust read as
+// crossing the field rather than as every blade twitching on its own, and that was
+// the reason it was written that way. These break the lockstep, they do not
+// replace it.
+const GRASS_PHASE_JITTER = 2.2; // radians of the wave a tuft can lag or lead by
+const GRASS_GUST_MIN = 0.55; // per-tuft amplitude, so some tufts are stiffer
+const GRASS_GUST_MAX = 1.45;
+// A second, slower wave crossing at an angle to the first, which is what stops the
+// combination from ever repeating exactly: two incommensurable periods beat against
+// each other instead of looping. Costs one more sin().
+const GRASS_CROSS_DIR = [-0.55, 0.84];
+const GRASS_CROSS_WAVE_M = 23;
+const GRASS_CROSS_SPEED = 0.61;
+const GRASS_CROSS_MIX = 0.45; // of the main wave's amplitude
 
 // Shared holders, driven from main.js each frame - the same arrangement as
 // snow.js's SNOW_LEVEL, and for the same reason: nothing here has to know that
@@ -277,8 +377,12 @@ export const GROUNDCOVER_DENSITY = { value: 1 };
 // Exported for tools/test-groundcover.mjs, so it asserts against these numbers
 // rather than a second copy that could drift from them.
 export {
-  GRASS, SHRUB, SHRUB_SHARE, BLADES_PER_TUFT, SHRUB_TRIANGLES, GRASS_TINT, SHRUB_TINT,
+  GRASS, SCREE, BLADES_PER_TUFT, STONE_TRIANGLES, GRASS_TINT, STONE_TINT,
   GRASS_SINK_FRACTION, GRASS_MIN_H, GRASS_MAX_H, COVER_GRID_SEGMENTS,
+  STONE_MIN_H, STONE_MAX_H, BOULDER, BOULDER_TRIANGLES, BOULDER_SIDES,
+  BOULDER_MIN_H, BOULDER_MAX_H,
+  STONE_SWAY_M, GRASS_SWAY_M, SCREE_DENSITY, SCREE_SLOPE_FADE,
+  STONE_SPREAD_MAX, BOULDER_SPREAD_MAX, stoneGeometry, boulderGeometry,
 };
 
 function glsl(n) {
@@ -344,36 +448,13 @@ export function coverLattice({ windowM, spacingM, jitter, seed }) {
   return { offsets, perSide, count, pitchM };
 }
 
-// The JS twin of the GLSL below, for tools/test-groundcover.mjs and for anything
-// that has to reason about the belt on the CPU. One table, two readers.
-export function shrubShareAt(elevM) {
-  if (!Number.isFinite(elevM)) return 0;
-  if (elevM <= SHRUB_SHARE[0][0]) return SHRUB_SHARE[0][1];
-  for (let i = 1; i < SHRUB_SHARE.length; i++) {
-    const [z1, v1] = SHRUB_SHARE[i];
-    if (elevM <= z1) {
-      const [z0, v0] = SHRUB_SHARE[i - 1];
-      return v0 + ((v1 - v0) * (elevM - z0)) / (z1 - z0);
-    }
-  }
-  return SHRUB_SHARE[SHRUB_SHARE.length - 1][1];
-}
-
-// Piecewise-linear, built the same way terrain.js chains its elevation bands:
-// each segment's ramp saturates before the next one starts, so applying them in
-// order IS linear interpolation. Generated from the table above so the shader and
-// shrubShareAt() cannot drift apart.
-function shrubShareGlsl() {
-  const lines = [`      float share = ${glsl(SHRUB_SHARE[0][1])};`];
-  for (let i = 1; i < SHRUB_SHARE.length; i++) {
-    const [z0] = SHRUB_SHARE[i - 1];
-    const [z1, v1] = SHRUB_SHARE[i];
-    lines.push(
-      `      share = mix( share, ${glsl(v1)}, clamp( ( h - ${glsl(z0)} ) / ${glsl(z1 - z0)}, 0.0, 1.0 ) );`,
-    );
-  }
-  return lines.join('\n');
-}
+// GONE WITH THE SHRUBS (2026-08-13): shrubShareAt() and its GLSL twin, a
+// piecewise-linear table of how much of the open vegetation at a given elevation
+// was dwarf shrub rather than grass. It was the one MODEL in a file that otherwise
+// only reads measurements, and removing the shrub layer removed the thing it was
+// modelling. The grass now takes the mask whole and the scree takes its complement,
+// so nothing interpolates a belt any more. Kept in the git history rather than
+// here; docs/PROGRESS.md records why it was tuned the way it was.
 
 // One tuft of BLADES_PER_TUFT triangles, in unit space: y runs 0 at the ground to
 // 1 at the tips, x and z are in metres and are NOT scaled by height (a blade does
@@ -421,34 +502,113 @@ function tuftGeometry() {
   return geometry;
 }
 
-// An octahedron: 8 flat facets, of which the top four are visible, which under
-// flatShading reads as a lumpy cushion rather than a ball. An icosahedron's 20
-// facets were the first choice and are simply not affordable once the count is high
-// enough for the scatter to read - 14,000 cushions at 20 triangles is 278k
-// triangles for ankle-high plants, against 111k at 8.
+// A stone: an OctahedronGeometry(1, 0), used exactly as three hands it over. This
+// is the shape the dwarf shrubs were made of, and it came back on 2026-08-13 for
+// the reason it failed there. Every attempt to make it read as a plant failed -
+// pyramid, then trapezium, then "tronchetti" - because a hard-edged faceted lump
+// is not a plant. It is a stone, and as a stone it needs no work at all.
 //
 // Used UNMODIFIED, with its lower half left below the ground where the terrain
-// hides it: the obvious saving - folding the bottom vertices up with abs(y) so no
+// hides it. The obvious saving - folding the bottom vertices up with abs(y) so no
 // facet is wasted underfoot - makes the lower facets exactly coincident with the
 // upper ones, and two coplanar triangles at the same depth z-fight. Four wasted
-// triangles per cushion is the cheaper mistake.
+// triangles per stone is the cheaper mistake, and here it is barely a waste: a
+// stone half-buried in its own scree is what a stone in scree is, so the sunk half
+// is doing the job that SHRUB_SINK_FRACTION used to have to fake.
 //
-// position.y therefore runs -1..1, and the shader scales it by the cushion's
-// height, so `height` is what stands above ground and no sink term is needed.
-function cushionGeometry() {
-  const ico = new THREE.OctahedronGeometry(1, 0);
-  const pos = ico.attributes.position;
+// FLAT-SHADED, and the normals are never read - flatShading takes them from
+// screen-space derivatives. The 16-triangle cushion that briefly lived here needed
+// indexed geometry and hand-authored dome normals to shade as curved; a stone
+// wants the opposite, so all of that is gone and the dummy attribute is back. It
+// is still required, because three's shader declares it.
+//
+// position.y runs -1..1 and the shader scales it by the stone's height, so
+// `height` is what stands above ground.
+function stoneGeometry() {
+  const octa = new THREE.OctahedronGeometry(1, 0);
+  const pos = octa.attributes.position;
   const verts = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) {
     verts[i * 3] = pos.getX(i);
     verts[i * 3 + 1] = pos.getY(i);
     verts[i * 3 + 2] = pos.getZ(i);
   }
+  if (pos.count !== STONE_TRIANGLES * 3) {
+    throw new Error(`stoneGeometry: ${pos.count / 3} triangles, STONE_TRIANGLES says ${STONE_TRIANGLES}`);
+  }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(verts, 3));
   geometry.setAttribute('aBlade', new THREE.BufferAttribute(new Float32Array(pos.count * 3), 3));
   geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(verts.length), 3));
-  ico.dispose();
+  octa.dispose();
+  return geometry;
+}
+
+// A block, with its point taken off - the user's own instruction, and they offered
+// triangles to pay for it. 22 of them, against the stone's 8, on a layer of only 36
+// instances: under 800 triangles in the whole scene.
+//
+// THE POINT IS NOT REPLACED BY A FLAT TOP, and that is the entire design. The last
+// three times a shape in this file lost its apex it gained a horizontal plate
+// instead, and the user's words for the results were "piramidi", then "piramidi"
+// again, then "tronchetti... stonano moltissimo con il prato". A truncation is a
+// frustum, and a frustum reads as manufactured.
+//
+// So the crown is a RING OF SIX AT SIX DIFFERENT HEIGHTS, capped by a fan of four.
+// Because the ring is not planar, those four cap facets have four different normals
+// under flat shading: a broken crown rather than a table. Every vertex of both rings
+// is jittered in height, radius and azimuth from a seeded generator, so the block is
+// irregular the way a broken rock is and identical on every load and every machine
+// (Math.random() would reshuffle the park on reload - see mulberry32 above).
+//
+// Below the equator it keeps the octahedron's answer: a fan down to a single buried
+// point. That half is underground, so it is the one place detail would be wasted,
+// and it has to reach a full radius down because a 1.6 m block on a slope shows its
+// uphill side otherwise.
+function boulderGeometry() {
+  const n = BOULDER_SIDES;
+  const rnd = mulberry32(0x5b09d13f);
+  const jitter = (amount) => 1 + (rnd() - 0.5) * 2 * amount;
+  const crown = [];
+  const equator = [];
+  for (let i = 0; i < n; i++) {
+    const a = ((i + (rnd() - 0.5) * 0.55) / n) * Math.PI * 2;
+    const cr = 0.46 * jitter(0.3);
+    // The six crown heights are the thing that stops this being a flat top, so the
+    // spread is deliberately wide - 0.5 to 1.0 of the block's height.
+    crown.push([Math.cos(a) * cr, 0.5 + rnd() * 0.5, Math.sin(a) * cr]);
+    const b = ((i + 0.5 + (rnd() - 0.5) * 0.55) / n) * Math.PI * 2;
+    const er = jitter(0.22);
+    equator.push([Math.cos(b) * er, (rnd() - 0.5) * 0.3, Math.sin(b) * er]);
+  }
+  // Normalised so the tallest crown vertex is exactly 1: `height` has to keep
+  // meaning what stands above ground, as it does for every other shape here.
+  const top = Math.max(...crown.map((p) => p[1]));
+  for (const p of crown) p[1] /= top;
+
+  const tris = [];
+  for (let i = 1; i < n - 1; i++) tris.push(crown[0], crown[i], crown[i + 1]);
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    tris.push(crown[i], crown[j], equator[i]);
+    tris.push(equator[i], equator[j], crown[j]);
+  }
+  const foot = [0, -1, 0];
+  for (let i = 0; i < n; i++) tris.push(equator[i], equator[(i + 1) % n], foot);
+
+  if (tris.length !== BOULDER_TRIANGLES * 3) {
+    throw new Error(`boulderGeometry: ${tris.length / 3} triangles, BOULDER_TRIANGLES says ${BOULDER_TRIANGLES}`);
+  }
+  const verts = new Float32Array(tris.length * 3);
+  for (let i = 0; i < tris.length; i++) {
+    verts[i * 3] = tris[i][0];
+    verts[i * 3 + 1] = tris[i][1];
+    verts[i * 3 + 2] = tris[i][2];
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+  geometry.setAttribute('aBlade', new THREE.BufferAttribute(new Float32Array(tris.length * 3), 3));
+  geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(verts.length), 3));
   return geometry;
 }
 
@@ -458,9 +618,11 @@ function createLayer({ kind, layer, manifest, heightTexture }) {
   const worldWidth = xmax - xmin;
   const worldDepth = ymax - ymin;
   const isGrass = kind === 'grass';
+  const isBoulder = kind === 'boulder';
 
   const { offsets, count, pitchM } = coverLattice(layer);
-  const source = isGrass ? tuftGeometry() : cushionGeometry();
+  // eslint-disable-next-line no-nested-ternary
+  const source = isGrass ? tuftGeometry() : (isBoulder ? boulderGeometry() : stoneGeometry());
 
   const geometry = new THREE.InstancedBufferGeometry();
   geometry.setAttribute('position', source.attributes.position);
@@ -473,6 +635,12 @@ function createLayer({ kind, layer, manifest, heightTexture }) {
     color: 0xffffff,
     roughness: 0.94,
     metalness: 0,
+    // Flat for both layers, and for the same reason each: a blade is a single
+    // triangle with no curvature to interpolate, and a stone is meant to have hard
+    // edges. The 16-triangle cushion that briefly lived in the second slot needed
+    // indexed geometry and hand-authored dome normals to shade as curved; none of
+    // that survived the shrubs being removed, and both layers are back to reading
+    // their normals from screen-space derivatives.
     flatShading: true,
     // A single-triangle blade has no back: without this it disappears whenever
     // the camera is on the other side of it, and half a field would blink out as
@@ -486,7 +654,7 @@ function createLayer({ kind, layer, manifest, heightTexture }) {
     attribute vec3 aBlade; // (leanX, leanZ, phase) - see tuftGeometry()
     uniform sampler2D uHeightMap;
     uniform sampler2D uCoverMask;
-    uniform float uWind;
+${isGrass ? '' : '    uniform sampler2D uForestMask; // scree only - see SCREE_FROM_BARE\n'}    uniform float uWind;
     uniform float uCoverTime;
     varying vec3 vCoverAlbedo;
     varying float vCoverSnow;
@@ -558,9 +726,23 @@ ${basemapGlsl()}
     // corner taps also hand back both gradients, so the aspect below is free.
     vec2 coverGrad;
     float h = drawnElevation( slot, coverGrad );
-${shrubShareGlsl()}
-    // The one mask feeds both layers; the belt decides how much of it is this one.
-    float mine = cover * ${isGrass ? '( 1.0 - share )' : 'share'};
+    // THE TWO LAYERS PARTITION THE MASK rather than splitting half of it by a
+    // model. Grass takes the vegetated fraction, whole - it used to get only
+    // 1 - SHRUB_SHARE of it, and the dwarf shrub that had the rest was removed by
+    // the user on 2026-08-13. Scree takes the complement, MINUS the canopy: "not
+    // open vegetation" is not "bare", because under a wood the mask reads ~0 and
+    // 1 - cover would cobble every forest floor in the park.
+${
+  isGrass
+    ? '    float mine = cover;'
+    : `    float wood = texture2D( uForestMask, uv ).r;
+    // Not steeper than talus stands - see SCREE_SLOPE_FADE. coverGrad is already
+    // in hand from drawnElevation(), so this is a length() and a smoothstep().
+    float repose = 1.0 - smoothstep( ${glsl(SCREE_SLOPE_FADE[0])}, ${glsl(SCREE_SLOPE_FADE[1])},
+                                     length( coverGrad ) );
+    float mine = ( 1.0 - cover ) * ( 1.0 - wood ) * repose
+               * ${glsl(SCREE_FROM_BARE * SCREE_DENSITY)};`
+}
 
     // Coverage as a probability, exactly as the forest does it: 40% cover keeps
     // 40% of slots, so a margin thins out instead of ending on the mask's own
@@ -595,16 +777,32 @@ ${
     // they punched through and put 8% of the frame's pixels on a glacier where the
     // mask says nothing grows.
     float radius = alive;
+    // A tuft already carries its own azimuth per blade (tuftGeometry's irrational
+    // step), so there is nothing left to turn.
+    mat2 yawM = mat2( 1.0, 0.0, 0.0, 1.0 );
     vCoverSnow = 0.0;
     vec3 tint = vec3( ${GRASS_TINT.map(glsl).join(', ')} );
     float sway = ${glsl(GRASS_SWAY_M)};`
-    : `    float height = mix( ${glsl(SHRUB_MIN_H)}, ${glsl(SHRUB_MAX_H)}, coverHash( coverCell + 13.1 ) )
-                 * exists * near * ( 1.0 - snow * ${glsl(SHRUB_PRESS)} );
-    float radius = height * mix( ${glsl(SHRUB_SPREAD_MIN)}, ${glsl(SHRUB_SPREAD_MAX)},
+    : `    // The two mineral layers run the same code on different constants: cobbles
+    // are the scree, blocks are their own layer because they carry a richer
+    // geometry and a layer draws one geometry for all of its instances.
+    float height = mix( ${glsl(isBoulder ? BOULDER_MIN_H : STONE_MIN_H)}, ${glsl(isBoulder ? BOULDER_MAX_H : STONE_MAX_H)},
+                        coverHash( coverCell + 13.1 ) )
+                 * exists * near * ( 1.0 - snow * ${glsl(STONE_BURY)} );
+    // Cobbles are flattish - a stone that has come to rest has done so on its broad
+    // face - and blocks are roughly as wide as they are tall. Applying the cobbles'
+    // multiplier to the boulder range once gave a 2.1 m block a 4 m radius.
+    float radius = height * mix( ${glsl(isBoulder ? BOULDER_SPREAD_MIN : STONE_SPREAD_MIN)}, ${glsl(isBoulder ? BOULDER_SPREAD_MAX : STONE_SPREAD_MAX)},
                                  coverHash( coverCell + 29.7 ) );
-    vCoverSnow = snow * ${glsl(SHRUB_SNOW_MIX)};
-    vec3 tint = vec3( ${SHRUB_TINT.map(glsl).join(', ')} );
-    float sway = ${glsl(SHRUB_SWAY_M)};`
+    // Its own yaw - see STONE_YAW_SEED. Without this all 13,924 octahedra line
+    // their facet edges up across the hillside, which is exactly how this shape
+    // read as a field of identical tents when it was a shrub.
+    float yaw = coverHash( coverCell + ${glsl(STONE_YAW_SEED)} ) * ${glsl(Math.PI * 2)};
+    float cy = cos( yaw ), sy = sin( yaw );
+    mat2 yawM = mat2( cy, sy, -sy, cy );
+    vCoverSnow = snow * ${glsl(STONE_SNOW_MIX)};
+    vec3 tint = vec3( ${STONE_TINT.map(glsl).join(', ')} );
+    float sway = ${glsl(STONE_SWAY_M)};`
 }
 
     // The ground's own colour, leaned towards leaf. basemapAlbedo() is the very
@@ -616,13 +814,58 @@ ${
     })()}, basemapAlbedo( uv, 0.0 ), uBasemapMix );
     vCoverAlbedo = photo * tint * mix( 0.82, 1.18, coverHash( coverCell + 7.1 ) );
 
-    // Wind: one travelling wave across the world, plus a per-blade phase, so a
-    // gust crosses the field instead of every tuft nodding in unison. Applied to
-    // the tips only - position.y is 0 at the ground - which is what bending is.
+    // Wind: a travelling wave across the world, so a gust CROSSES the field
+    // instead of every tuft nodding in unison. Applied to the tips only -
+    // position.y is 0 at the ground - which is what bending is.
+${
+  isGrass
+    ? `    // Three per-tuft randomisations on top of it (2026-08-13, the user asked for
+    // "un moto leggermente piu' randomico"), all seeded from the CELL so a tuft
+    // keeps its character forever rather than shimmering frame to frame:
+    //
+    //   - a phase lag, so tufts on one wavefront no longer reach their extreme in
+    //     the same instant. This is the one that removes the choreography.
+    //   - a stiffness, so some tufts barely move in the same gust that lays
+    //     others over.
+    //   - a second, slower wave crossing at an angle. Its period is
+    //     incommensurable with the first, so the sum never repeats exactly.
+    //
+    // Kept small on purpose. The travelling wave is what makes wind read as
+    // weather rather than as jitter, and these break its lockstep without
+    // replacing it.
+    float lag = ( coverHash( coverCell + 3.3 ) - 0.5 ) * ${glsl(GRASS_PHASE_JITTER)};
+    float gust = mix( ${glsl(GRASS_GUST_MIN)}, ${glsl(GRASS_GUST_MAX)}, coverHash( coverCell + 47.9 ) );
+    float wave = sin( dot( slot, vec2( ${glsl(WIND_DIR[0])}, ${glsl(WIND_DIR[1])} ) ) * ${glsl((2 * Math.PI) / WIND_WAVE_M)}
+                    - uCoverTime * ${glsl(WIND_SPEED * 2 * Math.PI)} + aBlade.z + lag );
+    float cross = sin( dot( slot, vec2( ${glsl(GRASS_CROSS_DIR[0])}, ${glsl(GRASS_CROSS_DIR[1])} ) ) * ${glsl((2 * Math.PI) / GRASS_CROSS_WAVE_M)}
+                     - uCoverTime * ${glsl(GRASS_CROSS_SPEED * 2 * Math.PI)} + lag );
+    vec2 bend = ( vec2( ${glsl(WIND_DIR[0])}, ${glsl(WIND_DIR[1])} ) * ( wave * 0.5 + 0.6 )
+                + vec2( ${glsl(GRASS_CROSS_DIR[0])}, ${glsl(GRASS_CROSS_DIR[1])} ) * cross * ${glsl(GRASS_CROSS_MIX)} )
+              * gust * uWind * sway * position.y;`
+    : `    // Stone does not move: STONE_SWAY_M is a compile-time 0.0, so the whole term
+    // folds away here and the scree program pays for none of it.
     float wave = sin( dot( slot, vec2( ${glsl(WIND_DIR[0])}, ${glsl(WIND_DIR[1])} ) ) * ${glsl((2 * Math.PI) / WIND_WAVE_M)}
                     - uCoverTime * ${glsl(WIND_SPEED * 2 * Math.PI)} + aBlade.z );
     vec2 bend = vec2( ${glsl(WIND_DIR[0])}, ${glsl(WIND_DIR[1])} ) * ( wave * 0.5 + 0.6 )
-              * uWind * sway * position.y;
+              * uWind * sway * position.y;`
+}
+
+    // position.xz scaled by the radius and, for a stone, turned by the instance's
+    // own yaw. The bend is NOT folded in here: the wind blows in a world direction
+    // and does not care which way a tuft happens to face.
+    vec2 local = yawM * position.xz * radius;
+
+    // NO NORMAL IS COMPUTED HERE, and it used to be. Both layers are flat-shaded
+    // again, so three takes the normal from screen-space derivatives and the
+    // attribute is never read - which is also why the placement is back to a
+    // single injection at begin_vertex rather than being split across
+    // beginnormal_vertex to get radius and yaw defined early enough.
+    //
+    // What was here was an inverse-transpose correction for the non-uniform
+    // diag(radius, height, radius) scale, needed by the 16-triangle smooth-shaded
+    // cushion. Worth remembering if anything in this file is ever smooth-shaded
+    // again: rotating a normal with its vertex under a non-uniform scale tilts it,
+    // and for a diagonal scale the correction is just the reciprocals.
 
     // height = 0 collapses every vertex onto the base point, so a slot that holds
     // nothing draws degenerate triangles and costs no fragments at all.
@@ -631,15 +874,20 @@ ${
     // fraction of the height (a taller blade arcs further), and the sink is a
     // fraction of the height too.
     vec3 transformed = vec3(
-      position.x * radius + aBlade.x * height + slot.x + bend.x,
-      position.y * height + h - height * ${glsl(isGrass ? GRASS_SINK_FRACTION : SHRUB_SINK_FRACTION)},
-      position.z * radius + aBlade.y * height + slot.y + bend.y
+      local.x + aBlade.x * height + slot.x + bend.x,
+      position.y * height + h - height * ${glsl(isGrass ? GRASS_SINK_FRACTION : STONE_SINK_FRACTION)},
+      local.y + aBlade.y * height + slot.y + bend.y
     );
   `;
 
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uHeightMap = { value: heightTexture };
     shader.uniforms.uCoverMask = LANDCOVER_MASK; // shared holder - may still be downloading
+    // The canopy mask, bound for the scree layer only, and for a reason worth the
+    // line: "not open vegetation" is not "bare ground". Under a wood the landcover
+    // mask reads ~0, so scree taken as 1 - cover would have put boulders on every
+    // forest floor in the park. Same shared-holder arrangement as vegetation.js.
+    if (!isGrass) shader.uniforms.uForestMask = FOREST_MASK;
     shader.uniforms.uSnow = SNOW_LEVEL; // declared by snowGlsl(); the same holder the ground reads
     shader.uniforms.uWind = GROUNDCOVER_WIND;
     shader.uniforms.uCoverTime = GROUNDCOVER_TIME;
@@ -700,7 +948,8 @@ export function createGroundcover({ manifest, heightTexture }) {
 
   const layers = [
     createLayer({ kind: 'grass', layer: GRASS, manifest, heightTexture }),
-    createLayer({ kind: 'shrub', layer: SHRUB, manifest, heightTexture }),
+    createLayer({ kind: 'scree', layer: SCREE, manifest, heightTexture }),
+    createLayer({ kind: 'boulder', layer: BOULDER, manifest, heightTexture }),
   ];
   for (const l of layers) group.add(l.mesh);
 
@@ -727,14 +976,23 @@ export function createGroundcover({ manifest, heightTexture }) {
         spacingM: layers[0].pitchM,
         visibleM: GRASS.visibleM,
       },
-      shrub: {
+      scree: {
         instances: layers[1].count,
-        trianglesPerInstance: SHRUB_TRIANGLES,
-        windowM: SHRUB.windowM,
+        trianglesPerInstance: STONE_TRIANGLES,
+        windowM: SCREE.windowM,
         spacingM: layers[1].pitchM,
-        visibleM: SHRUB.visibleM,
+        visibleM: SCREE.visibleM,
       },
-      trianglesAtFullDensity: layers[0].count * BLADES_PER_TUFT + layers[1].count * SHRUB_TRIANGLES,
+      boulder: {
+        instances: layers[2].count,
+        trianglesPerInstance: BOULDER_TRIANGLES,
+        windowM: BOULDER.windowM,
+        spacingM: layers[2].pitchM,
+        visibleM: BOULDER.visibleM,
+      },
+      trianglesAtFullDensity: layers[0].count * BLADES_PER_TUFT
+        + layers[1].count * STONE_TRIANGLES
+        + layers[2].count * BOULDER_TRIANGLES,
     },
   };
 }
