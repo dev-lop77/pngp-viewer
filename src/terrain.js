@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { setLocalOrigin } from './geo.js';
 import { sampleHeightfield, sampleRenderedHeightfield, decodeHeightfield } from './heightfield.js';
+import {
+  HEIGHT_TIER, HEIGHT_TIER_RECT, HEIGHT_TIER_MIX, GROUND_SEGMENTS, heightTierGlsl,
+  emptyTier, createTierTexture, sampleTier,
+} from './heighttier.js';
 import { attachAtmo } from './atmosphere.js';
 import { FOREST_MASK } from './forest.js';
 import { SNOW_LEVEL, snowGlsl, snowColorGlsl } from './snow.js';
@@ -187,6 +191,7 @@ export async function loadTerrain(dataUrl = `${import.meta.env.BASE_URL}data`) {
     // grid cell in metres. Injected into the VERTEX shader only, where HELPERS
     // goes - the fragment side has its own declarations.
     attribute vec2 aCellM;
+${heightTierGlsl()}
     varying float vTerrainElev;
     varying vec3 vTerrainNormal;
     varying vec2 vTerrainXZ;
@@ -194,9 +199,15 @@ export async function loadTerrain(dataUrl = `${import.meta.env.BASE_URL}data`) {
       return vec2( ( wxz.x + ${glsl(worldWidth / 2)} ) / ${glsl(worldWidth)},
                    ( ${glsl(worldDepth / 2)} - wxz.y ) / ${glsl(worldDepth)} );
     }
-    float terrainElevation( vec2 uv ) {
-      vec2 s = texture2D( displacementMap, uv ).rg;
-      return ( ( s.r * 256.0 + s.g ) / 257.0 ) * displacementScale + displacementBias;
+    // TAKES WORLD METRES, NOT UV, and that is deliberate rather than tidier: the
+    // high-resolution tier is a correction addressed in world space, and the five
+    // places that ask for an elevation - the displacement and the four normal taps
+    // - must all get the same one, or the shading describes a surface the geometry
+    // does not have. Passing wxz makes that impossible to get wrong by omission.
+    float terrainElevation( vec2 wxz ) {
+      vec2 s = texture2D( displacementMap, terrainUv( wxz ) ).rg;
+      return ( ( s.r * 256.0 + s.g ) / 257.0 ) * displacementScale + displacementBias
+           + heightTierM( wxz );
     }
   `;
 
@@ -216,11 +227,12 @@ export async function loadTerrain(dataUrl = `${import.meta.env.BASE_URL}data`) {
     // pixels change brightness (tools/dev/probe-lod.mjs and probe-lod-visible.mjs).
     // Costs nothing: the same four taps, at a different spacing.
     vec2 nSpacing = max( vec2( ${glsl(resX)}, ${glsl(resY)} ), aCellM );
-    vec2 nUv = nSpacing / vec2( ${glsl(worldWidth)}, ${glsl(worldDepth)} );
-    float hW = terrainElevation( tUv - vec2( nUv.x, 0.0 ) );
-    float hE = terrainElevation( tUv + vec2( nUv.x, 0.0 ) );
-    float hN = terrainElevation( tUv + vec2( 0.0, nUv.y ) );
-    float hS = terrainElevation( tUv - vec2( 0.0, nUv.y ) );
+    // In world metres now. +Z is South, so north is -z - which is why hN steps
+    // NEGATIVE in y here where the uv version stepped positive in v.
+    float hW = terrainElevation( wTerrainXZ - vec2( nSpacing.x, 0.0 ) );
+    float hE = terrainElevation( wTerrainXZ + vec2( nSpacing.x, 0.0 ) );
+    float hN = terrainElevation( wTerrainXZ - vec2( 0.0, nSpacing.y ) );
+    float hS = terrainElevation( wTerrainXZ + vec2( 0.0, nSpacing.y ) );
     vec3 objectNormal = normalize( vec3(
       ( hW - hE ) / ( 2.0 * nSpacing.x ),
       1.0,
@@ -335,6 +347,13 @@ ${bandMix}
     shader.uniforms.uBasemap = BASEMAP;
     shader.uniforms.uBasemapMix = BASEMAP_MIX;
     shader.uniforms.uBasemapScale = BASEMAP_SCALE;
+    // The optional high-resolution tier, bound the same way and for the same
+    // reason: it is downloaded only if the quality control asks, and binding the
+    // holder now means turning it on later costs no recompile. Its mix stays 0
+    // until then, and heightTierM() multiplies out to exactly zero.
+    shader.uniforms.uHeightTier = HEIGHT_TIER;
+    shader.uniforms.uHeightTierRect = HEIGHT_TIER_RECT;
+    shader.uniforms.uHeightTierMix = HEIGHT_TIER_MIX;
 
     let vs = shader.vertexShader;
     vs = patch(vs, '#include <displacementmap_pars_vertex>', `#include <displacementmap_pars_vertex>\n${HELPERS}`);
@@ -352,7 +371,7 @@ ${bandMix}
     vs = patch(
       vs,
       '#include <displacementmap_vertex>',
-      `float terrainH = terrainElevation( tUv );
+      `float terrainH = terrainElevation( wTerrainXZ );
       transformed.y += terrainH;
       vTerrainElev = terrainH;
       vTerrainXZ = wTerrainXZ;`,
@@ -372,8 +391,12 @@ ${bandMix}
   // not square (the bbox is 83884 x 48225 m), and a non-uniform scale would go
   // through three's normalMatrix and shear the world-space normals computed
   // above.
+  // One more level than MAX_DEPTH, built up front and used only inside the tier's
+  // rectangle: at depth 8 a cell is 10.25 m, which is the tier's own resolution.
+  // Allowing it everywhere would quadruple the finest tiles' triangles over ground
+  // where there is no extra information to show for it.
   const geometries = [];
-  for (let depth = 0; depth <= MAX_DEPTH; depth++) {
+  for (let depth = 0; depth <= MAX_DEPTH + 1; depth++) {
     geometries.push(buildTileGeometry(TILE_SEGMENTS, worldWidth / 2 ** depth, worldDepth / 2 ** depth));
   }
 
@@ -417,7 +440,15 @@ ${bandMix}
       nodeBox.max.set(cx + halfW, elevMax, cz + halfD);
       if (!frustum.intersectsBox(nodeBox)) return;
 
-      if (depth < MAX_DEPTH) {
+      // The tier's rectangle, in the same local metres the traversal uses. A tile
+      // may refine one level further only if it lies ENTIRELY inside it - straddling
+      // the edge would put two different cell sizes on the same skirt.
+      const r = HEIGHT_TIER_RECT.value;
+      const insideTier = hasTier()
+        && cx - halfW >= r.x && cx + halfW <= r.x + r.z
+        && cz - halfD >= r.y && cz + halfD <= r.y + r.w;
+      const maxDepthHere = insideTier ? MAX_DEPTH + 1 : MAX_DEPTH;
+      if (depth < maxDepthHere) {
         // Distance to the tile, not to its centre, so a large tile the camera
         // stands on always refines (and the tile under the camera therefore
         // always reaches MAX_DEPTH - which sampleRenderedHeight() relies on).
@@ -443,10 +474,51 @@ ${bandMix}
     stats.deepest = deepest;
   }
 
+  // ---- the optional high-resolution tier -------------------------------------
+  // Held here rather than in a module global because every reader of the ground
+  // goes through this object, and there must be exactly one answer to "how high is
+  // the ground" on the CPU. See src/heighttier.js for why it is a residual.
+  let tier = null;
+  HEIGHT_TIER.value = HEIGHT_TIER.value ?? emptyTier();
+  // The one place that says how fine the drawn surface is. groundcover.js reads
+  // this to reproduce the same triangulation it stands on.
+  GROUND_SEGMENTS.value = TILE_SEGMENTS * 2 ** MAX_DEPTH;
+
+  /**
+   * Fetch and install the tier. Idempotent, and safe to call while one is already
+   * in flight. Returns the manifest, or null if there is no tier to load.
+   */
+  async function loadHeightTier(base = import.meta.env.BASE_URL ?? '/') {
+    if (tier) return tier.manifest;
+    const manifestUrl = `${base}data/heighttier.json`.replace(/\/\//g, '/');
+    const tierManifest = await fetch(manifestUrl).then((r) => (r.ok ? r.json() : null));
+    if (!tierManifest) return null;
+    const bin = await fetch(`${base}data/${tierManifest.file.name}`.replace(/\/\//g, '/'))
+      .then((r) => (r.ok ? r.arrayBuffer() : null));
+    if (!bin) return null;
+    const bytes = new Uint8Array(bin);
+    const { texture: tierTexture, rect } = createTierTexture(bytes, tierManifest, manifest);
+    HEIGHT_TIER.value = tierTexture;
+    HEIGHT_TIER_RECT.value.copy(rect);
+    tier = { bytes, manifest: tierManifest, rect, mix: HEIGHT_TIER_MIX.value };
+    return tierManifest;
+  }
+
+  /** 0..1. The CPU and the GPU read the same number, which is the point. */
+  function setHeightTierMix(v) {
+    const m = Math.min(1, Math.max(0, v));
+    HEIGHT_TIER_MIX.value = m;
+    if (tier) tier.mix = m;
+    GROUND_SEGMENTS.value = TILE_SEGMENTS * 2 ** (m > 0 && tier ? MAX_DEPTH + 1 : MAX_DEPTH);
+  }
+
+  const hasTier = () => tier !== null && HEIGHT_TIER_MIX.value > 0;
+
   // CPU-side height query in scene-local (x,z) metres - the true bilinear
-  // heightfield value, shared with the build pipeline via src/heightfield.js.
+  // heightfield value plus the tier's correction, shared with the build pipeline
+  // via src/heightfield.js. EVERY consumer of the ground goes through here.
   function sampleHeight(x, z) {
-    return sampleHeightfield(heights, manifest, x, z);
+    return sampleHeightfield(heights, manifest, x, z) + sampleTier(tier, x, z);
   }
 
   // Height of the surface actually DRAWN, which is what anything touching the
@@ -456,13 +528,24 @@ ${bandMix}
   // 20.5 m cells this is now within a metre or two of sampleHeight() anyway,
   // where the old 328 m mesh differed from it by 29 m on average.
   const finestSegments = TILE_SEGMENTS * 2 ** MAX_DEPTH;
+  const finestSegmentsTier = TILE_SEGMENTS * 2 ** (MAX_DEPTH + 1);
   function sampleRenderedHeight(x, z) {
-    return sampleRenderedHeightfield(heights, manifest, finestSegments, finestSegments, x, z);
+    // The tier raises the finest LOD by one level, so the triangulation this
+    // reproduces gets finer with it - and a camera standing on a tier tile would
+    // otherwise be placed on the coarser surface it is no longer drawing.
+    const segments = hasTier() ? finestSegmentsTier : finestSegments;
+    return sampleRenderedHeightfield(heights, manifest, segments, segments, x, z)
+      + sampleTier(tier, x, z);
   }
 
   // heightTexture is exported for src/vegetation.js, which displaces trees onto
   // the same surface in its own vertex shader.
-  return { object: group, manifest, heights, heightTexture: texture, sampleHeight, sampleRenderedHeight, update, stats };
+  return {
+    object: group, manifest, heights, heightTexture: texture,
+    sampleHeight, sampleRenderedHeight, update, stats,
+    loadHeightTier, setHeightTierMix,
+    get heightTier() { return tier; },
+  };
 }
 
 // A flat grid in XZ (displaced on the GPU) plus a skirt hanging off all four

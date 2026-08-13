@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Optional high-resolution terrain: the park at the source data's native 10 m, as a residual over heightfield.json's 20.5 m grid. Downloaded only when the quality control asks for it.",
+  "crs": "EPSG:23032",
+  "bboxCrsUnits": {
+    "xmin": 348606.92942298524,
+    "ymin": 5036775,
+    "xmax": 389668.88745827373,
+    "ymax": 5061082.479784367
+  },
+  "dimensions": {
+    "width": 4106,
+    "height": 2431
+  },
+  "resolutionMPerPx": {
+    "x": 10.000476871721506,
+    "y": 9.998963300850093
+  },
+  "rowOrientation": "row 0 = north edge (ymax); row N-1 = south edge (ymin)",
+  "pixelConvention": "area (cell-center), identical to heightfield.json",
+  "encoding": {
+    "dtype": "uint8",
+    "meaning": "a signed elevation CORRECTION in metres, to be ADDED to the bilinear value of heightfield.json at the same world point",
+    "mapping": "s = code/255*2 - 1; metres = sign(s) * s^2 * 56",
+    "halfRangeM": 56,
+    "zeroOutsideBbox": "The correction is zero everywhere outside bboxCrsUnits, and is faded to exactly zero over the outermost pixels, so the tier adds detail without moving the surface at its edge.",
+    "fadePx": 32
+  },
+  "file": {
+    "name": "heighttier.f5ab4827.bin",
+    "bytes": 9981686,
+    "gzipBytes": 7382672,
+    "sha256Prefix": "f5ab4827"
+  },
+  "source": {
+    "sources": [
+      {
+        "name": "DTM0508_002_UNICO (Regione Autonoma Valle d'Aosta)",
+        "priority": 1,
+        "coverage": "Valle d'Aosta side of the park - highest quality, native ~10m",
+        "license": "CC BY 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "licenseVerifiedVia": "https://metadati.partout.it/metadata_documents/CC_BY_DTM_v2.pdf (linked from https://geoportale.regione.vda.it/download/dtm/, which lists this product as 'DTM 2005/2008 aggregato' = DTM0508). Granted under DGR 1620 del 25/11/2016 and DGR 899 del 27/06/2014; sharing and modification allowed 'per qualsiasi fine, anche commerciale'.",
+        "attribution": "Dati estratti dal Modello Digitale del Terreno (DTM) della Regione Autonoma Valle d'Aosta.",
+        "attributionNote": "That wording is prescribed verbatim by the licence document ('apponendo la seguente dicitura') - do not paraphrase it."
+      },
+      {
+        "name": "RIPRESA AEREA ICE 2009-2011 - DTM 5 (Regione Piemonte)",
+        "priority": 2,
+        "coverage": "Most of the Piemonte side (lower/mid elevations) - native 5m, does not reach the highest glaciated peaks",
+        "fetchedVia": "tools/dtm-source/fetch-piemonte-dtm.sh (WCS)",
+        "license": "CC BY 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/deed.it",
+        "licenseVerifiedVia": "https://www.geoportale.piemonte.it/geonetwork/srv/api/records/r_piemon:224de2ac-023e-441c-9ae0-ea493b217a8e - useConstraints = CC BY 4.0 deed.it, access 'no limitations to public access'; lineage records the 2019-02-13 upgrade from CC BY 2.5.",
+        "attribution": "Regione Piemonte - RIPRESA AEREA ICE 2009-2011, DTM 5."
+      },
+      {
+        "name": "TINITALY 1.1 (INGV)",
+        "priority": 3,
+        "coverage": "Whatever the first two sources miss (mainly the highest peaks) - national 10m mosaic",
+        "fetchedVia": "tools/dtm-source/fetch-tinitaly.sh",
+        "license": "CC BY 4.0",
+        "attribution": "Tarquini S., I. Isola, M. Favalli, A. Battistini, G. Dotta, (2023). TINITALY, a digital elevation model of Italy with a 10 meters cell size (Version 1.1). Istituto Nazionale di Geofisica e Vulcanologia (INGV). https://doi.org/10.13127/tinitaly/1.1 - CC BY 4.0"
+      }
+    ],
+    "nativeHeightmap": "DEM/pngp_heightmap.png",
+    "nativeDimensions": {
+      "width": 8388,
+      "height": 4823
+    },
+    "nativeResolutionMPerPx": {
+      "x": 10.000476871721506,
+      "y": 9.998963300850093
+    }
+  },
+  "generatedBy": "tools/build-height-tier.mjs",
+  "generatedAt": "2026-08-13T14:22:00.198Z"
+}

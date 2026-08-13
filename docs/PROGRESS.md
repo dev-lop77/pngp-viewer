@@ -2,6 +2,112 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## High-resolution terrain: BUILT, accepted, not published (2026-08-13)
+
+Topic 2 of the four extras, the last one untouched: *"modelli ad alta risoluzione
+come opzione da alzare, non come nuovo default"*. Started with the terrain, at the
+user's own ordering: terrain, then 3D models, then satellite imagery.
+
+**The user tried it and reported: *"si carica velocemente ed è molto ben navigabile
+con fps immutati"*.** That is the measurement no instrument here can produce, and
+it is the one that matters — the quadtree now refines a level further inside the
+tier. They are **evaluating whether 10 m should become the default**. Not published
+yet, by their instruction.
+
+### What it is
+
+The park's own **10 m** elevation — the native resolution of the sources this
+project already mosaics — over the 40 × 31 km people walk in. `heighttier.json` +
+a 9.5 MB file, **7.0 MB gzipped**, downloaded only when the HUD's `Terrain` control
+asks. `MAX_DEPTH` goes 7 → 8 (10.24 m cells) **only for tiles entirely inside the
+tier's rectangle**: raising it everywhere would quadruple the finest tiles'
+triangles over ground with no extra information in it.
+
+### It is a RESIDUAL, and that is the whole design
+
+The elevation is read by **seven modules in three different ways** — the CPU
+bilinear array, the drawn-triangle surface, and the GPU texture — by the camera,
+the POI markers, the trees, the grass, the stones, the flowers and the terrain
+itself. Two absolute grids would put a seam between them that all seven must agree
+about, on CPU and GPU, which is the *"erba e cespugli galleggiano in aria"* defect
+multiplied by seven.
+
+A correction cannot fail that way. Outside its rectangle it is **zero by
+construction**, so every reader gets exactly today's number, bit for bit; and the
+build tool fades it to exactly zero over the outermost 32 pixels, so the boundary
+is a loss of detail rather than a step.
+
+Measured on the real data before choosing, gzipped:
+
+| encoding | gzip |
+|---|---|
+| absolute 16-bit, the shipped row-delta codec | 12.5 MB |
+| residual 16-bit, same codec | **16.7 MB** |
+| residual 8-bit, linear ±32 m | 6.1 MB, 41 px clipped by ~21 m |
+| **residual 8-bit, signed sqrt ±56 m** | **8.7 MB, nothing clips** |
+
+The residual compresses **worse** than absolute heights under the row-delta codec,
+which is worth knowing: that codec works because elevations are smooth along a row,
+and a residual is by definition the part that is not. The signed square root spends
+precision where the data is — 0.0035 m steps near zero against a linear map's
+0.251 m — and its coarse end lands on cliffs where 0.4 m is invisible.
+
+### Three guards, three real bugs
+
+Every one fired at least once, and none would have produced an error message.
+
+1. **Nodata is a sentinel and it is declared nowhere in the pipeline.** Raw value 0
+   means "no source covered this pixel" — **12.2%** of the native mosaic — and read
+   as an elevation it is 238 m. The first build produced a correction of
+   **−1990 m**: it was diligently "fixing" the terrain down to the bottom of the
+   elevation range wherever the DTM has a hole.
+2. **Testing the base for exactly zero is not enough.** A base pixel is a bilinear
+   average of native ones, so next to a hole it is a *blend* of real elevation and
+   the sentinel — a plausible number that is badly wrong and never exactly zero.
+   That left 343 pixels off the scale until the hole mask was dilated by 6 px on
+   the native grid, covering the 2×2 footprint that makes a base pixel plus the
+   2 base pixels a bilinear read touches. Result: max 53.34 m, **nothing clips**,
+   0.44% of the tier left flat where the source says nothing.
+3. **Zero was not representable.** The centre of 255 steps is 127.5, so the obvious
+   mapping decoded 128 to 0.00086 m rather than to nothing. A millimetre across ten
+   million pixels is a surface that no longer equals the one every other reader
+   uses — which is the entire reason this is a residual. 128 is the zero now, 127
+   steps each side, and the outer ring is asserted to decode to exactly 0.
+
+### Two instrument mistakes of mine, both already written down as rules
+
+- The first A/B said the tier-off build changed **3.68%** of pixels where it must
+  change none. I had compared two screenshots taken minutes apart, **with the
+  animals and birds moving by themselves** — the trap this file already names.
+- The first CPU check said "0 points corrected". I was comparing `sampleHeight`
+  **with itself**: `getBilinearHeight()` returns that same function. An A/B on one
+  function, toggling the tier, gives the real numbers: 1982 of 2000 points move, up
+  to 19.21 m on the bilinear surface and 25.76 m on the drawn one.
+- And `tools/test-height-tier.mjs` learned the same lesson twice more. Its noise
+  floor read 1.09% because the **grass bends in the wind** — hidden animals are not
+  enough. And its per-layer pixel check read 0.010% for the blocks on one run and
+  0.000% on the next, from the same camera: that is the measurement saying it is
+  the wrong one. A 49-instance layer's share of one fixed view is luck. It counts
+  drawn instances now. *Counting a layer's pixels proves it is drawn; it cannot
+  prove it is drawn on the right surface.*
+
+### Correction: the Valle d'Aosta source is 2 m, not 10
+
+`heightfield.json` calls it "native ~10m". That describes the derived mosaic, not
+the source: `DEM/pngp_extraction_report.txt` records `DTM0508_002_UNICO.ASC` at
+**2.0 m/px**. The 10 m mosaic on disk is already a downsample. The user has that
+10 GB file and can run `tools/dtm-source/extract-heightmap.sh` — `RES_M` is already
+a parameter.
+
+What is on this machine reaches 5 m over only **25.57%** of the tier: the Piemonte
+DTM5, measured with `gdalinfo -stats` over the tier rectangle (695–4027 m, so it
+misses the highest ground). A 5 m tier built from what is here would be 4× the
+bytes for real detail on a quarter of the area.
+
+**And the tier covers 75.5% of the park's bounding box** — the southernmost 7.7 km
+of the park lie outside the heightfield's own bbox, so no source covers them today.
+Pre-existing, not introduced here, but now written down.
+
 ## Ground cover: ACCEPTED and published (2026-08-13)
 
 Topic 3 of the user's four optional extras is **closed**. They judged it piece by

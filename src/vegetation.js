@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { attachAtmo } from './atmosphere.js';
 import { FOREST_MASK } from './forest.js';
+import { HEIGHT_TIER, HEIGHT_TIER_RECT, HEIGHT_TIER_MIX, heightTierGlsl } from './heighttier.js';
 import { SNOW_LEVEL, snowGlsl, snowColorGlsl } from './snow.js';
 
 // Trees (phase 6). Placement happens entirely in the vertex shader, so walking
@@ -192,6 +193,7 @@ export function createVegetation({ manifest, heightTexture }) {
   const HELPERS = /* glsl */ `
     attribute vec2 aOffset;
     uniform sampler2D uHeightMap;
+${heightTierGlsl()}
     uniform sampler2D uForestMask;
     varying float vTreeTint;
     varying float vTreeSnow;
@@ -205,9 +207,13 @@ ${snowGlsl()}
       return vec2( ( wxz.x + ${glsl(worldWidth / 2)} ) / ${glsl(worldWidth)},
                    ( ${glsl(worldDepth / 2)} - wxz.y ) / ${glsl(worldDepth)} );
     }
-    float vegElevation( vec2 uv ) {
+    // Takes UV for the texture and WORLD METRES for the tier, because the two are
+    // addressed differently and passing only one of them is how a tree ends up
+    // standing on a surface the terrain no longer draws.
+    float vegElevation( vec2 uv, vec2 wxz ) {
       vec2 s = texture2D( uHeightMap, uv ).rg;
-      return ( ( s.r * 256.0 + s.g ) / 257.0 ) * ${glsl(elevMax - elevMin)} + ${glsl(elevMin)};
+      return ( ( s.r * 256.0 + s.g ) / 257.0 ) * ${glsl(elevMax - elevMin)} + ${glsl(elevMin)}
+           + heightTierM( wxz );
     }
     // Hash without sin(): world coordinates reach +/-42 km here, and sin() of a
     // number that large loses enough float precision to produce visible
@@ -235,7 +241,7 @@ ${snowGlsl()}
     float dist = length( cameraPosition.xz - slot );
     float near = 1.0 - smoothstep( ${glsl(FADE_START_M)}, ${glsl(VISIBLE_M)}, dist );
 
-    float elev = vegElevation( uv );
+    float elev = vegElevation( uv, slot );
     float stunt = mix( 1.0, ${glsl(STUNT_SCALE)},
                        smoothstep( ${glsl(STUNT_FROM_M)}, ${glsl(STUNT_TO_M)}, elev ) );
     float treeH = mix( ${glsl(TREE_MIN_H)}, ${glsl(TREE_MAX_H)}, vegHash( vegCell + 19.7 ) )
@@ -254,7 +260,8 @@ ${snowGlsl()}
     // most ~5 m of effective elevation on ground gentle enough to grow trees (the
     // mask holds nothing above 45 deg) against a term that spans 320 m.
     float dv = ${glsl(resY)} / ${glsl(worldDepth)};
-    float gradZ = ( vegElevation( uv + vec2( 0.0, dv ) ) - vegElevation( uv - vec2( 0.0, dv ) ) )
+    float gradZ = ( vegElevation( uv + vec2( 0.0, dv ), slot - vec2( 0.0, ${glsl(resY)} ) )
+                  - vegElevation( uv - vec2( 0.0, dv ), slot + vec2( 0.0, ${glsl(resY)} ) ) )
                 / ${glsl(2 * resY)};
     float aspectZ = gradZ * inversesqrt( 1.0 + gradZ * gradZ );
     // No bare term: slope was baked out of the mask at build time, so there are
@@ -275,6 +282,11 @@ ${snowGlsl()}
 
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uHeightMap = { value: heightTexture };
+    // The optional high-resolution tier: bound whether or not it is ever loaded,
+    // so a tree stands on whatever surface the terrain is drawing.
+    shader.uniforms.uHeightTier = HEIGHT_TIER;
+    shader.uniforms.uHeightTierRect = HEIGHT_TIER_RECT;
+    shader.uniforms.uHeightTierMix = HEIGHT_TIER_MIX;
     shader.uniforms.uForestMask = FOREST_MASK; // shared holder - the mask may still be downloading
     shader.uniforms.uSnow = SNOW_LEVEL; // declared by snowGlsl(); the same holder the terrain reads
 

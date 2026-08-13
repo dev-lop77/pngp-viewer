@@ -737,6 +737,61 @@ three of its failure modes without a browser, and a browser half that measures
 everything) with the altitude pinned through `window.__pngp.sky` — and asserts the
 pin *moved the sky*, not merely that it set a field.
 
+### High-resolution terrain — `src/heighttier.js`, `tools/build-height-tier.mjs` (2026-08-13)
+
+An **optional** 10 m elevation tier over the park, downloaded only when the HUD's
+`Terrain` control asks: 4106 × 2431 at the source data's own resolution, 9.5 MB
+raw, **7.0 MB gzipped**. `MAX_DEPTH` goes 7 → 8 (10.24 m cells) for tiles entirely
+inside its rectangle, and nowhere else.
+
+**It ships a residual, not a second heightfield**, and that decision is the whole
+design. The elevation is read by seven modules in three ways — the CPU bilinear
+array, the drawn-triangle surface, and the GPU texture — by the camera, the POI
+markers, the trees, the grass, the stones, the flowers and the terrain. Two
+absolute grids would put a seam between them that all seven must agree about on
+both CPU and GPU: §5's floating-vegetation defect, multiplied. A correction is
+**zero outside its rectangle by construction**, so everything outside behaves
+exactly as before, bit for bit, and the build tool fades it to exactly zero over
+the outermost 32 pixels so the boundary is a loss of detail rather than a step.
+
+Encoding chosen by measurement, gzipped: absolute 16-bit under the shipped
+row-delta codec 12.5 MB; the same residual under that codec **16.7 MB** — worse,
+because the codec lives on smoothness along a row and a residual is precisely what
+is not smooth; 8-bit linear ±32 m 6.1 MB but clipping 41 pixels by ~21 m; **8-bit
+signed square root ±56 m, 8.7 MB, clipping nothing**. The square root puts 0.0035 m
+steps where 99.7% of the residual lives and its coarse end on cliffs. **128 is the
+zero** and the sides span 127 steps each — the obvious 0..255 → −1..1 map has its
+centre at 127.5, so nothing would decode to *nothing*, and a millimetre across ten
+million pixels is a surface that no longer equals the one every other reader uses.
+
+`heightTierM()` is generated once in `heighttier.js` and injected identically into
+`terrain.js`, `vegetation.js` and `groundcover.js`. Those three keep their own
+copies of `terrainUv()` deliberately, so a disagreement fails a test — this is the
+opposite case: there is nothing to gain from three chances to get a decode wrong.
+`terrain.js`'s `terrainElevation()` takes **world metres rather than UV** for the
+same reason: the displacement and the four normal taps then cannot get different
+answers by omission. And `groundcover.js`'s cell size became a **uniform**, driven
+by `terrain.js`, because the tier moves the finest LOD — a scatter still modelling
+the coarser triangulation would sit above it on every convex cell.
+
+`tools/build-height-tier.mjs` carries three guards, all of which fired on real
+data. **Nodata is a sentinel declared nowhere in the pipeline** (raw 0, 12.2% of
+the native mosaic, reading as 238 m): the first build produced a −1990 m
+correction, faithfully "fixing" the terrain wherever the DTM has a hole. **Testing
+the base for exactly zero is not enough**, because a base pixel next to a hole is a
+bilinear *blend* of real elevation and the sentinel — plausible, wrong, never
+exactly zero; the mask is dilated 6 px on the native grid to cover the 2×2 footprint
+that makes a base pixel plus the bilinear reach. And the shipped file's outer ring
+is asserted to decode to exactly 0.
+
+**Source note.** `heightfield.json` calls the Valle d'Aosta DTM "native ~10m"; that
+describes the derived mosaic. `DEM/pngp_extraction_report.txt` records the source
+`DTM0508_002_UNICO.ASC` at **2.0 m/px**, so 5 m (or finer) is available from it —
+`tools/dtm-source/extract-heightmap.sh` already takes `RES_M`. Of what is on this
+machine, only the Piemonte DTM5 reaches 5 m, over **25.6%** of the tier. Separately,
+the tier covers 75.5% of the park's bounding box: the southernmost 7.7 km of the
+park lie outside the heightfield's own bbox and no source covers them today.
+
 ### Ground cover — `src/landcover.js`, `src/groundcover.js`, `src/edelweiss.js` (2026-08-12)
 
 Grass, scree and edelweiss: the user's own topic, and the gap the satellite

@@ -616,6 +616,10 @@ if (import.meta.env.DEV) {
     // "floating" from "correct".
     getBilinearHeight: () => terrainSurface?.sampleHeight,
     getManifest: () => terrainSurface?.manifest,
+    // A getter, not the value: this object is built while loadTerrain() is still
+    // in flight, so capturing terrainSurface here would publish a frozen null -
+    // the same trap the comment above this block describes.
+    get terrain() { return terrainSurface; },
     getPoiIndex: () => poiIndex,
     getWildlife: () => wildlife, // loads late, so a getter rather than the value
     getBirds: () => birds,
@@ -770,6 +774,34 @@ envWeather.addEventListener('change', () => {
 // the loaders' callback can call it - applyGroundcoverDensity is hoisted as a
 // function declaration, the const `groundcover` it reads is not, which is why it
 // tests for null rather than assuming.
+// The high-resolution terrain tier. Its data is a separate download, so the
+// control has three jobs rather than one: fetch, install, and say so while it is
+// happening - 7 MB on a mountain refuge's connection is not instant, and a knob
+// that appears to do nothing for ten seconds reads as broken.
+const envTerrain = document.getElementById('env-terrain');
+if (envTerrain) {
+  envTerrain.addEventListener('change', async () => {
+    const want = Number(envTerrain.value) > 0;
+    if (!want) {
+      terrainSurface?.setHeightTierMix(0);
+      return;
+    }
+    const label = envTerrain.previousSibling;
+    envTerrain.disabled = true;
+    try {
+      const loaded = await terrainSurface?.loadHeightTier();
+      if (loaded) terrainSurface.setHeightTierMix(1);
+      else envTerrain.value = '0';
+    } catch (err) {
+      console.error('The high-resolution terrain failed to load:', err.message);
+      envTerrain.value = '0';
+    } finally {
+      envTerrain.disabled = false;
+      if (label) void label;
+    }
+  });
+}
+
 const envGroundcover = document.getElementById('env-groundcover');
 function applyGroundcoverDensity() {
   GROUNDCOVER_DENSITY.value = Number(envGroundcover.value);

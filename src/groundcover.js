@@ -5,6 +5,9 @@ import { LANDCOVER_MASK } from './landcover.js';
 import { FOREST_MASK } from './forest.js';
 import { TILE_SEGMENTS, MAX_DEPTH } from './terrain.js';
 import { SNOW_LEVEL, snowGlsl, snowColorGlsl } from './snow.js';
+import {
+  HEIGHT_TIER, HEIGHT_TIER_RECT, HEIGHT_TIER_MIX, GROUND_SEGMENTS, heightTierGlsl,
+} from './heighttier.js';
 
 // Grass and scree (2026-08-12, remade 2026-08-13) - the user's own topic, and the
 // thing the ground
@@ -654,7 +657,9 @@ function createLayer({ kind, layer, manifest, heightTexture }) {
     attribute vec3 aBlade; // (leanX, leanZ, phase) - see tuftGeometry()
     uniform sampler2D uHeightMap;
     uniform sampler2D uCoverMask;
-${isGrass ? '' : '    uniform sampler2D uForestMask; // scree only - see SCREE_FROM_BARE\n'}    uniform float uWind;
+${isGrass ? '' : '    uniform sampler2D uForestMask; // scree only - see SCREE_FROM_BARE\n'}    uniform float uGroundSegments;
+${heightTierGlsl()}
+    uniform float uWind;
     uniform float uCoverTime;
     varying vec3 vCoverAlbedo;
     varying float vCoverSnow;
@@ -683,19 +688,28 @@ ${basemapGlsl()}
     // grad.x is dh/dx. grad.y is (north - south) / cell, i.e. -dh/dz: +Z is South
     // (docs/ARCHITECTURE.md section 6), so the smaller-z corners are the northern
     // pair, and this is the sign convention snow.js's aspect term expects.
+    // The ground at a point: the shipped grid plus the optional tier's correction.
+    // One function, so no caller can take the base and forget the tier.
+    float coverGround( vec2 wxz ) {
+      return coverElevation( coverUv( wxz ) ) + heightTierM( wxz );
+    }
+    // THE CELL SIZE IS A UNIFORM, NOT A CONSTANT, because the tier raises the
+    // terrain's finest LOD by one level inside its rectangle. Baking 4096 in here
+    // would leave every tuft and stone reproducing a triangulation the terrain
+    // stopped drawing, which puts them above the surface on convex cells - the
+    // 2026-08-12 defect, re-earned.
     float drawnElevation( vec2 wxz, out vec2 grad ) {
-      vec2 g = vec2( ( wxz.x + ${glsl(worldWidth / 2)} ) / ${glsl(worldWidth / COVER_GRID_SEGMENTS)},
-                     ( wxz.y + ${glsl(worldDepth / 2)} ) / ${glsl(worldDepth / COVER_GRID_SEGMENTS)} );
+      vec2 cell = vec2( ${glsl(worldWidth)}, ${glsl(worldDepth)} ) / uGroundSegments;
+      vec2 g = ( wxz + vec2( ${glsl(worldWidth / 2)}, ${glsl(worldDepth / 2)} ) ) / cell;
       vec2 i = floor( g );
       vec2 f = g - i;
-      vec2 c0 = vec2( i.x * ${glsl(worldWidth / COVER_GRID_SEGMENTS)} - ${glsl(worldWidth / 2)},
-                      i.y * ${glsl(worldDepth / COVER_GRID_SEGMENTS)} - ${glsl(worldDepth / 2)} );
-      float h00 = coverElevation( coverUv( c0 ) );
-      float h10 = coverElevation( coverUv( c0 + vec2( ${glsl(worldWidth / COVER_GRID_SEGMENTS)}, 0.0 ) ) );
-      float h01 = coverElevation( coverUv( c0 + vec2( 0.0, ${glsl(worldDepth / COVER_GRID_SEGMENTS)} ) ) );
-      float h11 = coverElevation( coverUv( c0 + vec2( ${glsl(worldWidth / COVER_GRID_SEGMENTS)}, ${glsl(worldDepth / COVER_GRID_SEGMENTS)} ) ) );
-      grad = vec2( ( ( h10 + h11 ) - ( h00 + h01 ) ) / ${glsl((2 * worldWidth) / COVER_GRID_SEGMENTS)},
-                   ( ( h00 + h10 ) - ( h01 + h11 ) ) / ${glsl((2 * worldDepth) / COVER_GRID_SEGMENTS)} );
+      vec2 c0 = i * cell - vec2( ${glsl(worldWidth / 2)}, ${glsl(worldDepth / 2)} );
+      float h00 = coverGround( c0 );
+      float h10 = coverGround( c0 + vec2( cell.x, 0.0 ) );
+      float h01 = coverGround( c0 + vec2( 0.0, cell.y ) );
+      float h11 = coverGround( c0 + cell );
+      grad = vec2( ( ( h10 + h11 ) - ( h00 + h01 ) ) / ( 2.0 * cell.x ),
+                   ( ( h00 + h10 ) - ( h01 + h11 ) ) / ( 2.0 * cell.y ) );
       float lower = h00 + f.x * ( h10 - h00 ) + f.y * ( h01 - h00 );
       float upper = h11 + ( 1.0 - f.x ) * ( h01 - h11 ) + ( 1.0 - f.y ) * ( h10 - h11 );
       return f.x + f.y <= 1.0 ? lower : upper;
@@ -888,6 +902,10 @@ ${
     // mask reads ~0, so scree taken as 1 - cover would have put boulders on every
     // forest floor in the park. Same shared-holder arrangement as vegetation.js.
     if (!isGrass) shader.uniforms.uForestMask = FOREST_MASK;
+    shader.uniforms.uGroundSegments = GROUND_SEGMENTS;
+    shader.uniforms.uHeightTier = HEIGHT_TIER;
+    shader.uniforms.uHeightTierRect = HEIGHT_TIER_RECT;
+    shader.uniforms.uHeightTierMix = HEIGHT_TIER_MIX;
     shader.uniforms.uSnow = SNOW_LEVEL; // declared by snowGlsl(); the same holder the ground reads
     shader.uniforms.uWind = GROUNDCOVER_WIND;
     shader.uniforms.uCoverTime = GROUNDCOVER_TIME;
