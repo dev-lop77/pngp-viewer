@@ -27,11 +27,29 @@ const check = (c, m, d) => (c ? ok(m) : fail(`${m}${d ? ` - ${d}` : ''}`));
 console.log('The file, the codec and the rectangle\n');
 
 const manifest = JSON.parse(readFileSync('public/data/heighttier.json', 'utf8'));
-const bytes = new Uint8Array(readFileSync(`public/data/${manifest.file.name}`));
-const { width: TW, height: TH } = manifest.dimensions;
-
-check(bytes.length === TW * TH,
-  `the file is exactly ${TW}x${TH} bytes as the manifest says (${bytes.length})`);
+// The tier ships several levels of ONE rectangle. Every claim below about the file
+// is a claim about each of them - a level that shipped with a live edge or an empty
+// middle would be a defect in whichever quality setting happened to select it, which
+// is the kind of bug that only shows up for some people.
+const levels = manifest.levels ?? [];
+check(levels.length >= 2 && levels.every((l, i) => i === 0 || l.resolutionMPerPx.x < levels[i - 1].resolutionMPerPx.x),
+  `the manifest lists ${levels.length} levels, coarsest first `
+  + `(${levels.map((l) => `${l.resolutionMPerPx.x.toFixed(2)} m`).join(', ')})`);
+const levelBytes = levels.map((l) => new Uint8Array(readFileSync(`public/data/${l.file.name}`)));
+check(levels.every((l, i) => levelBytes[i].length === l.dimensions.width * l.dimensions.height),
+  'every level is exactly width x height bytes as the manifest says ('
+  + levels.map((l, i) => `${l.dimensions.width}x${l.dimensions.height}=${levelBytes[i].length}`).join(', ') + ')');
+// ONE RECTANGLE, several grids: if a level's pixel count did not divide the rectangle
+// the same way, swapping quality would move the ground sideways rather than sharpen
+// it - and by less than a pixel, which is exactly the size of bug nobody finds.
+const spanX = manifest.bboxCrsUnits.xmax - manifest.bboxCrsUnits.xmin;
+const spanY = manifest.bboxCrsUnits.ymax - manifest.bboxCrsUnits.ymin;
+check(levels.every((l) => Math.abs(spanX / l.dimensions.width - l.resolutionMPerPx.x) < 1e-6
+  && Math.abs(spanY / l.dimensions.height - l.resolutionMPerPx.y) < 1e-6),
+  'each level tiles the shared rectangle exactly, so a quality change cannot shift the ground sideways');
+// The finest level is the one the rest of this section examines in detail.
+const bytes = levelBytes[levelBytes.length - 1];
+const { width: TW, height: TH } = levels[levels.length - 1].dimensions;
 
 // ZERO MUST BE EXACTLY ZERO. The obvious 0..255 -> -1..1 mapping puts the centre
 // at 127.5, so no code decodes to nothing and the tier would apply a millimetre of
@@ -64,30 +82,46 @@ check(stepNearZero < 0.02,
 // correction at all; if the edge itself carried one there would be a step there,
 // and the "no seam by construction" claim would be a story rather than a property.
 let edgeWorst = 0;
-for (let x = 0; x < TW; x++) {
-  edgeWorst = Math.max(edgeWorst, Math.abs(decodeResidual(bytes[x])),
-    Math.abs(decodeResidual(bytes[(TH - 1) * TW + x])));
-}
-for (let y = 0; y < TH; y++) {
-  edgeWorst = Math.max(edgeWorst, Math.abs(decodeResidual(bytes[y * TW])),
-    Math.abs(decodeResidual(bytes[y * TW + TW - 1])));
+for (let li = 0; li < levels.length; li++) {
+  const b = levelBytes[li];
+  const { width: w, height: h } = levels[li].dimensions;
+  for (let x = 0; x < w; x++) {
+    edgeWorst = Math.max(edgeWorst, Math.abs(decodeResidual(b[x])),
+      Math.abs(decodeResidual(b[(h - 1) * w + x])));
+  }
+  for (let y = 0; y < h; y++) {
+    edgeWorst = Math.max(edgeWorst, Math.abs(decodeResidual(b[y * w])),
+      Math.abs(decodeResidual(b[y * w + w - 1])));
+  }
 }
 check(edgeWorst === 0,
-  'the outermost ring is exactly zero, so the tier has no seam to reconcile with the base grid');
+  `every level's outermost ring is exactly zero, so no quality setting has a seam to reconcile`);
 
-// And it has to actually correct something in the middle, or the file is 7 MB of
-// nothing and every test above passes on an empty grid.
-let moved = 0;
-let maxAbs = 0;
-for (let i = 0; i < bytes.length; i += 37) {
-  const m = decodeResidual(bytes[i]);
-  if (m !== 0) moved++;
-  maxAbs = Math.max(maxAbs, Math.abs(m));
-}
-check(moved / (bytes.length / 37) > 0.5 && maxAbs > 5,
-  `it corrects ${((moved / (bytes.length / 37)) * 100).toFixed(0)}% of sampled pixels, by up to ${maxAbs.toFixed(1)} m`);
-check(maxAbs < RESIDUAL_HALF_RANGE_M,
-  `and nothing reaches the clipping range (+/-${RESIDUAL_HALF_RANGE_M} m), so no cliff is flattened`);
+// And each has to actually correct something in the middle, or a level is megabytes
+// of nothing and every test above passes on an empty grid.
+const worked = levels.map((l, li) => {
+  let moved = 0;
+  let maxAbs = 0;
+  let n = 0;
+  for (let i = 0; i < levelBytes[li].length; i += 37) {
+    const m = decodeResidual(levelBytes[li][i]);
+    if (m !== 0) moved++;
+    maxAbs = Math.max(maxAbs, Math.abs(m));
+    n++;
+  }
+  return { res: l.resolutionMPerPx.x, share: moved / n, maxAbs };
+});
+check(worked.every((w) => w.share > 0.5 && w.maxAbs > 5),
+  'every level corrects most of its pixels: '
+  + worked.map((w) => `${w.res.toFixed(0)} m by up to ${w.maxAbs.toFixed(1)} m over ${(w.share * 100).toFixed(0)}%`).join(', '));
+check(worked.every((w) => w.maxAbs < RESIDUAL_HALF_RANGE_M),
+  `and none reaches the clipping range (+/-${RESIDUAL_HALF_RANGE_M} m), so no cliff is flattened`);
+// The finer level must carry MORE relief than the coarser one, or the extra bytes are
+// buying nothing: averaging 2x2 blocks is what makes the coarse level coarse, and an
+// average cannot have a wider swing than what it averages.
+check(worked[worked.length - 1].maxAbs >= worked[0].maxAbs,
+  `and the finer level holds the wider correction (${worked[worked.length - 1].maxAbs.toFixed(1)} m `
+  + `against ${worked[0].maxAbs.toFixed(1)} m), which is what the extra bytes are for`);
 
 // THE GLSL TWIN. A drift between the two decoders puts the CPU's ground and the
 // GPU's ground at different heights, which is the floating bug wearing a new hat.
@@ -143,19 +177,58 @@ const changed = (a, b) => {
   return n / (a.width * a.height);
 };
 
+// THE DEFAULT IS WHAT EVERYONE GETS, so it is asserted and not assumed. Nothing here
+// asked for a tier: the page installs the medium level by itself (user's decision,
+// 2026-08-14, "metterei l'opzione medium a 10m come default") and fades it in.
+// WAITED FOR, NOT SLEPT ON. This page runs at about 1 fps under SwiftShader and the
+// cross-fade needs a frame, so a fixed timeout lands in front of it: the first run of
+// this check read mix 0 with the level already installed and the ramp simply not yet
+// stepped. Failing to settle is reported by the check below rather than thrown.
+const settled = await page.waitForFunction(
+  () => (window.__pngp.terrain?.heightTier?.mix ?? 0) >= 1, null, { timeout: 90000 },
+).then(() => true).catch(() => false);
+const byDefault = await page.evaluate(() => {
+  const T = window.__pngp.terrain;
+  const select = document.getElementById('env-terrain');
+  return {
+    level: T.heightTierLevel(),
+    mix: T.heightTier?.mix ?? 0,
+    res: T.heightTier?.level?.resolutionMPerPx?.x ?? null,
+    value: select?.value,
+    text: select?.selectedOptions?.[0]?.textContent ?? '',
+  };
+});
+check(settled && byDefault.level === 0 && byDefault.mix === 1 && byDefault.value === '1',
+  `the medium level is on by default, unasked, and faded all the way in: level `
+  + `${byDefault.level} at ${byDefault.res?.toFixed(2)} m, mix ${byDefault.mix}, `
+  + `control on "${byDefault.text}"`);
+// And the size in that label comes from the manifest. It was hardcoded in the HTML
+// and the user caught it still saying 7 MB after the tier became 25 - a number in two
+// places is a number that eventually disagrees with itself.
+const mediumMb = levels[0].file.gzipBytes / 1048576;
+check(byDefault.text.includes(mediumMb < 10 ? mediumMb.toFixed(1) : mediumMb.toFixed(0)),
+  `and the control says what it costs, from the manifest rather than from the HTML `
+  + `(${mediumMb.toFixed(1)} MB)`);
+
+// The A/B baseline has to be the tier OFF, which is no longer where the page starts.
+await page.evaluate(() => window.__pngp.terrain.setHeightTierMix(0));
+await page.waitForTimeout(2500);
 const before = await shot('before');
 await page.waitForTimeout(1800);
 const floor = changed(before, await shot('before-b'));
 check(floor < 0.005, `the scene is still between shots (noise floor ${(floor * 100).toFixed(2)}%)`);
 
-const loaded = await page.evaluate(async () => {
+// The FINEST level, which is the strongest claim and the one the coarse level's
+// numbers cannot stand in for.
+const loaded = await page.evaluate(async (finest) => {
   const T = window.__pngp.terrain;
-  const m = await T.loadHeightTier();
-  if (!m) return null;
+  const level = await T.loadHeightTier(finest);
+  if (!level) return null;
   T.setHeightTierMix(1);
-  return { name: m.file.name, gzip: m.file.gzipBytes, w: m.dimensions.width, h: m.dimensions.height };
-});
-check(!!loaded, 'the tier downloads and installs from the running page');
+  return { name: level.file.name, gzip: level.file.gzipBytes, res: level.resolutionMPerPx.x };
+}, levels.length - 1);
+check(!!loaded, `the finest level downloads and installs from the running page`
+  + (loaded ? ` (${loaded.res.toFixed(2)} m, ${(loaded.gzip / 1048576).toFixed(1)} MB gzip)` : ''));
 await page.waitForTimeout(6000);
 
 if (loaded) {
@@ -202,11 +275,12 @@ if (loaded) {
   // quarters of the download unused.
   const baseManifest = JSON.parse(readFileSync('public/data/heightfield.json', 'utf8'));
   const baseCellM = (baseManifest.bboxCrsUnits.xmax - baseManifest.bboxCrsUnits.xmin) / 4096; // 32 * 2^7
-  const expectDepth = 7 + Math.floor(Math.log2(baseCellM / manifest.resolutionMPerPx.x) + 1e-6);
+  const finestRes = levels[levels.length - 1].resolutionMPerPx.x;
+  const expectDepth = 7 + Math.floor(Math.log2(baseCellM / finestRes) + 1e-6);
   check(cpu.segments === expectDepth,
-    `the quadtree refines to the tier's own resolution inside it: deepest ${cpu.segments}, `
+    `the quadtree refines to the loaded level's own resolution inside it: deepest ${cpu.segments}, `
     + `which is ${(baseCellM / 2 ** (cpu.segments - 7)).toFixed(2)} m cells for `
-    + `${manifest.resolutionMPerPx.x.toFixed(2)} m data`);
+    + `${finestRes.toFixed(2)} m data`);
 
   // NOTHING MAY BE LEFT BEHIND. Each scatter layer alone, against the ground it
   // stands on: if a layer kept the old surface it would hang above or sink into
@@ -272,6 +346,30 @@ if (loaded) {
     .find((l) => l.kind === 'boulder'));
   check(blocks && blocks.drawn > 0,
     `the block layer is drawing on the new surface too (${blocks?.drawn} of ${blocks?.of} instances)`);
+
+  // AND SWAPPING BACK DOWN HAS TO GIVE THE LEVEL BACK. The finest LOD is derived from
+  // whichever level is installed, so a swap that forgot to re-derive it would draw the
+  // coarse level's data on the fine level's triangulation - a surface finer than the
+  // data feeding it, with every scatter reproducing a triangulation the terrain is no
+  // longer drawing. That is the 2026-08-12 floating defect, re-earned by a menu.
+  const swapped = await page.evaluate(async () => {
+    const T = window.__pngp.terrain;
+    const level = await T.loadHeightTier(0);
+    T.setHeightTierMix(1);
+    T.update(window.__pngp.camera);
+    return {
+      level: T.heightTierLevel(),
+      res: level.resolutionMPerPx.x,
+      deepest: T.stats.deepest,
+      segments: window.__pngp.groundcover.groundSegments?.value ?? null,
+    };
+  });
+  const coarseDepth = 7 + Math.floor(Math.log2(baseCellM / levels[0].resolutionMPerPx.x) + 1e-6);
+  check(swapped.level === 0 && swapped.deepest === coarseDepth
+    && swapped.segments === 32 * 2 ** coarseDepth,
+    `going back to the ${swapped.res.toFixed(0)} m level takes the extra LOD level back with it, `
+    + `and the scatters with that (deepest ${swapped.deepest}, was ${cpu.segments}; `
+    + `${swapped.segments} ground segments)`);
 }
 
 check(problems.length === 0, 'no console or page errors', problems.slice(0, 3).join(' | '));

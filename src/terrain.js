@@ -496,29 +496,58 @@ ${bandMix}
   // this to reproduce the same triangulation it stands on.
   GROUND_SEGMENTS.value = TILE_SEGMENTS * 2 ** MAX_DEPTH;
 
+  // The manifest and each level's bytes, fetched once. Switching quality back and
+  // forth must not re-download: the levels are 7 and 25 MB, and a knob that costs
+  // 25 MB every time it is touched is a knob people learn not to touch.
+  let tierManifest = null;
+  const levelBytes = new Map();
+  let currentLevel = -1;
+
+  /** heighttier.json once it has been fetched, or null. For labelling the control. */
+  async function heightTierManifest(base = import.meta.env.BASE_URL ?? '/') {
+    if (tierManifest) return tierManifest;
+    const url = `${base}data/heighttier.json`.replace(/\/\//g, '/');
+    tierManifest = await fetch(url).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    return tierManifest;
+  }
+
   /**
-   * Fetch and install the tier. Idempotent, and safe to call while one is already
-   * in flight. Returns the manifest, or null if there is no tier to load.
+   * Fetch and install one LEVEL of the tier, coarsest first (0 = the cheapest).
+   * Idempotent per level. Returns the level, or null if there is nothing to load.
    */
-  async function loadHeightTier(base = import.meta.env.BASE_URL ?? '/') {
-    if (tier) return tier.manifest;
-    const manifestUrl = `${base}data/heighttier.json`.replace(/\/\//g, '/');
-    const tierManifest = await fetch(manifestUrl).then((r) => (r.ok ? r.json() : null));
-    if (!tierManifest) return null;
-    const bin = await fetch(`${base}data/${tierManifest.file.name}`.replace(/\/\//g, '/'))
-      .then((r) => (r.ok ? r.arrayBuffer() : null));
-    if (!bin) return null;
-    const bytes = new Uint8Array(bin);
-    // The epsilon is not decoration: the ratio is 4.0955 for a 5 m tier but a grid
+  async function loadHeightTier(levelIndex = 0, base = import.meta.env.BASE_URL ?? '/') {
+    const m = await heightTierManifest(base);
+    if (!m?.levels?.length) return null;
+    const idx = Math.max(0, Math.min(m.levels.length - 1, levelIndex));
+    if (currentLevel === idx && tier) return m.levels[idx];
+    const level = m.levels[idx];
+    let bytes = levelBytes.get(idx);
+    if (!bytes) {
+      const bin = await fetch(`${base}data/${level.file.name}`.replace(/\/\//g, '/'))
+        .then((r) => (r.ok ? r.arrayBuffer() : null));
+      if (!bin) return null;
+      bytes = new Uint8Array(bin);
+      levelBytes.set(idx, bytes);
+    }
+    // The epsilon is not decoration: the ratio is 4.0955 for a 5 m level but a grid
     // snapped a pixel differently could land on 3.99999, and floor() would then
     // quietly give back a level - i.e. draw half the resolution that was downloaded.
     tierExtraDepth = Math.max(0, Math.min(MAX_TIER_EXTRA_DEPTH,
-      Math.floor(Math.log2(baseCellM / tierManifest.resolutionMPerPx.x) + 1e-6)));
-    const { texture: tierTexture, rect } = createTierTexture(bytes, tierManifest, manifest);
+      Math.floor(Math.log2(baseCellM / level.resolutionMPerPx.x) + 1e-6)));
+    const { texture: tierTexture, rect, dimensions } = createTierTexture(bytes, m, idx, manifest);
+    const previous = HEIGHT_TIER.value;
     HEIGHT_TIER.value = tierTexture;
     HEIGHT_TIER_RECT.value.copy(rect);
-    tier = { bytes, manifest: tierManifest, rect, mix: HEIGHT_TIER_MIX.value };
-    return tierManifest;
+    // Swapping levels leaves the old texture on the GPU otherwise, and this one is
+    // 38 MB at 5 m - the kind of leak that only shows up after a few switches.
+    if (previous && previous !== tierTexture) previous.dispose();
+    tier = { bytes, manifest: m, level, dimensions, rect, mix: HEIGHT_TIER_MIX.value };
+    currentLevel = idx;
+    // The finest LOD is a function of the level, so a swap has to re-derive what the
+    // scatters reproduce as well - setHeightTierMix owns that, and re-applying the
+    // current mix is how the two stay one statement.
+    setHeightTierMix(HEIGHT_TIER_MIX.value);
+    return level;
   }
 
   /** 0..1. The CPU and the GPU read the same number, which is the point. */
@@ -560,7 +589,8 @@ ${bandMix}
   return {
     object: group, manifest, heights, heightTexture: texture,
     sampleHeight, sampleRenderedHeight, update, stats,
-    loadHeightTier, setHeightTierMix,
+    loadHeightTier, setHeightTierMix, heightTierManifest,
+    heightTierLevel: () => currentLevel,
     get heightTier() { return tier; },
   };
 }

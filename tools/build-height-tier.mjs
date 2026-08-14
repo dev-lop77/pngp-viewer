@@ -57,18 +57,24 @@ const BOUNDARY = 'tools/park-boundary.geojson';
 const OUT_DIR = 'public/data';
 const OUT_JSON = `${OUT_DIR}/heighttier.json`;
 
-// How far in from the tier's edge the residual is faded out, in tier pixels. The
-// fade is what makes the seam a non-event: the outermost band returns smoothly to
-// the shipped 20.5 m surface, so the boundary is a loss of detail rather than a
-// step. Note that this is in TIER pixels, so its width in metres halved when the
-// tier went to 5 m: 320 m became 160 m without the number changing. Still far
-// beyond any draw distance in the scene, so nothing that stands on the ground can
-// straddle it - but if the tier ever gets finer again, this is a metre count
-// pretending to be a pixel count.
-const FADE_PX = 32;
+// How far in from the tier's edge the residual is faded out, IN METRES. The fade is
+// what makes the seam a non-event: the outermost band returns smoothly to the
+// shipped 20.5 m surface, so the boundary is a loss of detail rather than a step.
+// It was 32 tier pixels, which is a metre count wearing a pixel count's clothes -
+// the same 32 meant 320 m at 10 m/px and 160 m at 5, and now that two levels ship
+// side by side it would have meant two different bands in one rectangle. Both are
+// far beyond any draw distance, so nothing standing on the ground can straddle it.
+const FADE_M = 320;
 // Margin added around the park's own bounding box, so the fade band sits OUTSIDE
 // the park rather than eating into it.
 const MARGIN_M = 600;
+// THE TIER SHIPS AS SEVERAL LEVELS OF ONE RECTANGLE (user's decision, 2026-08-14:
+// "metterei l'opzione medium a 10m come default"). Each stride is a whole number of
+// native pixels per tier pixel, coarsest first, so 2 is a 10 m level over a 5 m
+// mosaic and 1 is the mosaic itself. They share the rectangle, the codec and the
+// half-range - only the grid differs - which is what lets the viewer swap between
+// them without anything downstream noticing more than a resolution.
+const LEVEL_STRIDES = [2, 1];
 
 const CRS = 'EPSG:23032';
 proj4.defs(CRS, '+proj=utm +zone=32 +ellps=intl +towgs84=-87,-98,-121,0,0,0,0 +units=m +no_defs');
@@ -143,17 +149,24 @@ const nativeResX = bboxW / NW;
 const nativeResY = bboxH / NH;
 console.log(`native ${NW} x ${NH} at ${nativeResX.toFixed(3)} x ${nativeResY.toFixed(3)} m`);
 
-// Snap the tier to WHOLE NATIVE PIXELS, so the tier IS the source data rather than
-// a resampling of it. Anything else would blur the very detail this ships for.
+// Snap the tier to WHOLE NATIVE PIXELS, so the finest level IS the source data
+// rather than a resampling of it. Anything else would blur the very detail this
+// ships for. And snap it to a whole number of COARSEST-LEVEL blocks as well, so
+// every level tiles the same rectangle exactly - otherwise the levels would each
+// describe a slightly different one and swapping between them would move the ground
+// sideways by a fraction of a pixel.
+const BLOCK = Math.max(...LEVEL_STRIDES);
 const clampCol = (v) => Math.max(0, Math.min(NW, v));
 const clampRow = (v) => Math.max(0, Math.min(NH, v));
-const col0 = clampCol(Math.floor((pxmin - MARGIN_M - xmin) / nativeResX));
-const col1 = clampCol(Math.ceil((pxmax + MARGIN_M - xmin) / nativeResX));
-const row0 = clampRow(Math.floor((ymax - (pymax + MARGIN_M)) / nativeResY));
-const row1 = clampRow(Math.ceil((ymax - (pymin - MARGIN_M)) / nativeResY));
+const floorTo = (v) => v - (v % BLOCK);
+const col0 = floorTo(clampCol(Math.floor((pxmin - MARGIN_M - xmin) / nativeResX)));
+const col1 = floorTo(clampCol(Math.ceil((pxmax + MARGIN_M - xmin) / nativeResX)));
+const row0 = floorTo(clampRow(Math.floor((ymax - (pymax + MARGIN_M)) / nativeResY)));
+const row1 = floorTo(clampRow(Math.ceil((ymax - (pymin - MARGIN_M)) / nativeResY)));
 const TW = col1 - col0;
 const TH = row1 - row0;
-console.log(`tier ${TW} x ${TH} px = ${((TW * TH) / 1e6).toFixed(1)} Mpx`);
+console.log(`tier ${TW} x ${TH} native px = ${((TW * TH) / 1e6).toFixed(1)} Mpx`
+  + `, a whole number of ${BLOCK}x${BLOCK} blocks`);
 // The park is not necessarily inside the heightfield's own bbox - the bbox was cut
 // for the DEM, not for the boundary - and a tier silently clipped to less than the
 // park would be a hole in the feature nobody would notice. Reported, loudly.
@@ -339,69 +352,118 @@ const dilate = (src, w, h, r) => {
 const dilated = dilate(holeMask, MW, MH, DILATE_PX);
 const isHole = (tx, ty) => dilated[(ty + DILATE_PX) * MW + (tx + DILATE_PX)] === 1;
 
-const bytes = new Uint8Array(TW * TH);
-let worstErr = 0;
-let clipped = 0;
-let maxAbs = 0;
-let holes = 0;
-for (let y = 0; y < TH; y++) {
-  const fadeY = Math.min(1, Math.min(y, TH - 1 - y) / FADE_PX);
-  for (let x = 0; x < TW; x++) {
-    const fadeX = Math.min(1, Math.min(x, TW - 1 - x) / FADE_PX);
-    // smoothstep on the smaller of the two, so corners fade like edges do.
-    const t = Math.min(fadeX, fadeY);
-    const fade = t * t * (3 - 2 * t);
-    const nv = native[(row0 + y) * NW + (col0 + x)];
-    if (isHole(x, y)) {
-      holes++;
-      bytes[y * TW + x] = encodeResidual(0);
-      continue;
-    }
-    const truth = nativeToM(nv);
-    const under = baseToM(baseAtNative(col0 + x, row0 + y));
-    const residual = (truth - under) * fade;
-    maxAbs = Math.max(maxAbs, Math.abs(residual));
-    if (Math.abs(residual) > RESIDUAL_HALF_RANGE_M) clipped++;
-    const code = encodeResidual(residual);
-    bytes[y * TW + x] = code;
-    worstErr = Math.max(worstErr, Math.abs(decodeResidual(code) - residual));
+// One level per stride. A level pixel covers a stride x stride block of native
+// pixels, and its truth is the MEAN of that block rather than one sample of it:
+// picking a representative pixel would alias, and a height field's honest
+// coarsening is its average. A block is a hole if ANY native pixel in it is one -
+// the same conservative direction the dilation already takes, since half a hole is
+// still a sentinel mixed into a number.
+const levels = [];
+for (const stride of LEVEL_STRIDES) {
+  const LW = TW / stride;
+  const LH = TH / stride;
+  if (!Number.isInteger(LW) || !Number.isInteger(LH)) {
+    throw new Error(`stride ${stride} does not divide the ${TW}x${TH} tier - the levels would not share the rectangle`);
   }
-}
-console.log(`residual: max |value| ${maxAbs.toFixed(2)} m, worst round-trip ${worstErr.toFixed(3)} m, clipped ${clipped} px`);
-console.log(`nodata holes left flat: ${holes} px (${((holes / (TW * TH)) * 100).toFixed(2)}% of the tier)`);
-if (clipped) throw new Error(`${clipped} residual pixels exceed +/-${RESIDUAL_HALF_RANGE_M} m - widen RESIDUAL_HALF_RANGE_M`);
+  const levelResX = nativeResX * stride;
+  const levelResY = nativeResY * stride;
+  // In LEVEL pixels, from a width in metres, so every level fades over the same
+  // band of ground.
+  const fadePx = Math.max(1, Math.round(FADE_M / levelResX));
+  const bytes = new Uint8Array(LW * LH);
+  let worstErr = 0;
+  let clipped = 0;
+  let maxAbs = 0;
+  let loSigned = Infinity;
+  let hiSigned = -Infinity;
+  let holes = 0;
+  for (let y = 0; y < LH; y++) {
+    const fadeY = Math.min(1, Math.min(y, LH - 1 - y) / fadePx);
+    for (let x = 0; x < LW; x++) {
+      const fadeX = Math.min(1, Math.min(x, LW - 1 - x) / fadePx);
+      // smoothstep on the smaller of the two, so corners fade like edges do.
+      const t = Math.min(fadeX, fadeY);
+      const fade = t * t * (3 - 2 * t);
+      let sum = 0;
+      let hole = false;
+      for (let by = 0; by < stride && !hole; by++) {
+        for (let bx = 0; bx < stride; bx++) {
+          const tx = x * stride + bx;
+          const ty = y * stride + by;
+          if (isHole(tx, ty)) { hole = true; break; }
+          sum += nativeToM(native[(row0 + ty) * NW + (col0 + tx)]);
+        }
+      }
+      if (hole) {
+        holes++;
+        bytes[y * LW + x] = encodeResidual(0);
+        continue;
+      }
+      const truth = sum / (stride * stride);
+      // The base is read at the BLOCK's centre, which is where the level pixel is.
+      const under = baseToM(baseAtNative(col0 + x * stride + (stride - 1) / 2,
+        row0 + y * stride + (stride - 1) / 2));
+      const residual = (truth - under) * fade;
+      maxAbs = Math.max(maxAbs, Math.abs(residual));
+      loSigned = Math.min(loSigned, residual);
+      hiSigned = Math.max(hiSigned, residual);
+      if (Math.abs(residual) > RESIDUAL_HALF_RANGE_M) clipped++;
+      const code = encodeResidual(residual);
+      bytes[y * LW + x] = code;
+      worstErr = Math.max(worstErr, Math.abs(decodeResidual(code) - residual));
+    }
+  }
+  console.log(`\nlevel ${levelResX.toFixed(2)} m: ${LW} x ${LH} px, fade ${fadePx} px = ${(fadePx * levelResX).toFixed(0)} m`);
+  console.log(`  residual ${loSigned.toFixed(2)} .. ${hiSigned >= 0 ? '+' : ''}${hiSigned.toFixed(2)} m`
+    + ` (widest |value| ${maxAbs.toFixed(2)} of ${RESIDUAL_HALF_RANGE_M})`
+    + `, worst round-trip ${worstErr.toFixed(3)} m, clipped ${clipped} px`);
+  console.log(`  nodata left flat: ${holes} px (${((holes / (LW * LH)) * 100).toFixed(2)}%)`);
+  if (clipped) throw new Error(`${clipped} residual pixels of the ${levelResX.toFixed(2)} m level exceed `
+    + `+/-${RESIDUAL_HALF_RANGE_M} m - re-measure RESIDUAL_HALF_RANGE_M, do not simply raise it`);
 
-// The edge must be exactly zero, or the "no seam by construction" claim is a story.
-let edgeMax = 0;
-for (let x = 0; x < TW; x++) {
-  edgeMax = Math.max(edgeMax, Math.abs(decodeResidual(bytes[x])), Math.abs(decodeResidual(bytes[(TH - 1) * TW + x])));
-}
-for (let y = 0; y < TH; y++) {
-  edgeMax = Math.max(edgeMax, Math.abs(decodeResidual(bytes[y * TW])), Math.abs(decodeResidual(bytes[y * TW + TW - 1])));
-}
-if (edgeMax > 1e-6) throw new Error(`the tier's outer ring is not zero (${edgeMax} m) - the fade is wrong`);
-console.log('outer ring is exactly zero, so the tier has no seam to reconcile');
+  // The edge must be exactly zero on EVERY level, or the "no seam by construction"
+  // claim is a story - and it is one claim per level, since each is drawn alone.
+  let edgeMax = 0;
+  for (let x = 0; x < LW; x++) {
+    edgeMax = Math.max(edgeMax, Math.abs(decodeResidual(bytes[x])), Math.abs(decodeResidual(bytes[(LH - 1) * LW + x])));
+  }
+  for (let y = 0; y < LH; y++) {
+    edgeMax = Math.max(edgeMax, Math.abs(decodeResidual(bytes[y * LW])), Math.abs(decodeResidual(bytes[y * LW + LW - 1])));
+  }
+  if (edgeMax > 1e-6) throw new Error(`the ${levelResX.toFixed(2)} m level's outer ring is not zero (${edgeMax} m) - the fade is wrong`);
 
-const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 8);
-const outName = `heighttier.${hash}.bin`;
+  const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 8);
+  const outName = `heighttier.${hash}.bin`;
+  writeFileSync(`${OUT_DIR}/${outName}`, Buffer.from(bytes));
+  const gzipBytes = gzipSync(Buffer.from(bytes), { level: 9 }).length;
+  console.log(`  wrote ${outName}  ${(bytes.length / 1048576).toFixed(1)} MB raw, ${(gzipBytes / 1048576).toFixed(1)} MB gzip`);
+  levels.push({
+    resolutionMPerPx: { x: levelResX, y: levelResY },
+    nativePxPerPx: stride,
+    dimensions: { width: LW, height: LH },
+    fadePx,
+    file: { name: outName, bytes: bytes.length, gzipBytes, sha256Prefix: hash },
+  });
+}
+
+// Only now, so a level that threw does not leave the shipped set half-deleted.
+const keep = new Set(levels.map((l) => l.file.name));
 for (const f of readdirSync(OUT_DIR)) {
-  if (/^heighttier\.[0-9a-f]{8}\.bin$/.test(f) && f !== outName) unlinkSync(`${OUT_DIR}/${f}`);
+  if (/^heighttier\.[0-9a-f]{8}\.bin$/.test(f) && !keep.has(f)) unlinkSync(`${OUT_DIR}/${f}`);
 }
-writeFileSync(`${OUT_DIR}/${outName}`, Buffer.from(bytes));
 
 const manifest = {
-  schemaVersion: 1,
-  purpose: `Optional high-resolution terrain: the park at ${nativeResX.toFixed(2)} m, the resolution of the DTM mosaic itself, as a residual over heightfield.json's ${(bboxW / BW).toFixed(2)} m grid. Downloaded only when the quality control asks for it.`,
+  schemaVersion: 2,
+  purpose: `Optional high-resolution terrain: the park as a residual over heightfield.json's ${(bboxW / BW).toFixed(2)} m grid, at ${levels.map((l) => `${l.resolutionMPerPx.x.toFixed(2)} m`).join(' and ')}. One rectangle, one codec, one level downloaded at a time - whichever the quality control asks for.`,
   crs: CRS,
-  // The tier's own rectangle, in the same CRS and convention as the base grid.
+  // The rectangle, in the same CRS and convention as the base grid. ALL levels share
+  // it: that is why the strides have to divide the native window exactly.
   bboxCrsUnits: {
     xmin: xmin + col0 * nativeResX,
     ymin: ymax - row1 * nativeResY,
     xmax: xmin + col1 * nativeResX,
     ymax: ymax - row0 * nativeResY,
   },
-  dimensions: { width: TW, height: TH },
-  resolutionMPerPx: { x: nativeResX, y: nativeResY },
   rowOrientation: 'row 0 = north edge (ymax); row N-1 = south edge (ymin)',
   pixelConvention: 'area (cell-center), identical to heightfield.json',
   encoding: {
@@ -409,14 +471,15 @@ const manifest = {
     meaning: 'a signed elevation CORRECTION in metres, to be ADDED to the bilinear value of heightfield.json at the same world point',
     mapping: `s = code/255*2 - 1; metres = sign(s) * s^2 * ${RESIDUAL_HALF_RANGE_M}`,
     halfRangeM: RESIDUAL_HALF_RANGE_M,
-    zeroOutsideBbox: 'The correction is zero everywhere outside bboxCrsUnits, and is faded to exactly zero over the outermost pixels, so the tier adds detail without moving the surface at its edge.',
-    fadePx: FADE_PX,
+    zeroOutsideBbox: 'The correction is zero everywhere outside bboxCrsUnits, and is faded to exactly zero over each level\'s outermost pixels, so the tier adds detail without moving the surface at its edge.',
+    fadeM: FADE_M,
+    sharedAcrossLevels: 'One half-range for every level, because the GLSL decoder is generated once from the constant in src/heighttier.js and cannot switch mappings per level. The coarser level spends a little precision it does not need; its steps stay far finer than the base grid\'s own 0.07 m.',
   },
-  file: { name: outName, bytes: bytes.length, gzipBytes: gzipSync(Buffer.from(bytes), { level: 9 }).length, sha256Prefix: hash },
+  // Coarsest first, so an index is a quality setting: 0 is the cheapest tier.
+  levels,
   source: base.source,
   generatedBy: 'tools/build-height-tier.mjs',
   generatedAt: new Date().toISOString(),
 };
 writeFileSync(OUT_JSON, `${JSON.stringify(manifest, null, 2)}\n`);
-console.log(`\nwrote ${OUT_DIR}/${outName}  ${(bytes.length / 1048576).toFixed(1)} MB raw, ${(manifest.file.gzipBytes / 1048576).toFixed(1)} MB gzip`);
-console.log(`wrote ${OUT_JSON}`);
+console.log(`\nwrote ${OUT_JSON} with ${levels.length} levels`);

@@ -1,19 +1,23 @@
 import * as THREE from 'three';
 
-// The optional high-resolution terrain tier (2026-08-13) - the user's topic 2 of
-// the four extras, "modelli ad alta risoluzione come opzione da alzare, non come
-// nuovo default".
+// The high-resolution terrain tier (2026-08-13) - the user's topic 2 of the four
+// extras, "modelli ad alta risoluzione come opzione da alzare, non come nuovo
+// default". Half of that held: it IS a knob, and its finest setting is opt-in - but
+// the 10 m level became the default on 2026-08-14, once the user had measured the
+// frame rate at 5 m and found it acceptable.
 //
-// The park's own 5 m elevation - which is what the sources this project mosaics
-// actually hold over it, once you stop believing the derived mosaic's own label:
-// the Valle d'Aosta DTM is a 2.0 m/px ASC and Piemonte's DTM5 is native 5 m, and
-// between them they cover the park (63% and 38% of its area, overlapping). Only
-// TINITALY, which fills the last hundredth of a percent on the highest peaks, is a
-// 10 m national mosaic. The shipped heightfield resamples all of it to 20.5 m to
-// make a 12.6 MB first load; this puts sixteen times the samples back, for the
-// 40 x 31 km people actually walk in, and only when asked. Built at 10 m on
-// 2026-08-13 and rebuilt at 5 m on 2026-08-14, when the finer source extraction
-// arrived.
+// The park's own elevation at the resolution its sources actually hold, which is not
+// what the derived mosaic's own label claims: the Valle d'Aosta DTM is a 2.0 m/px ASC
+// and Piemonte's DTM5 is native 5 m, and between them they cover the park (63% and
+// 38% of its area, overlapping). Only TINITALY, which fills the last hundredth of a
+// percent on the highest peaks, is a 10 m national mosaic. The shipped heightfield
+// resamples all of it to 20.5 m to make a 12.6 MB first load; this puts the samples
+// back, for the 40 x 31 km people actually walk in.
+//
+// ONE RECTANGLE, TWO LEVELS: 10 m (6.7 MB gzip, the default) and 5 m (24.9 MB, on
+// request). The manifest owns the rectangle and the levels own the sampling of it,
+// which is what lets a quality change sharpen the ground without moving it sideways -
+// the levels are snapped so that each tiles the same rectangle exactly.
 //
 // IT IS A RESIDUAL, NOT A SECOND HEIGHTFIELD, and that is the decision the whole
 // design rests on. The elevation is read by seven modules in three different ways
@@ -26,9 +30,11 @@ import * as THREE from 'three';
 // outside its rectangle cannot create that class of bug: outside, every reader
 // gets exactly the number it gets today, bit for bit.
 //
-// The build tool fades the correction to exactly zero over the tier's outermost
-// 32 pixels, so there is no step at the boundary either - only a gradual return to
-// the coarser surface, 320 m beyond anything the scene draws detail at.
+// The build tool fades the correction to exactly zero over the outermost 320 m of
+// each level, so there is no step at the boundary either - only a gradual return to
+// the coarser surface, far beyond anything the scene draws detail at. In METRES, not
+// pixels: as a pixel count the same 32 meant two different bands once two levels
+// shipped in one rectangle.
 //
 // This module is forest.js's and landcover.js's sibling: a shared holder that the
 // shaders bind at compile time and that gets its real data later, plus the one
@@ -106,13 +112,22 @@ export function emptyTier() {
 }
 
 /**
- * Build the GPU texture and the rect uniform for a downloaded tier.
- * @param {Uint8Array} bytes the raw file
+ * Build the GPU texture and the rect uniform for a downloaded tier level.
+ *
+ * The manifest ships SEVERAL levels of one rectangle (10 m and 5 m as of
+ * 2026-08-14), so the geometry comes from the manifest and the grid from the level.
+ * That split is the reason swapping levels cannot move the ground sideways: there is
+ * one rectangle, and only the number of samples across it changes.
+ *
+ * @param {Uint8Array} bytes the raw file for this level
  * @param {object} manifest heighttier.json
+ * @param {number} levelIndex index into manifest.levels, coarsest first
  * @param {object} baseManifest heightfield.json, for the scene-local frame
  */
-export function createTierTexture(bytes, manifest, baseManifest) {
-  const { width, height } = manifest.dimensions;
+export function createTierTexture(bytes, manifest, levelIndex, baseManifest) {
+  const level = manifest.levels[levelIndex];
+  if (!level) throw new Error(`height tier: no level ${levelIndex} in a manifest with ${manifest.levels?.length ?? 0}`);
+  const { width, height } = level.dimensions;
   if (bytes.length !== width * height) {
     throw new Error(`height tier: ${bytes.length} bytes for a ${width}x${height} grid`);
   }
@@ -135,7 +150,7 @@ export function createTierTexture(bytes, manifest, baseManifest) {
   const localXMin = t.xmin - originX;
   const localZMin = originY - t.ymax; // north edge -> smallest z
   const rect = new THREE.Vector4(localXMin, localZMin, t.xmax - t.xmin, t.ymax - t.ymin);
-  return { texture, rect };
+  return { texture, rect, dimensions: level.dimensions };
 }
 
 /**
@@ -145,7 +160,9 @@ export function createTierTexture(bytes, manifest, baseManifest) {
  */
 export function sampleTier(tier, x, z) {
   if (!tier || !tier.bytes || tier.mix <= 0) return 0;
-  const { width, height } = tier.manifest.dimensions;
+  // The LEVEL's grid, not the manifest's - the manifest owns the rectangle and the
+  // levels own the sampling of it.
+  const { width, height } = tier.dimensions;
   const r = tier.rect; // (localXMin, localZMin, sizeX, sizeZ)
   const u = (x - r.x) / r.z;
   const v = (z - r.y) / r.w;

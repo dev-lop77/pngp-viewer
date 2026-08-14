@@ -2,6 +2,105 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## Two levels, 10 m as the default, and a panel that stopped shouting (2026-08-14, later)
+
+The user tried the 5 m tier and gave the verdict this machine cannot: *"selezionando
+Terrain: High l'fps sta sopra il 25 per cui accettabile."* So **LOD depth 9 stays** —
+`MAX_TIER_EXTRA_DEPTH = 2` in `src/terrain.js` is theirs now, not a proposal.
+
+Then three things in one message, and the first was a question with a short answer:
+*"Standard ora cosa carica, 20m o 10m?"* — **20.5 m, the base heightfield, no tier at
+all.** They also caught that the select still said 7 MB. It did: the size was
+hardcoded in `index.html` and the tier had become 25 MB that morning.
+
+### The tier is a manifest of LEVELS now, and Medium is the default
+
+*"Metterei l'opzione medium a 10m come default."* So `heighttier.json` is
+`schemaVersion: 2` with a `levels[]` array, coarsest first, and the control's value is
+the level index plus one — 0 stays "no tier".
+
+| level | grid | raw | gzip | residual |
+|---|---|---|---|---|
+| 10 m | 4106 × 2430 | 9.5 MB | **6.7 MB** | −68.85 … +69.85 m |
+| 5 m | 8212 × 4860 | 38.1 MB | **24.9 MB** | −86.61 … +80.81 m |
+
+Both are built from the same 5 m mosaic, in one pass: a level pixel is the **mean** of
+its stride × stride block of native pixels, because picking a representative pixel
+would alias and a height field's honest coarsening is its average. A block is a hole
+if any native pixel in it is one — the conservative direction, since half a hole is
+still a sentinel mixed into a number.
+
+**Both levels share ONE rectangle**, which is why the tier window is now snapped to a
+whole number of coarsest-level blocks as well as to whole native pixels. Levels that
+each snapped to their own grid would describe rectangles a fraction of a pixel apart,
+and switching quality would then move the ground *sideways* as well as sharpen it —
+by less than a pixel, which is exactly the size of defect that never gets found. The
+test asserts it: each level's dimensions must divide the shared rectangle to 1e-6.
+
+`FADE_PX = 32` became `FADE_M = 320`. It was a metre count wearing a pixel count's
+clothes — the same 32 meant 320 m at 10 m/px and 160 m at 5 — and with two levels in
+one rectangle it would have meant two different fade bands in the same ground.
+
+One half-range (96 m) for both levels, because the GLSL decoder is generated once from
+the constant in `src/heighttier.js` and cannot switch mappings per level. The coarse
+level spends precision it does not need; its steps stay far finer than the base grid's
+own 0.07 m.
+
+### The cross-fade existed and nothing was using it
+
+`setHeightTierMix()` was written to be ramped — its own comment says *"so the knob can
+cross-fade the tier in rather than snapping the ground under the camera's feet"* — and
+both call sites set it to 1 in one step. That was survivable while the tier was
+opt-in and a click was the cause. It is not survivable when the default level arrives
+by itself a second after the scene appears: turning the tier on moves the drawn
+surface by up to **44 m**, and everything in the scene stands on that surface.
+
+So there is a ramp now, 0.5 s, driven from the render loop (the only place with a
+frame delta), and it is used three ways: fading the default in, fading out before
+swapping one level for another (the two levels differ by about 2 m, a visible bump
+under a walking camera), and fading out to Standard.
+
+The default level loads **after the first frame**, not as part of startup. 6.7 MB in
+front of the opening frame would trade an instant start for a slightly better ground,
+and the ground can arrive a moment late without anyone minding. First load is now
+12.6 → **19.3 MB**.
+
+### The options panel
+
+Their words: *"il riquadro delle opzioni ora ha tre select alte, di lunghezza
+differente e chiare che stonano con il resto dell'hud."* Exactly right, and the cause
+was that `#env-controls` styled nothing: the three `<select>`s were **native OS
+widgets** — light boxes, each as wide as its own longest option — on a dark
+translucent panel. They chose label-left / control-right with a fixed panel width.
+
+The sizes are **measured, not guessed**. A first pass at 218 px wrapped the Ground
+cover row onto two lines and truncated "Medium · 10 m · 6.7 MB" under the chevron; so
+the widths came out of the browser instead — widest row label "Ground cover" at
+81 px, widest option 143 px in this font, hence a 176 px select and a 286 px panel.
+
+Two smaller things fell out of it. The option text is written by `main.js` from the
+manifest, so a level's cost can no longer go stale in the HTML — that is the bug the
+user actually reported. And `#controls-hint`, a centred `nowrap` line at the same
+`bottom: 8px`, used to slide **under** the panel on a narrow window and read through
+it, two 55% panels stacked; widening the panel made that worse, so the hint now keeps
+clear of the panel's column and wraps instead. Verified at 900 and 1600 px wide.
+
+### What the test learned
+
+- **The default is asserted, not assumed**: the page must install the 10 m level by
+  itself, fade it to mix 1, and show its cost from the manifest. Nothing in the test
+  asks for a tier before that check.
+- **Swapping back down** must take the extra LOD level with it, *and the scatters with
+  that* — `GROUND_SEGMENTS` is now on the dev handle so the test can read the one
+  number that ties every tuft and stone to the triangulation the terrain draws. A swap
+  that forgot to re-derive it would draw the coarse level's data on the fine level's
+  cells, with the scatters modelling a surface nobody is drawing: the 2026-08-12
+  floating defect, re-earned by a menu.
+- **Waited for, not slept on.** The first run of the default check read `mix 0` with
+  the level already installed. Not a bug in the page: this browser is SwiftShader at
+  about 1 fps, the ramp needs a frame, and a fixed timeout landed in front of it. The
+  check waits for the condition now.
+
 ## The 5 m terrain, and five constants that were quietly resolution-bound (2026-08-14)
 
 The user replaced `DEM/pngp_heightmap.png` and its sidecar with 5 m versions and
@@ -116,15 +215,16 @@ tell you what that does to fps**: the test browser is SwiftShader at ~1 fps, and
 `probe-groundcover.mjs`'s own header says so. The user's counter is the instrument,
 and their last number is 25–45 fps with the ground cover on.
 
-### Open, and the user's to decide
+### Open, and the user's to decide — both answered the same day, see the top section
 
-1. **fps at depth 9.** If it costs too much, `MAX_TIER_EXTRA_DEPTH` in
-   `src/terrain.js` capped to 1 gives the depth-8 row above — one line, and the
-   file it downloads does not change.
-2. **Default or not.** At 10 m this was a live question (first load 12.6 → 19.6 MB).
-   At 25.0 MB gzip it is a different question: 12.6 → 37.6 MB, tripled, for a tier
-   that is off until asked for. Recorded, not decided.
-3. **Not published.** Same standing instruction as the 10 m build.
+1. **fps at depth 9.** ~~If it costs too much…~~ **Answered:** *"selezionando Terrain:
+   High l'fps sta sopra il 25 per cui accettabile."* Depth 9 stays.
+2. **Default or not.** ~~At 25.0 MB gzip it is a different question…~~ **Answered, and
+   not with either of the two answers this section imagined:** the 5 m level stays
+   opt-in and a **10 m level became the default**, so the question turned out to be
+   about which resolution deserves the first load rather than whether the tier does.
+   12.6 → 19.3 MB.
+3. **Not published.** Still the standing instruction.
 
 ## High-resolution terrain: BUILT, accepted, not published (2026-08-13)
 

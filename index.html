@@ -140,21 +140,91 @@
         position: fixed;
         bottom: 8px;
         left: 10px;
-        padding: 8px 12px;
+        /* Fixed, so the panel has one right edge rather than one per row: without it
+           the width came from whichever <select> had the longest option and the three
+           of them disagreed. The number is measured, not guessed - the widest row
+           label is "Ground cover" at 81 px and the widest option "Medium · 10 m ·
+           6.7 MB" at 143 px in this font, so the content has to hold 81 + 6 + the
+           select's 176 and the padding adds 20. Guessing it first produced a panel
+           that wrapped one row and truncated another. */
+        width: 286px;
+        padding: 8px 10px;
         background: rgba(10, 14, 20, 0.55);
         border-radius: 6px;
         color: #fff;
         font: 12px/1.6 -apple-system, system-ui, sans-serif;
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 5px;
       }
-      #env-controls input,
+      /* Every row is label on the left, control on the right, every control the same
+         width. */
+      #env-controls > label {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+      }
       #env-controls select {
-        vertical-align: middle;
+        /* The native widget is a light box sized by its longest option - three of
+           them meant three widths, all of them bright against a dark HUD. This is
+           #credits-toggle's language instead, which is what the rest of the HUD
+           speaks. */
+        appearance: none;
+        -webkit-appearance: none;
+        /* 143 px of the longest option's text, plus 7 of left padding, 21 for the
+           chevron and 2 of border. Every select the same, so the column is a column. */
+        width: 176px;
+        padding: 3px 21px 3px 7px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 6px;
+        background-color: rgba(255, 255, 255, 0.08);
+        /* The chevron that appearance:none removes, drawn inline rather than fetched:
+           this page loads no external assets. */
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23fff' stroke-opacity='.75' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 7px center;
+        background-size: 9px 6px;
+        color: #fff;
+        font: inherit;
+        cursor: pointer;
+      }
+      #env-controls select:hover,
+      #env-controls select:focus-visible {
+        background-color: rgba(255, 255, 255, 0.17);
+        border-color: rgba(255, 255, 255, 0.32);
+      }
+      #env-controls select:disabled {
+        opacity: 0.55;
+        cursor: progress;
+      }
+      /* The dropdown list itself is drawn by the OS, so this is as dark as it can be
+         asked to go - and it stays legible where the browser ignores it. */
+      #env-controls option {
+        background: #10151c;
+        color: #fff;
       }
       #env-time {
-        width: 160px;
+        /* Its own full-width line: the read-out sits up on the label's row. */
+        flex: 0 0 100%;
+        width: 100%;
+        margin: 2px 0 0;
+        accent-color: #9fd0ff;
+      }
+      #env-time-label {
+        color: rgba(255, 255, 255, 0.75);
+        font-variant-numeric: tabular-nums;
+      }
+      /* A checkbox and its text read left to right, so this row is the one that does
+         not push its two halves to opposite edges. */
+      #env-controls label.env-check {
+        justify-content: flex-start;
+        gap: 6px;
+      }
+      #env-controls input[type="checkbox"] {
+        margin: 0;
+        accent-color: #9fd0ff;
       }
       #nav-hud {
         position: fixed;
@@ -231,7 +301,14 @@
         color: rgba(255, 255, 255, 0.85);
         font: 11px/1.4 -apple-system, system-ui, sans-serif;
         pointer-events: none;
-        white-space: nowrap;
+        /* This is centred and #env-controls is a fixed 286 px against the left edge at
+           the same bottom, so on a narrow window the two overlapped and this line read
+           THROUGH the panel - two 55% panels stacked. Keeping clear of the panel's
+           column costs nothing on a wide screen (the line is ~700 px and this leaves
+           1300) and wraps it on a small one, which is the better of the two. The max()
+           is so a very narrow window shrinks it rather than collapsing it to nothing. */
+        max-width: max(12em, calc(100vw - 660px));
+        text-align: center;
       }
     </style>
   </head>
@@ -272,8 +349,8 @@
       </div>
     </div>
     <div id="env-controls">
-      <label>Time of day: <span id="env-time-label"></span><br /><input id="env-time" type="range" min="0" max="1" step="0.001" value="0.15" /></label>
-      <label>Weather:
+      <label>Time of day <span id="env-time-label"></span><input id="env-time" type="range" min="0" max="1" step="0.001" value="0.15" /></label>
+      <label>Weather
         <select id="env-weather">
           <option value="0">Clear skies</option>
           <option value="1">Drifting clouds</option>
@@ -285,16 +362,20 @@
            the most expensive thing in this scene and only the person looking at
            their own frame counter can judge it. Lush is the default by the user's
            own choice (2026-08-12): see the maximum first, then cut. -->
-      <!-- The optional high-resolution terrain (2026-08-13, the user's topic 2).
-           A separate ~7 MB download, so it is off until asked for and the label
-           says what it costs rather than pretending it is free. -->
-      <label>Terrain:
+      <!-- The optional high-resolution terrain (2026-08-13, the user's topic 2;
+           two levels and Medium as the default since 2026-08-14). The value is the
+           tier LEVEL PLUS ONE, so 0 stays "no tier". The download sizes are written
+           in by main.js from heighttier.json - they were hardcoded here and went
+           stale the moment the tier was rebuilt, which is exactly what the user
+           noticed. data-name is the half that is ours to keep. -->
+      <label title="The high-resolution levels cover the park only; outside it the ground is the same 20.5 m surface either way.">Terrain
         <select id="env-terrain">
-          <option value="0">Standard (20.5 m)</option>
-          <option value="1">High &mdash; park only, 7 MB</option>
+          <option value="0" data-name="Standard">Standard</option>
+          <option value="1" data-name="Medium" selected>Medium</option>
+          <option value="2" data-name="High">High</option>
         </select>
       </label>
-      <label>Ground cover:
+      <label>Ground cover
         <select id="env-groundcover">
           <option value="1">Lush</option>
           <option value="0.5">Sparse</option>
@@ -306,7 +387,7 @@
            in its own corner: like time of day and weather it changes what the
            park is like, not how the app is used. It cannot actually make a sound
            until the first click anywhere (browser autoplay policy, src/audio.js). -->
-      <label><input id="env-audio" type="checkbox" checked /> Ambient sound (M)</label>
+      <label class="env-check"><input id="env-audio" type="checkbox" checked /> Ambient sound (M)</label>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>

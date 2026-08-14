@@ -13,6 +13,10 @@ import { loadLandcover, createLandcoverSampler, LANDCOVER_MASK } from './landcov
 import {
   createGroundcover, GROUNDCOVER_DENSITY, GROUNDCOVER_TIME, GROUNDCOVER_WIND,
 } from './groundcover.js';
+// Published on the dev handle below, not used here: it is the one number that ties
+// every scatter to the triangulation the terrain draws, and swapping tier levels
+// changes it. A test that cannot read it cannot tell that they still agree.
+import { GROUND_SEGMENTS } from './heighttier.js';
 import { createEdelweiss, FOUND_RADIUS_M } from './edelweiss.js';
 import { createWildlife } from './wildlife.js';
 import { createBirds } from './birds.js';
@@ -652,6 +656,7 @@ if (import.meta.env.DEV) {
       density: GROUNDCOVER_DENSITY,
       wind: GROUNDCOVER_WIND,
       time: GROUNDCOVER_TIME,
+      groundSegments: GROUND_SEGMENTS,
       apply: () => groundcover?.applyDensity(),
       getStats: () => groundcover?.stats,
       counts: () => groundcover?.layers.map((l) => ({ kind: l.kind, drawn: l.geometry.instanceCount, of: l.count })),
@@ -774,31 +779,105 @@ envWeather.addEventListener('change', () => {
 // the loaders' callback can call it - applyGroundcoverDensity is hoisted as a
 // function declaration, the const `groundcover` it reads is not, which is why it
 // tests for null rather than assuming.
-// The high-resolution terrain tier. Its data is a separate download, so the
-// control has three jobs rather than one: fetch, install, and say so while it is
-// happening - 7 MB on a mountain refuge's connection is not instant, and a knob
-// that appears to do nothing for ten seconds reads as broken.
+// The high-resolution terrain tier. Its data is a separate download, so the control
+// has three jobs rather than one: fetch, install, and say so while it is happening -
+// 25 MB on a mountain refuge's connection is not instant, and a knob that appears to
+// do nothing for ten seconds reads as broken.
+//
+// The select's value is the tier LEVEL PLUS ONE, so 0 stays "no tier at all" and the
+// levels stay in the manifest's own order (coarsest first). Medium is the default by
+// the user's decision (2026-08-14) - the first one that costs a download.
 const envTerrain = document.getElementById('env-terrain');
+
+// A RAMP, NOT A STEP. Turning the tier on moves the ground by up to 44 m and swapping
+// between its levels by about 2 m, and the camera, the markers and every scatter
+// stand on that ground. setHeightTierMix() was built to be crossfaded; nothing was
+// doing it. Driven from the render loop, which is the only place with a delta.
+const TIER_FADE_S = 0.5;
+let tierMix = 0;
+let tierMixTarget = 0;
+let tierMixSettled = null;
+function rampTierMix(to) {
+  tierMixTarget = to;
+  if (tierMix === to) return Promise.resolve();
+  const previous = tierMixSettled;
+  const p = new Promise((resolve) => { tierMixSettled = resolve; });
+  previous?.(); // a new target supersedes an older wait rather than stranding it
+  return p;
+}
+function updateTierMix(dt) {
+  if (!terrainSurface || tierMix === tierMixTarget) return;
+  const step = dt / TIER_FADE_S;
+  const gap = tierMixTarget - tierMix;
+  tierMix += Math.sign(gap) * Math.min(step, Math.abs(gap));
+  terrainSurface.setHeightTierMix(tierMix);
+  if (tierMix === tierMixTarget) {
+    tierMixSettled?.();
+    tierMixSettled = null;
+  }
+}
+
+async function applyTerrainQuality() {
+  if (!envTerrain) return;
+  const want = Number(envTerrain.value);
+  if (!want) {
+    await rampTierMix(0);
+    return;
+  }
+  const level = want - 1;
+  const already = terrainSurface?.heightTierLevel?.() ?? -1;
+  envTerrain.disabled = true;
+  try {
+    // Fade out before swapping one level for another: the 10 m and 5 m surfaces
+    // differ by about 2 m, which is a visible bump under a walking camera. Coming
+    // from Standard there is nothing on the ground yet, so nothing to fade out.
+    if (already >= 0 && already !== level && tierMix > 0) await rampTierMix(0);
+    const loaded = await terrainSurface?.loadHeightTier(level);
+    if (loaded) await rampTierMix(1);
+    else envTerrain.value = '0';
+  } catch (err) {
+    console.error('The high-resolution terrain failed to load:', err.message);
+    envTerrain.value = '0';
+  } finally {
+    envTerrain.disabled = false;
+  }
+}
+
 if (envTerrain) {
-  envTerrain.addEventListener('change', async () => {
-    const want = Number(envTerrain.value) > 0;
-    if (!want) {
-      terrainSurface?.setHeightTierMix(0);
-      return;
+  envTerrain.addEventListener('change', () => { void applyTerrainQuality(); });
+  // WHAT EACH OPTION COSTS COMES FROM THE MANIFEST, because the hand-written "7 MB"
+  // in the HTML was still there after the tier became 25 MB - which the user spotted
+  // before anything else. A number in two places is a number that disagrees with
+  // itself eventually.
+  const labelLevels = async () => {
+    const baseRes = terrainSurface?.manifest?.resolutionMPerPx?.x;
+    const m = await (terrainSurface?.heightTierManifest?.() ?? null);
+    for (const option of envTerrain.options) {
+      const name = option.dataset.name;
+      const index = Number(option.value) - 1;
+      if (index < 0) {
+        if (baseRes) option.textContent = `${name} · ${baseRes.toFixed(1)} m`;
+        continue;
+      }
+      const level = m?.levels?.[index];
+      if (!level) {
+        // A level the manifest does not have is a download that cannot happen. Say
+        // so, rather than leaving an option that looks available and does nothing.
+        option.disabled = true;
+        option.textContent = `${name} · unavailable`;
+        continue;
+      }
+      const mb = level.file.gzipBytes / 1048576;
+      option.textContent = `${name} · ${level.resolutionMPerPx.x.toFixed(0)} m · `
+        + `${mb < 10 ? mb.toFixed(1) : mb.toFixed(0)} MB`;
     }
-    const label = envTerrain.previousSibling;
-    envTerrain.disabled = true;
-    try {
-      const loaded = await terrainSurface?.loadHeightTier();
-      if (loaded) terrainSurface.setHeightTierMix(1);
-      else envTerrain.value = '0';
-    } catch (err) {
-      console.error('The high-resolution terrain failed to load:', err.message);
-      envTerrain.value = '0';
-    } finally {
-      envTerrain.disabled = false;
-      if (label) void label;
-    }
+  };
+  // Medium is the default, so its level loads without being asked for - but AFTER the
+  // scene is up rather than in front of it. 7 MB ahead of the first frame would trade
+  // an instant start for a better ground, and the ground can arrive a moment late.
+  terrainPromise.then(() => {
+    void labelLevels();
+    requestAnimationFrame(() => { void applyTerrainQuality(); });
   });
 }
 
@@ -966,6 +1045,10 @@ renderer.setAnimationLoop(() => {
   // The flowers are CPU-placed, so unlike the grass they need the loop. Cheap: 25
   // cached cells and at most a few hundred matrices (src/edelweiss.js).
   edelweiss?.update(camera);
+  // The terrain tier's cross-fade. Here because this is the only place with a frame
+  // delta, and because the ground has to move over several frames rather than one:
+  // everything in the scene is standing on it.
+  updateTierMix(timer.getDelta());
 
   fpsFrames += 1;
   fpsAccum += timer.getDelta();

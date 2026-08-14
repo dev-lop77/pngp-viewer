@@ -739,10 +739,30 @@ pin *moved the sky*, not merely that it set a field.
 
 ### High-resolution terrain — `src/heighttier.js`, `tools/build-height-tier.mjs` (2026-08-13, rebuilt at 5 m 2026-08-14)
 
-An **optional** 5 m elevation tier over the park, downloaded only when the HUD's
-`Terrain` control asks: 8212 × 4861 at the DTM mosaic's own resolution, 38.1 MB raw,
-**25.0 MB gzipped**. The quadtree goes `MAX_DEPTH` 7 → 9 (5.12 m cells) for tiles
-entirely inside its rectangle, and nowhere else.
+A higher-resolution elevation tier over the park, chosen by the HUD's `Terrain`
+control. `heighttier.json` (schema 2) describes **one rectangle at two levels**,
+coarsest first:
+
+| control | level | grid | raw | gzip | LOD inside the rectangle |
+|---|---|---|---|---|---|
+| Standard | — | the base grid only | — | — | `MAX_DEPTH` 7, 20.5 m cells |
+| **Medium (default)** | 10 m | 4106 × 2430 | 9.5 MB | **6.7 MB** | 7 → 8, 10.24 m cells |
+| High | 5 m | 8212 × 4860 | 38.1 MB | **24.9 MB** | 7 → 9, 5.12 m cells |
+
+Medium is the default (user's decision, 2026-08-14, after measuring the frame rate at
+5 m themselves), so first load is 12.6 → 19.3 MB. It is fetched **after the first
+frame** rather than as part of startup, and faded in over 0.5 s: turning the tier on
+moves the drawn surface by up to 44 m and everything in the scene stands on it, so the
+mix is ramped from the render loop and not stepped. Swapping between the two levels
+fades out and back in for the same reason, at a smaller scale (they differ by ~2 m).
+
+A level pixel is the **mean** of its stride × stride block of native mosaic pixels, and
+a block is a hole if any pixel in it is one. Both levels share the rectangle exactly -
+the tier window is snapped to whole coarsest-level blocks as well as to whole native
+pixels - because levels snapped to their own grids would sit a fraction of a pixel
+apart and a quality change would then shift the ground sideways as well as sharpen it.
+One half-range (96 m) covers both: the GLSL decoder is generated once from the constant
+in `heighttier.js` and cannot switch mappings per level.
 
 **How many levels deeper is derived, not chosen**: `floor(log2(base cell / tier
 cell))`, so a 10 m tier gets one and a 5 m tier gets two. It was a literal `+1`
