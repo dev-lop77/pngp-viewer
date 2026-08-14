@@ -73,10 +73,20 @@ was that `#env-controls` styled nothing: the three `<select>`s were **native OS
 widgets** — light boxes, each as wide as its own longest option — on a dark
 translucent panel. They chose label-left / control-right with a fixed panel width.
 
-The sizes are **measured, not guessed**. A first pass at 218 px wrapped the Ground
-cover row onto two lines and truncated "Medium · 10 m · 6.7 MB" under the chevron; so
-the widths came out of the browser instead — widest row label "Ground cover" at
-81 px, widest option 143 px in this font, hence a 176 px select and a 286 px panel.
+The sizes are **measured, not guessed** — twice, because the first pass guessed and was
+wrong twice over. At 218 px the panel wrapped the Ground cover row onto two lines and
+truncated "Medium · 10 m · 6.7 MB" under the chevron, so the widths came out of the
+browser instead: widest row label "Ground cover" at 81 px, widest option 143 px in this
+font, hence a 176 px select and a 286 px panel.
+
+And **"tre select ALTE" was half the complaint, which the first restyle made worse**:
+the native widget is 19 px tall in this font and the restyle came out at **27**. Two
+things behind it. The panel's `12px/1.6` is right for reading a label and too loose for
+a control, so a control needs its own line box; and `line-height` set *before*
+`font: inherit` does nothing at all, because `font` is a shorthand that resets it — the
+fix measured 25.19 px where its own arithmetic promised 22, which is the whole reason to
+measure a number instead of computing it. 22 px now, and the panel is 164 px tall
+instead of 205.
 
 Two smaller things fell out of it. The option text is written by `main.js` from the
 manifest, so a level's cost can no longer go stale in the HTML — that is the bug the
