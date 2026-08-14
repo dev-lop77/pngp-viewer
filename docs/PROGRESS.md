@@ -2,68 +2,136 @@
 
 Read this first at the start of each session. Update it before ending one.
 
-## TOMORROW STARTS HERE: the 5 m extraction (2026-08-13, closing)
+## The 5 m terrain, and five constants that were quietly resolution-bound (2026-08-14)
 
-The user is **running `extract-heightmap.sh` with `RES_M=5`** on the machine that
-holds `DTM0508_002_UNICO.ASC` (2.0 m/px, 10 GB). It takes a while. Their words:
-*"domani iniziamo con la nuova estrazione e dove metterla."*
+The user replaced `DEM/pngp_heightmap.png` and its sidecar with 5 m versions and
+said so. **It was the wrong stage of the pipeline**: `extract-heightmap.sh`'s
+VDA-only output (step 2), not `merge-heightmaps.sh`'s three-source mosaic (step 5).
+Measured before rebuilding anything, which is what named it:
 
-**Do not start by rebuilding anything. Start with these four, in order.**
+| | 10 m merged (git HEAD) | 5 m VDA-only, as delivered |
+|---|---|---|
+| nodata over the whole crop | 12.17% | 24.82% |
+| **nodata inside the tier rectangle** | **0.19%** | **24.45%** |
 
-### 1. WHERE TO PUT IT — their own question, and it has a sharp edge
+The new hole was the entire south-east quadrant — the Piemonte side, Valle dell'Orco
+and Valle Soana. That is the *"flat fake plain"* of ARCHITECTURE §3, which
+`merge-heightmaps.sh` exists to have closed. The sidecar had also lost its
+`sources[]` block, and that block is where the CC BY attributions for Piemonte and
+TINITALY live: `process-heightmap.mjs` would have fallen back to its single-source
+shape without complaining.
 
-`DEM/pngp_heightmap.png` is **tracked in git**: 45.6 MB, and `.git` is already
-155 MB. The 5 m native mosaic has **four times the pixels** — roughly 150–200 MB —
-and git history keeps it forever, for a file the viewer never downloads and a
-static host has no use for. `tools/dev/deploy.sh`'s own header already complains
-about "the main history's 123 MB (which includes a 43.5 MB intermediate heightmap)".
+The extraction itself was sound. Where both files have data they agree to a mean of
+−0.16 m (median −0.21, p99 7.18) — different resampling of the same source.
 
-So the question is not where the file goes on disk, it is **whether it enters the
-history at all**. `.gitignore` currently ignores no part of `DEM/`. This is the
-user's call, and it is worth putting to them plainly before anything is committed.
+### The re-merge, and the gate bug it uncovered
 
-### 2. THREE THINGS THE 5 m SOURCE BREAKS in build-height-tier.mjs
+`merge-heightmaps.sh` with `RES_M=5`; all three inputs were still in
+`~/pngp-dtm-work/`. It **failed its own hard gate**: 1.122% of the park with no
+elevation against a 0.5% limit. The gate was wrong, not the merge — the park
+boundary rasterised onto the 5 m grid and counted exactly puts it at **0.003%**,
+1000 pixels of 23.3 M.
 
-The tool is mostly resolution-agnostic — it derives the native resolution from the
-bbox and the raster size, and the base-grid rebuild is written in terms of NW/NH
-against BW/BH — but three constants were sized for a **×2** ratio and the new one
-is **×4**:
+`check-park-coverage.mjs` samples `y = YMIN`, the closed south edge, and computed
+`row = floor((YMAX − y) / RES)`. At 10 m that is `floor(4822.5) = 4822`, inside the
+raster. **At 5 m it is exactly 9645 — one row past the last**, out of range, counted
+as missing data: 163 sample points strung along the park's southern edge. A latent
+off-by-one that can only fire when the bbox height is a whole number of pixels, so
+10 m hid it and 5 m did not. It was also using the x resolution (4.99994 m) for row
+indices, where the y resolution is exactly 5. Both fixed, and an out-of-range index
+now throws instead of being counted as absent data. The gate reports 0.007%.
 
-- **`DILATE_PX = 6`** (native pixels). It has to cover the footprint that makes one
-  base pixel plus the bilinear reach into it: at ×2 that is 2 + 2×2 ≈ 6. At ×4 it
-  is 4 + 2×4 = 12, so ~14 with slack. Too small and the nodata blend bug of guard 2
-  comes straight back — it is the one that left 343 pixels off the scale.
-- **`RESIDUAL_HALF_RANGE_M = 56`** was *measured* on the 10 m residual (−39 to
-  +53 m). A 5 m residual against the same 20.5 m base carries more detail and will
-  run wider. The build tool throws rather than clipping, so this will announce
-  itself — but re-measure the distribution and set the range from it, do not simply
-  raise it until the error stops.
-- **`FADE_PX = 32`** is in tier pixels, so the fade band halves from 320 m to 160 m.
-  Still far beyond any draw distance, so probably fine — but it is a number that
-  changed meaning without changing value, which is how they get missed.
+What is genuinely uncovered: three clusters totalling ~0.02 km² near lat 45.4735,
+lon 7.07–7.11 at 3000–3300 m, where none of the three sources has data. Empty at
+10 m too. The tier leaves them flat, which is what it does with holes.
 
-### 3. `MAX_DEPTH` 8 → 9
+### What is built
 
-84 km / (2⁹ × 32) = 5.12 m. The user reported **frame rate unchanged** at depth 8;
-that is encouraging and it is *not* evidence for 9, which quadruples the finest
-level again. Measure, and expect the per-tile "only inside the tier" rule to matter
-much more than it does now.
+The merged 5 m mosaic is **145.9 MB** in `DEM/` (16777 × 9645), and its 16-bit
+normalisation range came out **identical** to the 10 m one (238.51–4809.81 m), so it
+agrees with the shipped base by arithmetic rather than by luck. VDA covers 63.5% of
+the park and Piemonte's DTM5 38.5% (they overlap); TINITALY, the only 10 m source,
+fills 0.01%. So this is a 5 m tier over essentially all of it.
 
-### 4. Size is a guess until it is weighed
+`heighttier.ca2d52f7.bin`: 8212 × 4861, **38.1 MB raw, 25.0 MB gzip**. That is 3.6×
+the 10 m tier's 7.0 MB for 4× the pixels — a finer residual is higher-frequency and
+gzip finds less to say about it. Residual −86.61 to +80.81 m, nothing clips, 0.48%
+left flat for nodata. The quadtree refines **two** levels inside the tier now:
+5.12 m cells for 5.00 m data.
 
-~25–32 MB gzip is an **estimate**, extrapolated badly: the 0.74 raw→gzip ratio
-measured at 10 m will not hold, because a 5 m residual is higher-frequency and
-compresses worse. Weigh it before quoting it to the user.
+### The real subject of the day: constants sized for a ×2 ratio, at ×4
 
-### Also open, and theirs to decide
+The native/base ratio went from 2.048 to 4.096. Five numbers were written for the
+first and would not have announced themselves in the second:
 
-They are **evaluating whether 10 m should become the default**. The numbers given:
-first load 12.6 → 19.6 MB (+56%), because the residual adds to the base rather than
-replacing it. Making it default without paying that would mean regenerating the
-base at 10 m over the park and keeping 20.5 m outside — a different architecture,
-with the real seam this design exists to avoid.
+| what | was | now | how it would have failed |
+|---|---|---|---|
+| `DILATE_PX` | 6 | derived, 14 | silently: guard 2's nodata blends return |
+| `RESIDUAL_HALF_RANGE_M` | 56 | re-measured, 96 | loudly: 166 px clip |
+| the native's elevation range | the base's | its own sidecar | silently: −10 to −49 m |
+| the tier's extra LOD levels | `+1` | derived, `+2` | silently: 5 m data drawn at 10 m |
+| the codec round-trip tolerance | `< 0.5 m` | half the coarsest step | loudly, and wrongly |
+
+The range one is worth keeping in mind beyond this project: `build-height-tier.mjs`
+decoded the native mosaic with `heightfield.json`'s elevation range, which is only
+right because `process-heightmap.mjs` derived that range from the same file. Every
+re-extraction recomputes min/max from its own crop. On the VDA-only file that gap
+was −53.6 m at the bottom and −1.1 m at the top: an affine error of tens of metres
+that looks like terrain. It fired guard 1 by luck this time (median 464 counts);
+after the re-merge the two ranges are identical and the mistake would have been
+invisible. Each grid is decoded with its own range now, and the sidecar's bbox is
+asserted against the base's.
+
+Guard 1 itself had to change meaning. It compared the rebuilt base against the
+shipped `.bin` and demanded the worst sampled pixel stay under 1.5 counts, which
+asserted "the shipped base is a bilinear resample of *this* native grid". With a 5 m
+native and a base built from the 10 m one that is false by construction: measured
+|diff| median 1.18 m, p95 4.78 m. And the worst pixel is not a usable test at any
+resolution — it comes out at **3316 m**, because beside a hole each grid blends real
+elevation with the 238.5 m sentinel in its own proportion. It asserts robust
+statistics now: median signed difference ≈ 0 (same placement, scale and range) and
+median |diff| small (same terrain).
+
+### What the tier is worth, measured
+
+Error of the surface the viewer actually **draws**, against the best ground there
+is (base + the 5 m tier read exactly), over 30000 points inside the tier with
+nodata-adjacent samples rejected. Tiles are from one real camera at the Nivolet.
+
+| configuration | download | mean | p50 | p90 | tiles / triangles |
+|---|---|---|---|---|---|
+| no tier (depth 7) | — | 2.456 m | 1.726 | 5.299 | 42 / 0.09 M |
+| 10 m tier, depth 8 | 7.0 MB | 2.029 m | 1.562 | 4.237 | 102 / 0.21 M |
+| 5 m tier, depth 8 | 25.0 MB | 0.243 m | 0.114 | 0.567 | 102 / 0.21 M |
+| **5 m tier, depth 9** | 25.0 MB | **0.080 m** | 0.033 | 0.183 | 168 / 0.34 M |
+
+The truth here *is* the 5 m data, so the 5 m rows are advantaged by construction.
+The honest reading is the one that matters anyway: the 10 m tier leaves about 2 m of
+real relief undrawn, and the 5 m one draws it. The second LOD level is not
+decoration either — without it a quarter of the 25 MB reaches the surface, 0.243 m
+against 0.080 m.
+
+The cost is 66 more tiles from that camera, 0.13 M triangles. **This machine cannot
+tell you what that does to fps**: the test browser is SwiftShader at ~1 fps, and
+`probe-groundcover.mjs`'s own header says so. The user's counter is the instrument,
+and their last number is 25–45 fps with the ground cover on.
+
+### Open, and the user's to decide
+
+1. **fps at depth 9.** If it costs too much, `MAX_TIER_EXTRA_DEPTH` in
+   `src/terrain.js` capped to 1 gives the depth-8 row above — one line, and the
+   file it downloads does not change.
+2. **Default or not.** At 10 m this was a live question (first load 12.6 → 19.6 MB).
+   At 25.0 MB gzip it is a different question: 12.6 → 37.6 MB, tripled, for a tier
+   that is off until asked for. Recorded, not decided.
+3. **Not published.** Same standing instruction as the 10 m build.
 
 ## High-resolution terrain: BUILT, accepted, not published (2026-08-13)
+
+> **Superseded at 5 m on 2026-08-14 — see the top section.** Everything below about
+> *why* it is a residual, why 8 bits and why a signed square root still stands and is
+> still the reason the design works. The numbers that moved: 10 m → 5 m, 7.0 → 25.0 MB
+> gzip, half-range 56 → 96, one extra LOD level → two.
 
 Topic 2 of the four extras, the last one untouched: *"modelli ad alta risoluzione
 come opzione da alzare, non come nuovo default"*. Started with the terrain, at the
@@ -164,6 +232,14 @@ What is on this machine reaches 5 m over only **25.57%** of the tier: the Piemon
 DTM5, measured with `gdalinfo -stats` over the tier rectangle (695–4027 m, so it
 misses the highest ground). A 5 m tier built from what is here would be 4× the
 bytes for real detail on a quarter of the area.
+
+> **That last sentence was wrong, and 2026-08-14 measured it wrong.** It counted only
+> the source already extracted at 5 m and forgot the correction in this section's own
+> heading: the VDA source is 2.0 m/px, so re-extracting it at 5 m is real detail too.
+> Over the park the 5 m mosaic is 63.5% VDA and 38.5% Piemonte DTM5 (overlapping),
+> with 0.01% left to TINITALY. The detail is real over essentially all of it, not a
+> quarter. A prediction made from what had been extracted rather than from what the
+> sources hold.
 
 **And the tier covers 75.5% of the park's bounding box** — the southernmost 7.7 km
 of the park lie outside the heightfield's own bbox, so no source covers them today.

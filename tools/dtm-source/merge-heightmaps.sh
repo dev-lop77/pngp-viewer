@@ -9,7 +9,7 @@
 # Run fetch-piemonte-dtm.sh and fetch-tinitaly.sh first.
 #
 # Technique: gdalwarp each source onto the exact same target grid (this
-# bbox, EPSG:23032, 10m/px) with its own real nodata value normalized to a
+# bbox, EPSG:23032, RES_M m/px) with its own real nodata value normalized to a
 # shared sentinel, then gdal_merge.py composites them in priority order -
 # GDAL only overwrites with a later input where THAT input has valid
 # (non-nodata) data, which is exactly a "best source per pixel" merge, not
@@ -32,7 +32,12 @@ XMIN=329116
 YMIN=5036775
 XMAX=413000
 YMAX=5085000
-RES_M=10
+# Must match the resolution of the VDA_PNG above: this script composites the
+# other two sources ONTO that grid, and gdal_merge.py needs all three aligned
+# to one geotransform. 5 m since 2026-08-14, for the high-resolution terrain
+# tier - at 5 m the Piemonte DTM5 is 1:1 native, so the tier gets real detail
+# on the Piemonte side and not just on the Valle d'Aosta one.
+RES_M=5
 NODATA=-9999
 # --------------------
 
@@ -132,7 +137,7 @@ cat > "$META_OUT" <<EOF
     {
       "name": "DTM0508_002_UNICO (Regione Autonoma Valle d'Aosta)",
       "priority": 1,
-      "coverage": "Valle d'Aosta side of the park - highest quality, native ~10m",
+      "coverage": "Valle d'Aosta side of the park - highest quality. The source ASC is 2.0 m/px (DEM/pngp_extraction_report.txt); extract-heightmap.sh resamples it to this grid, so 'native' here means the target resolution, not the source's.",
       "license": "CC BY 4.0",
       "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
       "licenseVerifiedVia": "https://metadati.partout.it/metadata_documents/CC_BY_DTM_v2.pdf (linked from https://geoportale.regione.vda.it/download/dtm/, which lists this product as 'DTM 2005/2008 aggregato' = DTM0508). Granted under DGR 1620 del 25/11/2016 and DGR 899 del 27/06/2014; sharing and modification allowed 'per qualsiasi fine, anche commerciale'.",
@@ -152,7 +157,7 @@ cat > "$META_OUT" <<EOF
     {
       "name": "TINITALY 1.1 (INGV)",
       "priority": 3,
-      "coverage": "Whatever the first two sources miss (mainly the highest peaks) - national 10m mosaic",
+      "coverage": "Whatever the first two sources miss (mainly the highest peaks) - national 10m mosaic, so it is upsampled wherever this grid is finer than 10 m and adds coverage rather than detail",
       "fetchedVia": "tools/dtm-source/fetch-tinitaly.sh",
       "license": "CC BY 4.0",
       "attribution": "$TINITALY_ATTRIBUTION"

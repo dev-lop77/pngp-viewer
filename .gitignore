@@ -12,3 +12,12 @@ tools/landcover-osm-draft.json
 tools/landcover-unshipped/
 tools/ndvi-draft.bin
 tools/ndvi-draft.json
+
+# The native DTM mosaic: a build input, not a temp file, and deliberately outside
+# the history (user's decision, 2026-08-14). 145.9 MB at 5 m/px, for a file the
+# viewer never downloads and a static host has no use for; git would keep every
+# version of it forever. Its master GeoTIFF lives in ~/pngp-dtm-work/merged/, and
+# tools/dtm-source/README.md says how to reproduce both. The sidecar stays tracked -
+# it is 3 KB and it carries the calibration and the CC BY attributions.
+DEM/pngp_heightmap.png
+DEM/*.tif

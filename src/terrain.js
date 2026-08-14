@@ -391,12 +391,18 @@ ${bandMix}
   // not square (the bbox is 83884 x 48225 m), and a non-uniform scale would go
   // through three's normalMatrix and shear the world-space normals computed
   // above.
-  // One more level than MAX_DEPTH, built up front and used only inside the tier's
-  // rectangle: at depth 8 a cell is 10.25 m, which is the tier's own resolution.
-  // Allowing it everywhere would quadruple the finest tiles' triangles over ground
-  // where there is no extra information to show for it.
+  // Levels beyond MAX_DEPTH, built up front and used only inside the tier's
+  // rectangle, where there is finer data to show for the triangles. How many are
+  // actually USED is derived from the tier's own resolution when it arrives (see
+  // tierExtraDepth below) rather than fixed at one, because the tier was 10 m on
+  // 2026-08-13 and 5 m on 2026-08-14: drawing a 5 m surface on 10 m cells would
+  // throw away three quarters of the samples the download paid for. Building the
+  // extra geometry costs nothing - every level has the same TILE_SEGMENTS^2 quads,
+  // only over a smaller rectangle - so the cap here is generous and the derived
+  // value is what decides.
+  const MAX_TIER_EXTRA_DEPTH = 2;
   const geometries = [];
-  for (let depth = 0; depth <= MAX_DEPTH + 1; depth++) {
+  for (let depth = 0; depth <= MAX_DEPTH + MAX_TIER_EXTRA_DEPTH; depth++) {
     geometries.push(buildTileGeometry(TILE_SEGMENTS, worldWidth / 2 ** depth, worldDepth / 2 ** depth));
   }
 
@@ -447,7 +453,7 @@ ${bandMix}
       const insideTier = hasTier()
         && cx - halfW >= r.x && cx + halfW <= r.x + r.z
         && cz - halfD >= r.y && cz + halfD <= r.y + r.w;
-      const maxDepthHere = insideTier ? MAX_DEPTH + 1 : MAX_DEPTH;
+      const maxDepthHere = insideTier ? MAX_DEPTH + tierExtraDepth : MAX_DEPTH;
       if (depth < maxDepthHere) {
         // Distance to the tile, not to its centre, so a large tile the camera
         // stands on always refines (and the tile under the camera therefore
@@ -479,6 +485,12 @@ ${bandMix}
   // goes through this object, and there must be exactly one answer to "how high is
   // the ground" on the CPU. See src/heighttier.js for why it is a residual.
   let tier = null;
+  // How many levels finer than MAX_DEPTH the tier's data actually justifies, from
+  // the manifest rather than from a constant: floor(log2(base cell / tier cell)),
+  // so a 10 m tier gets one level and a 5 m tier gets two, and neither draws a
+  // surface finer than the data feeding it. Zero until a tier is installed.
+  let tierExtraDepth = 0;
+  const baseCellM = worldWidth / (TILE_SEGMENTS * 2 ** MAX_DEPTH);
   HEIGHT_TIER.value = HEIGHT_TIER.value ?? emptyTier();
   // The one place that says how fine the drawn surface is. groundcover.js reads
   // this to reproduce the same triangulation it stands on.
@@ -497,6 +509,11 @@ ${bandMix}
       .then((r) => (r.ok ? r.arrayBuffer() : null));
     if (!bin) return null;
     const bytes = new Uint8Array(bin);
+    // The epsilon is not decoration: the ratio is 4.0955 for a 5 m tier but a grid
+    // snapped a pixel differently could land on 3.99999, and floor() would then
+    // quietly give back a level - i.e. draw half the resolution that was downloaded.
+    tierExtraDepth = Math.max(0, Math.min(MAX_TIER_EXTRA_DEPTH,
+      Math.floor(Math.log2(baseCellM / tierManifest.resolutionMPerPx.x) + 1e-6)));
     const { texture: tierTexture, rect } = createTierTexture(bytes, tierManifest, manifest);
     HEIGHT_TIER.value = tierTexture;
     HEIGHT_TIER_RECT.value.copy(rect);
@@ -509,7 +526,7 @@ ${bandMix}
     const m = Math.min(1, Math.max(0, v));
     HEIGHT_TIER_MIX.value = m;
     if (tier) tier.mix = m;
-    GROUND_SEGMENTS.value = TILE_SEGMENTS * 2 ** (m > 0 && tier ? MAX_DEPTH + 1 : MAX_DEPTH);
+    GROUND_SEGMENTS.value = TILE_SEGMENTS * 2 ** (m > 0 && tier ? MAX_DEPTH + tierExtraDepth : MAX_DEPTH);
   }
 
   const hasTier = () => tier !== null && HEIGHT_TIER_MIX.value > 0;
@@ -528,12 +545,12 @@ ${bandMix}
   // 20.5 m cells this is now within a metre or two of sampleHeight() anyway,
   // where the old 328 m mesh differed from it by 29 m on average.
   const finestSegments = TILE_SEGMENTS * 2 ** MAX_DEPTH;
-  const finestSegmentsTier = TILE_SEGMENTS * 2 ** (MAX_DEPTH + 1);
   function sampleRenderedHeight(x, z) {
-    // The tier raises the finest LOD by one level, so the triangulation this
-    // reproduces gets finer with it - and a camera standing on a tier tile would
-    // otherwise be placed on the coarser surface it is no longer drawing.
-    const segments = hasTier() ? finestSegmentsTier : finestSegments;
+    // The tier raises the finest LOD by tierExtraDepth levels, so the triangulation
+    // this reproduces has to follow it exactly - a camera standing on a tier tile
+    // would otherwise be placed on a surface it is no longer drawing. Computed
+    // rather than cached, because tierExtraDepth is only known once the tier loads.
+    const segments = hasTier() ? TILE_SEGMENTS * 2 ** (MAX_DEPTH + tierExtraDepth) : finestSegments;
     return sampleRenderedHeightfield(heights, manifest, segments, segments, x, z)
       + sampleTier(tier, x, z);
   }

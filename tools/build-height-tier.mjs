@@ -1,8 +1,14 @@
 #!/usr/bin/env node
-// The high-resolution terrain tier (2026-08-13): the park's own 10 m elevation,
-// shipped as an 8-bit RESIDUAL over the 20.5 m heightfield rather than as a second
-// height. It is the user's optional "alta risoluzione", topic 2 of the four extras
-// they opened on 2026-08-11, and it is downloaded only when the knob asks for it.
+// The high-resolution terrain tier (2026-08-13, rebuilt at 5 m on 2026-08-14): the
+// park's own elevation at the resolution its sources actually hold, shipped as an
+// 8-bit RESIDUAL over the 20.5 m heightfield rather than as a second height. It is
+// the user's optional "alta risoluzione", topic 2 of the four extras they opened on
+// 2026-08-11, and it is downloaded only when the knob asks for it.
+//
+// NOTHING HERE IS WRITTEN FOR A PARTICULAR RESOLUTION, and that took work: the
+// native/base ratio went from x2 to x4 and three constants had been sized by hand
+// for x2 - the nodata dilation, the residual's half-range, and a test's round-trip
+// tolerance. Two of them would have failed silently. They are derived now.
 //
 // WHY A RESIDUAL, AND NOT A SECOND HEIGHTFIELD. The heightfield is read by seven
 // modules in three different ways - the CPU bilinear array, the drawn-triangle
@@ -22,6 +28,11 @@
 //   residual 8-bit, linear +/-32 m                  6.1 MB   <- 41 px clip by ~21 m
 //   residual 8-bit, signed sqrt +/-56 m             8.7 MB   <- nothing clips
 //
+// The same encoding at 5 m, over 39.9 Mpx: 38.1 MB raw, 25.0 MB gzip, half-range
+// 96 m. The choice above still holds, but note what did not scale linearly - four
+// times the pixels cost 3.6 times the bytes, because a finer residual is
+// higher-frequency and gzip finds less to say about it.
+//
 // The residual compresses WORSE than absolute heights under the row-delta codec,
 // which is worth knowing: that codec works because elevations are smooth along a
 // row, and a residual is by definition the part that is not. At 8 bits it wins
@@ -39,6 +50,7 @@ import proj4 from 'proj4';
 import { RESIDUAL_HALF_RANGE_M, encodeResidual, decodeResidual } from '../src/heighttier.js';
 
 const SRC_PNG = 'DEM/pngp_heightmap.png';
+const SRC_META = 'DEM/pngp_heightmap_meta.json';
 const BASE_JSON = 'public/data/heightfield.json';
 const BASE_BIN_DIR = 'public/data';
 const BOUNDARY = 'tools/park-boundary.geojson';
@@ -48,8 +60,11 @@ const OUT_JSON = `${OUT_DIR}/heighttier.json`;
 // How far in from the tier's edge the residual is faded out, in tier pixels. The
 // fade is what makes the seam a non-event: the outermost band returns smoothly to
 // the shipped 20.5 m surface, so the boundary is a loss of detail rather than a
-// step. 32 px at 10 m is 320 m, which is beyond any draw distance in the scene, so
-// nothing that stands on the ground can straddle it.
+// step. Note that this is in TIER pixels, so its width in metres halved when the
+// tier went to 5 m: 320 m became 160 m without the number changing. Still far
+// beyond any draw distance in the scene, so nothing that stands on the ground can
+// straddle it - but if the tier ever gets finer again, this is a metre count
+// pretending to be a pixel count.
 const FADE_PX = 32;
 // Margin added around the park's own bounding box, so the fade band sits OUTSIDE
 // the park rather than eating into it.
@@ -64,6 +79,25 @@ const bboxW = xmax - xmin;
 const bboxH = ymax - ymin;
 const { min: elevMin, max: elevMax } = base.elevationRangeM;
 const SPAN = elevMax - elevMin;
+
+// THE NATIVE MOSAIC HAS ITS OWN 16-BIT RANGE AND IT IS NOT THE BASE'S. Both are
+// linear maps of counts to metres, and they are equal today only because
+// process-heightmap.mjs derived the base from this very file. Every re-extraction
+// recomputes min/max from its own crop, so the two are free to drift apart, and
+// decoding one grid with the other's range is a pure affine error that no guard
+// below would name: on the 5 m VDA extraction of 2026-08-14 the ranges differed
+// by 53.6 m at the bottom and 1.1 m at the top, which decoded the whole tier
+// 10 to 49 m low. Small enough to look like terrain, large enough to be the
+// entire signal this file measures. So each grid is decoded with its own range.
+const meta = JSON.parse(readFileSync(SRC_META, 'utf8'));
+const nElevMin = meta.elevation_m.min;
+const nElevMax = meta.elevation_m.max;
+const N_SPAN = nElevMax - nElevMin;
+const nativeToM = (counts) => nElevMin + (counts / 65535) * N_SPAN;
+const baseToM = (counts) => elevMin + (counts / 65535) * SPAN;
+console.log(`native range ${nElevMin.toFixed(2)}..${nElevMax.toFixed(2)} m`
+  + `   base range ${elevMin.toFixed(2)}..${elevMax.toFixed(2)} m`
+  + (nElevMin === elevMin && nElevMax === elevMax ? '  (identical)' : '  (DIFFERENT - decoded separately)'));
 
 // ---- the park's bounding box, from the boundary this project already ships ----
 const gj = JSON.parse(readFileSync(BOUNDARY, 'utf8'));
@@ -95,6 +129,16 @@ if (png.channels !== 1 || png.depth !== 16) {
 const NW = png.width;
 const NH = png.height;
 const native = png.data;
+// Every world coordinate below comes from the BASE's bbox divided by the NATIVE's
+// pixel count, which is only meaningful if the two rectangles are the same one.
+// They are, today, because the same crop produced both - and that is exactly the
+// kind of coincidence that stops holding without saying so, at which point the
+// whole tier would be placed on the wrong ground.
+const mb = meta.bbox_utm32n;
+if (mb.xmin !== xmin || mb.ymin !== ymin || mb.xmax !== xmax || mb.ymax !== ymax) {
+  throw new Error(`${SRC_META} covers E ${mb.xmin}..${mb.xmax} N ${mb.ymin}..${mb.ymax}, `
+    + `but the base covers E ${xmin}..${xmax} N ${ymin}..${ymax} - the tier would be placed on the wrong ground`);
+}
 const nativeResX = bboxW / NW;
 const nativeResY = bboxH / NH;
 console.log(`native ${NW} x ${NH} at ${nativeResX.toFixed(3)} x ${nativeResY.toFixed(3)} m`);
@@ -165,12 +209,42 @@ const shipped = (() => {
   }
   return out;
 })();
-let worstBase = 0;
-for (let i = 0; i < BW * BH; i += 997) worstBase = Math.max(worstBase, Math.abs(shipped[i] - baseGrid[i]));
-if (worstBase > 1.5) {
-  throw new Error(`the rebuilt base grid disagrees with ${baseBinName} by ${worstBase} counts - the residual would be measured against the wrong surface`);
+// WHAT THIS CAN ASSERT, AND WHAT IT NO LONGER CAN. While the native grid was 10 m
+// the base was a bilinear resample of it, so the reconstruction was exact and the
+// test could be "worst sampled pixel under 1.5 counts". At 5 m it cannot: the
+// shipped base resamples the 10 m mosaic and this reconstruction resamples the 5 m
+// one, so the two legitimately differ - measured 2026-08-14, |diff| median 1.18 m,
+// p95 4.78 m. And the worst pixel is not a usable test at any resolution: it comes
+// out at 3316 m, because beside a nodata hole each grid blends real elevation with
+// the 238.5 m sentinel in its own proportion. That is guard 2's lesson arriving
+// from the other side, and a threshold set on it would be a threshold on an
+// artefact.
+//
+// So this asserts the weaker thing that is still worth asserting, on robust
+// statistics instead of extremes: the same terrain (median |diff| small) at the
+// same placement, scale and elevation range (median signed difference ~ 0). Both
+// catch what this check exists for - decoding the mosaic with the wrong range
+// shifts the median by tens of metres (the 5 m VDA extraction of this morning:
+// -29 m), and a wrong bbox or an unrelated file moves it by hundreds.
+const BASE_BIAS_MAX_M = 2;
+const BASE_SPREAD_MAX_M = 5;
+const diffs = [];
+for (let i = 0; i < BW * BH; i += 7) {
+  if (shipped[i] === 0 || baseGrid[i] === 0) continue; // nodata on either side
+  diffs.push(nativeToM(baseGrid[i]) - baseToM(shipped[i]));
 }
-console.log(`base grid matches the shipped file (worst ${worstBase.toFixed(2)} counts of 65535)`);
+diffs.sort((a, b) => a - b);
+const medianDiff = diffs[diffs.length >> 1];
+const absDiffs = diffs.map(Math.abs).sort((a, b) => a - b);
+const medianAbs = absDiffs[absDiffs.length >> 1];
+console.log(`base grid vs ${baseBinName} over ${(diffs.length / 1e6).toFixed(2)} M sampled pixels:`
+  + ` median ${medianDiff >= 0 ? '+' : ''}${medianDiff.toFixed(3)} m, median |diff| ${medianAbs.toFixed(3)} m`
+  + `, p95 ${absDiffs[Math.floor(absDiffs.length * 0.95)].toFixed(2)} m`);
+if (Math.abs(medianDiff) > BASE_BIAS_MAX_M || medianAbs > BASE_SPREAD_MAX_M) {
+  throw new Error(`the rebuilt base grid disagrees with ${baseBinName}: median `
+    + `${medianDiff.toFixed(2)} m (limit +/-${BASE_BIAS_MAX_M}), median |diff| ${medianAbs.toFixed(2)} m `
+    + `(limit ${BASE_SPREAD_MAX_M}) - the residual would be measured against the wrong surface`);
+}
 
 // Bilinear read of the base grid, in the same pixel-is-area convention the runtime
 // uses, at a native pixel's centre.
@@ -215,7 +289,16 @@ const baseAtNative = (nx, ny) => {
 // everything that can reach into a base pixel: the 2x2 native footprint that made
 // it, plus the 2 base pixels a bilinear read touches, plus a pixel of slack.
 const NODATA = 0;
-const DILATE_PX = 6;
+// In NATIVE pixels, and it cannot be a constant: it has to cover everything that
+// can reach into one base pixel - the footprint that made it, which is the
+// native/base ratio wide, plus the two base pixels a bilinear read touches - so
+// it scales with that ratio. 6 was sized by hand for the 10 m mosaic's x2.048 and
+// would be less than half of what the 5 m mosaic's x4.096 needs, which would not
+// fail loudly: it would quietly bring back the blend-next-to-a-hole corrections
+// that guard 2 was written for. Derived, with a pixel of slack.
+const NATIVE_PER_BASE = NW / BW;
+const DILATE_PX = Math.ceil(3 * NATIVE_PER_BASE) + 1;
+console.log(`native/base ratio ${NATIVE_PER_BASE.toFixed(3)} -> dilating the hole mask by ${DILATE_PX} native px`);
 const MW = TW + 2 * DILATE_PX;
 const MH = TH + 2 * DILATE_PX;
 const holeMask = new Uint8Array(MW * MH);
@@ -274,8 +357,8 @@ for (let y = 0; y < TH; y++) {
       bytes[y * TW + x] = encodeResidual(0);
       continue;
     }
-    const truth = elevMin + (nv / 65535) * SPAN;
-    const under = elevMin + (baseAtNative(col0 + x, row0 + y) / 65535) * SPAN;
+    const truth = nativeToM(nv);
+    const under = baseToM(baseAtNative(col0 + x, row0 + y));
     const residual = (truth - under) * fade;
     maxAbs = Math.max(maxAbs, Math.abs(residual));
     if (Math.abs(residual) > RESIDUAL_HALF_RANGE_M) clipped++;
@@ -308,7 +391,7 @@ writeFileSync(`${OUT_DIR}/${outName}`, Buffer.from(bytes));
 
 const manifest = {
   schemaVersion: 1,
-  purpose: 'Optional high-resolution terrain: the park at the source data\'s native 10 m, as a residual over heightfield.json\'s 20.5 m grid. Downloaded only when the quality control asks for it.',
+  purpose: `Optional high-resolution terrain: the park at ${nativeResX.toFixed(2)} m, the resolution of the DTM mosaic itself, as a residual over heightfield.json's ${(bboxW / BW).toFixed(2)} m grid. Downloaded only when the quality control asks for it.`,
   crs: CRS,
   // The tier's own rectangle, in the same CRS and convention as the base grid.
   bboxCrsUnits: {

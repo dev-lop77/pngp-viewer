@@ -4,11 +4,16 @@ import * as THREE from 'three';
 // the four extras, "modelli ad alta risoluzione come opzione da alzare, non come
 // nuovo default".
 //
-// The park's own 10 m elevation, which is the native resolution of the sources
-// this project already mosaics (Valle d'Aosta DTM ~10 m, Piemonte DTM5, TINITALY
-// 10 m). The shipped heightfield throws half of it away to make a 12.6 MB first
-// load; this puts it back, for the 40 x 31 km people actually walk in, and only
-// when asked.
+// The park's own 5 m elevation - which is what the sources this project mosaics
+// actually hold over it, once you stop believing the derived mosaic's own label:
+// the Valle d'Aosta DTM is a 2.0 m/px ASC and Piemonte's DTM5 is native 5 m, and
+// between them they cover the park (63% and 38% of its area, overlapping). Only
+// TINITALY, which fills the last hundredth of a percent on the highest peaks, is a
+// 10 m national mosaic. The shipped heightfield resamples all of it to 20.5 m to
+// make a 12.6 MB first load; this puts sixteen times the samples back, for the
+// 40 x 31 km people actually walk in, and only when asked. Built at 10 m on
+// 2026-08-13 and rebuilt at 5 m on 2026-08-14, when the finer source extraction
+// arrived.
 //
 // IT IS A RESIDUAL, NOT A SECOND HEIGHTFIELD, and that is the decision the whole
 // design rests on. The elevation is read by seven modules in three different ways
@@ -29,13 +34,22 @@ import * as THREE from 'three';
 // shaders bind at compile time and that gets its real data later, plus the one
 // copy of the maths that both the CPU and the GLSL side use.
 
-// Half-range of the signed-square-root mapping, in metres. Measured, not chosen:
-// over the park's 12.5 Mpx the residual runs -39 to +53 m, so 56 clears the
-// extremes with nothing to clip, while the square root keeps the steps at 0.003 m
-// near zero where 99.7% of the values are. A linear map over +/-32 m would have
-// been 2.6 MB smaller and quantised everything at 0.251 m, which is coarser than
-// the base grid's own 0.07 m - and would still have clipped 41 pixels by ~21 m.
-export const RESIDUAL_HALF_RANGE_M = 56;
+// Half-range of the signed-square-root mapping, in metres. Measured, not chosen -
+// and RE-measured when the tier went from 10 m to 5 m on 2026-08-14, because a
+// finer grid resolves more of what a 20.5 m average hides. It is not a number that
+// can be carried over:
+//
+//   10 m tier, 12.5 Mpx : residual -39.00 .. +53.34 m   -> 56 cleared it
+//    5 m tier, 39.7 Mpx : residual -86.61 .. +80.81 m   -> 56 clips 166 px
+//
+// 96 is the smallest size weighed that clips nothing, with ~11% of headroom over
+// the extreme. The distribution keeps its shape - half the tier is within 1.63 m,
+// 99% within 11.5 m - so the square root still spends precision where the data is:
+// 0.006 m steps near zero, 0.15 m at +/-1 m, against the 0.75 m a linear map over
+// the same range would quantise everything at. Its coarsest step, 1.5 m at +/-96 m,
+// lands only on the few hundred pixels of near-vertical rock where a 20.5 m average
+// and a 5 m sample genuinely disagree by that much.
+export const RESIDUAL_HALF_RANGE_M = 96;
 
 // ZERO HAS TO BE EXACTLY REPRESENTABLE, and the obvious mapping cannot do it: the
 // centre of 255 steps is 127.5, so code 128 decodes to 0.00086 m rather than to
@@ -104,7 +118,7 @@ export function createTierTexture(bytes, manifest, baseManifest) {
   }
   const texture = new THREE.DataTexture(bytes, width, height, THREE.RedFormat, THREE.UnsignedByteType);
   // Linear, because the correction is a continuous surface and nearest sampling
-  // would terrace it into 10 m squares - which is the exact artefact the tier
+  // would terrace it into 5 m squares - which is the exact artefact the tier
   // exists to remove.
   texture.magFilter = THREE.LinearFilter;
   texture.minFilter = THREE.LinearFilter;

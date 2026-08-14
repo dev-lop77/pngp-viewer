@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "purpose": "Optional high-resolution terrain: the park at the source data's native 10 m, as a residual over heightfield.json's 20.5 m grid. Downloaded only when the quality control asks for it.",
+  "purpose": "Optional high-resolution terrain: the park at 5.00 m, the resolution of the DTM mosaic itself, as a residual over heightfield.json's 20.48 m grid. Downloaded only when the quality control asks for it.",
   "crs": "EPSG:23032",
   "bboxCrsUnits": {
-    "xmin": 348606.92942298524,
+    "xmin": 348605.7676581034,
     "ymin": 5036775,
-    "xmax": 389668.88745827373,
-    "ymax": 5061082.479784367
+    "xmax": 389665.2781784586,
+    "ymax": 5061080
   },
   "dimensions": {
-    "width": 4106,
-    "height": 2431
+    "width": 8212,
+    "height": 4861
   },
   "resolutionMPerPx": {
-    "x": 10.000476871721506,
-    "y": 9.998963300850093
+    "x": 4.999940394587829,
+    "y": 5
   },
   "rowOrientation": "row 0 = north edge (ymax); row N-1 = south edge (ymin)",
   "pixelConvention": "area (cell-center), identical to heightfield.json",
   "encoding": {
     "dtype": "uint8",
     "meaning": "a signed elevation CORRECTION in metres, to be ADDED to the bilinear value of heightfield.json at the same world point",
-    "mapping": "s = code/255*2 - 1; metres = sign(s) * s^2 * 56",
-    "halfRangeM": 56,
+    "mapping": "s = code/255*2 - 1; metres = sign(s) * s^2 * 96",
+    "halfRangeM": 96,
     "zeroOutsideBbox": "The correction is zero everywhere outside bboxCrsUnits, and is faded to exactly zero over the outermost pixels, so the tier adds detail without moving the surface at its edge.",
     "fadePx": 32
   },
   "file": {
-    "name": "heighttier.f5ab4827.bin",
-    "bytes": 9981686,
-    "gzipBytes": 7382672,
-    "sha256Prefix": "f5ab4827"
+    "name": "heighttier.ca2d52f7.bin",
+    "bytes": 39918532,
+    "gzipBytes": 26191679,
+    "sha256Prefix": "ca2d52f7"
   },
   "source": {
     "sources": [
@@ -74,5 +74,5 @@
     }
   },
   "generatedBy": "tools/build-height-tier.mjs",
-  "generatedAt": "2026-08-13T14:22:00.198Z"
+  "generatedAt": "2026-08-14T07:38:22.894Z"
 }

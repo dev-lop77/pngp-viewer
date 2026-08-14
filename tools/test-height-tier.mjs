@@ -44,8 +44,16 @@ let worstTrip = 0;
 for (let i = -RESIDUAL_HALF_RANGE_M; i <= RESIDUAL_HALF_RANGE_M; i += 0.37) {
   worstTrip = Math.max(worstTrip, Math.abs(decodeResidual(encodeResidual(i)) - i));
 }
-check(worstTrip < 0.5,
-  `the codec round-trips within ${worstTrip.toFixed(3)} m over its whole range`);
+// The bound is DERIVED, not chosen: this is a rounding quantiser, so its error can
+// never exceed half of its coarsest step, and the coarsest step is the last one
+// before the half-range. A hardcoded 0.5 m instead was a number sized for a
+// half-range of 56 m, and it failed the moment the tier went to 5 m and the range
+// had to widen to 96 - reporting a broken codec when the codec was fine and only
+// the constant was stale.
+const coarsestStep = RESIDUAL_HALF_RANGE_M - decodeResidual(encodeResidual(RESIDUAL_HALF_RANGE_M) - 1);
+check(worstTrip <= coarsestStep / 2 + 1e-9,
+  `the codec round-trips within ${worstTrip.toFixed(3)} m, under half its coarsest step `
+  + `(${(coarsestStep / 2).toFixed(3)} m at +/-${RESIDUAL_HALF_RANGE_M} m)`);
 // The square root is the reason this fits in 8 bits at all: it must be far finer
 // near zero, where 99.7% of the residual lives, than a linear map would be.
 const stepNearZero = Math.abs(decodeResidual(encodeResidual(0) + 1));
@@ -188,8 +196,17 @@ if (loaded) {
   check(cpu.worstDrawn > cpu.worst * 0.5,
     `and the DRAWN surface moves with it (${cpu.worstDrawn.toFixed(2)} m) - which is what the camera, `
     + 'the markers and every scatter stand on');
-  check(cpu.segments > 7,
-    `the quadtree refines a level further inside the tier (deepest ${cpu.segments})`);
+  // How MANY levels further is derived from the tier's resolution, not assumed: one
+  // for a 10 m tier, two for a 5 m one. Asserting a bare "deeper than 7" would pass
+  // a build that downloaded 5 m data and then drew it on 10 m cells, which is three
+  // quarters of the download unused.
+  const baseManifest = JSON.parse(readFileSync('public/data/heightfield.json', 'utf8'));
+  const baseCellM = (baseManifest.bboxCrsUnits.xmax - baseManifest.bboxCrsUnits.xmin) / 4096; // 32 * 2^7
+  const expectDepth = 7 + Math.floor(Math.log2(baseCellM / manifest.resolutionMPerPx.x) + 1e-6);
+  check(cpu.segments === expectDepth,
+    `the quadtree refines to the tier's own resolution inside it: deepest ${cpu.segments}, `
+    + `which is ${(baseCellM / 2 ** (cpu.segments - 7)).toFixed(2)} m cells for `
+    + `${manifest.resolutionMPerPx.x.toFixed(2)} m data`);
 
   // NOTHING MAY BE LEFT BEHIND. Each scatter layer alone, against the ground it
   // stands on: if a layer kept the old surface it would hang above or sink into
@@ -229,9 +246,23 @@ if (loaded) {
   // distant one at 0.01%. Demanding more of them would be demanding a lucky
   // camera, and lowering everything to match would blind the test to the dense
   // layers vanishing.
-  check(layerMoved.grass > 0.005 && layerMoved.scree > 0.005,
+  // AND THE THRESHOLD IS ABOUT REACHING THE SCREEN, NOT ABOUT A SHARE. It was 0.5%,
+  // which was the share this camera happened to produce while the tier added ONE
+  // LOD level. Adding the second one on 2026-08-14 moved it to 0.47% and 0.43% and
+  // failed the test - with nothing wrong: the drawn ground got finer, so the camera
+  // reseats on it (measured: the surface moves 0.18 m on average and up to 8.5 m)
+  // and the near-field relief hides a little more grass. A number fitted to one
+  // camera and one LOD was measuring the seat, not the feature. What this check is
+  // for is "the layer did not stop being drawn", so it asks for two orders of
+  // magnitude less and reports the share instead of gating on it. Seating is
+  // asserted above, by the CPU and drawn surfaces moving together.
+  const dense = await page.evaluate(() => window.__pngp.groundcover.counts()
+    .filter((l) => l.kind === 'grass' || l.kind === 'scree'));
+  check(layerMoved.grass > 0.001 && layerMoved.scree > 0.001
+    && dense.length === 2 && dense.every((l) => l.drawn > 0),
     'the dense layers are still drawn on the new surface '
-    + `(grass ${(layerMoved.grass * 100).toFixed(2)}%, scree ${(layerMoved.scree * 100).toFixed(2)}%)`);
+    + `(grass ${(layerMoved.grass * 100).toFixed(2)}%, scree ${(layerMoved.scree * 100).toFixed(2)}% of the frame; `
+    + dense.map((l) => `${l.kind} ${l.drawn} of ${l.of}`).join(', ') + ')');
   // And for the blocks, a quantity that is not luck. Two consecutive runs of the
   // pixel version read 0.010% and then 0.000% from the same camera - which is the
   // measurement telling you it is the wrong one, not the feature failing. Whether

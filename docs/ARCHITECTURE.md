@@ -737,12 +737,21 @@ three of its failure modes without a browser, and a browser half that measures
 everything) with the altitude pinned through `window.__pngp.sky` — and asserts the
 pin *moved the sky*, not merely that it set a field.
 
-### High-resolution terrain — `src/heighttier.js`, `tools/build-height-tier.mjs` (2026-08-13)
+### High-resolution terrain — `src/heighttier.js`, `tools/build-height-tier.mjs` (2026-08-13, rebuilt at 5 m 2026-08-14)
 
-An **optional** 10 m elevation tier over the park, downloaded only when the HUD's
-`Terrain` control asks: 4106 × 2431 at the source data's own resolution, 9.5 MB
-raw, **7.0 MB gzipped**. `MAX_DEPTH` goes 7 → 8 (10.24 m cells) for tiles entirely
-inside its rectangle, and nowhere else.
+An **optional** 5 m elevation tier over the park, downloaded only when the HUD's
+`Terrain` control asks: 8212 × 4861 at the DTM mosaic's own resolution, 38.1 MB raw,
+**25.0 MB gzipped**. The quadtree goes `MAX_DEPTH` 7 → 9 (5.12 m cells) for tiles
+entirely inside its rectangle, and nowhere else.
+
+**How many levels deeper is derived, not chosen**: `floor(log2(base cell / tier
+cell))`, so a 10 m tier gets one and a 5 m tier gets two. It was a literal `+1`
+while only a 10 m tier existed, and a literal `+1` with 5 m data means drawing a
+quarter of what was downloaded — measured, the drawn surface is 0.243 m from the
+true ground at depth 8 and 0.080 m at depth 9. Costed from one real camera: 42 tiles
+with no tier, 102 at depth 8, 168 at depth 9 (0.09 / 0.21 / 0.34 M triangles).
+`MAX_TIER_EXTRA_DEPTH` in `terrain.js` caps it, and capping it to 1 gives the
+depth-8 behaviour back without changing the file that is downloaded.
 
 **It ships a residual, not a second heightfield**, and that decision is the whole
 design. The elevation is read by seven modules in three ways — the CPU bilinear
@@ -758,7 +767,11 @@ Encoding chosen by measurement, gzipped: absolute 16-bit under the shipped
 row-delta codec 12.5 MB; the same residual under that codec **16.7 MB** — worse,
 because the codec lives on smoothness along a row and a residual is precisely what
 is not smooth; 8-bit linear ±32 m 6.1 MB but clipping 41 pixels by ~21 m; **8-bit
-signed square root ±56 m, 8.7 MB, clipping nothing**. The square root puts 0.0035 m
+signed square root ±56 m, 8.7 MB, clipping nothing**. (Those are the 10 m tier's
+numbers, which is where the encoding was chosen; at 5 m the same encoding needs
+±96 m, because the residual runs −86.61 to +80.81 m instead of −39 to +53, and it
+weighs 25.0 MB gzip — 3.6× for 4× the pixels, since a finer residual is
+higher-frequency and gzip finds less to say about it.) The square root puts 0.0035 m
 steps where 99.7% of the residual lives and its coarse end on cliffs. **128 is the
 zero** and the sides span 127 steps each — the obvious 0..255 → −1..1 map has its
 centre at 127.5, so nothing would decode to *nothing*, and a millimetre across ten
@@ -780,17 +793,39 @@ the native mosaic, reading as 238 m): the first build produced a −1990 m
 correction, faithfully "fixing" the terrain wherever the DTM has a hole. **Testing
 the base for exactly zero is not enough**, because a base pixel next to a hole is a
 bilinear *blend* of real elevation and the sentinel — plausible, wrong, never
-exactly zero; the mask is dilated 6 px on the native grid to cover the 2×2 footprint
-that makes a base pixel plus the bilinear reach. And the shipped file's outer ring
-is asserted to decode to exactly 0.
+exactly zero; the mask is dilated on the native grid to cover the footprint that
+makes a base pixel plus the bilinear reach — `ceil(3 × native/base ratio) + 1`, which
+is 8 px at 10 m and 14 at 5 m. **It was the literal 6, and that is the one constant
+here that would have failed silently at 5 m**, bringing the blends straight back.
+And the shipped file's outer ring is asserted to decode to exactly 0.
+
+The guard that compares the rebuilt base grid against the shipped `.bin` had to
+change meaning with the resolution, and the reason generalises. It demanded the worst
+sampled pixel stay within 1.5 counts, i.e. "the shipped base is a bilinear resample
+of *this* native grid" — true only while the base and the tier came from the same
+mosaic. It now asserts robust statistics in metres: median signed difference ≈ 0
+(same placement, scale and elevation range) and small median |diff| (same terrain).
+The worst pixel is useless at any resolution — it comes out at **3316 m**, because
+beside a hole each grid blends real elevation with the sentinel in its own
+proportion. Each grid is also decoded with **its own** elevation range now: the
+native mosaic's comes from `DEM/pngp_heightmap_meta.json`, not from
+`heightfield.json`, because every re-extraction recomputes min/max from its own crop
+and using one for the other is an affine error of tens of metres that looks like
+terrain.
 
 **Source note.** `heightfield.json` calls the Valle d'Aosta DTM "native ~10m"; that
 describes the derived mosaic. `DEM/pngp_extraction_report.txt` records the source
 `DTM0508_002_UNICO.ASC` at **2.0 m/px**, so 5 m (or finer) is available from it —
-`tools/dtm-source/extract-heightmap.sh` already takes `RES_M`. Of what is on this
-machine, only the Piemonte DTM5 reaches 5 m, over **25.6%** of the tier. Separately,
-the tier covers 75.5% of the park's bounding box: the southernmost 7.7 km of the
-park lie outside the heightfield's own bbox and no source covers them today.
+`tools/dtm-source/extract-heightmap.sh` already takes `RES_M`. **Re-extracted and
+re-merged at 5 m on 2026-08-14**: over the park the mosaic is then 63.5% VDA and
+38.5% Piemonte DTM5 (overlapping), with 0.01% left to TINITALY, the only genuinely
+10 m source — so the detail is real over essentially all of it. (An earlier note here
+predicted "real detail on a quarter of the area". That counted only the source
+already extracted at 5 m and forgot this paragraph's own point about the 2 m ASC.)
+The mosaic is 145.9 MB, `DEM/`-local and untracked; the master GeoTIFF lives in
+`~/pngp-dtm-work/merged/`. Separately, the tier covers 75.5% of the park's bounding
+box: the southernmost 7.7 km of the park lie outside the heightfield's own bbox and
+no source covers them today.
 
 ### Ground cover — `src/landcover.js`, `src/groundcover.js`, `src/edelweiss.js` (2026-08-12)
 
