@@ -176,7 +176,7 @@
         /* 143 px of the longest option's text, plus 7 of left padding, 21 for the
            chevron and 2 of border. Every select the same, so the column is a column. */
         width: 176px;
-        padding: 3px 21px 3px 7px;
+        padding: 2px 21px 2px 7px;
         border: 1px solid rgba(255, 255, 255, 0.16);
         border-radius: 6px;
         background-color: rgba(255, 255, 255, 0.08);
@@ -188,6 +188,15 @@
         background-size: 9px 6px;
         color: #fff;
         font: inherit;
+        /* AFTER font:inherit, which is a shorthand and resets line-height - setting it
+           before had no effect at all, and the measurement said so: 25.19 px where the
+           arithmetic promised 22. "Tre select ALTE" was half of what the user
+           reported, so this is measured rather than assumed: the native widget was
+           19 px tall in this font and the first restyle came out at 27, making worse
+           the exact thing it was meant to fix. 16 of line box + 4 of padding + 2 of
+           border is 22. The panel's 1.6 line-height is right for reading a label and
+           too loose for a control. */
+        line-height: 16px;
         cursor: pointer;
       }
       #env-controls select:hover,
