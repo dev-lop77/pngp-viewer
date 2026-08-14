@@ -85,3 +85,29 @@ pipeline, not just `tools/process-heightmap.mjs`: `tools/fetch-osm.mjs` and
 `tools/fetch-hydrology.mjs` bake elevation into their own draft JSON and
 need to be re-run too (not just their `build-*.mjs` counterparts), or
 POI/water will silently keep stale elevations from the old heightfield.
+
+## 5 m, and where the copies live (2026-08-14)
+
+`DEM/pngp_heightmap.png` is now the **5 m** three-source mosaic, 145.9 MB, and it is
+**untracked** — `.gitignore` keeps it out of the history, which the DEM PNGs had
+grown to 97 MB of. `RES_M` is 5 in both `extract-heightmap.sh`'s successor run and
+in `merge-heightmaps.sh`; the two must agree, since the merge composites the other
+sources onto the VDA PNG's own grid.
+
+Because the mosaic is no longer versioned, three copies outside the repo are what
+keep it reproducible. **Do not delete them without reading this:**
+
+- `~/pngp-dtm-work/merged/` — the current 5 m run. `merged.tif` is the Float32
+  master in real metres; the PNG and sidecar there are what `DEM/` holds.
+- `~/pngp-dtm-work/merged-10m/` — the **10 m** mosaic and its `merged.tif`. This is
+  the input the SHIPPED `heightfield.<hash>.bin` was derived from, and it is
+  bit-identical to what was in git. Without it the base heightfield everything in
+  the scene stands on cannot be regenerated, and regenerating it from the 5 m mosaic
+  would produce a different surface and invalidate every baked elevation downstream
+  (POI, hydrology, and the height tier's residual with them).
+- `~/pngp-dtm-work/vda-5m/` — the VDA-only 5 m extraction, i.e. the merge's own
+  priority-1 input. Keeping it means a re-merge does not have to read the 10 GB ASC
+  again.
+
+`tinitaly/` and `piemonte/` are the other two sources and are re-fetchable by
+script; these three are not.
