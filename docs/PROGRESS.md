@@ -2,6 +2,75 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## NEXT SESSION STARTS HERE: take the heavy .bin out of git, history included
+
+The user's instruction at the close of 2026-08-14: *"segnati per la prossima volta di
+iniziare rimuovendo da git i file bin pesanti, anche dallo storico."* **Before any other
+work**, because every tier rebuild makes it worse — today's added 33 MB to `.git` in one
+commit, and `.git` is 103 MB again after having been cut to 70.
+
+### What is there
+
+Tracked now, and all three are files the site actually serves:
+
+| file | size |
+|---|---|
+| `public/data/heighttier.6a73fcb8.bin` (5 m level) | 38.1 MB |
+| `public/data/heightfield.3e0525a4.bin` (the base) | 18.4 MB |
+| `public/data/heighttier.c4305763.bin` (10 m level) | 9.5 MB |
+
+In history as well: two superseded `heighttier` bins (38.1 + 9.5 MB) and two superseded
+`heightfield` bins (18.4 + 4.6 MB). **Every `.bin` blob ever committed is 136.6 MB** of
+content inside a 103 MB pack. Also worth a decision while in there:
+`public/data/trails.json` (7.4 MB) and `tools/hydrology-draft.json` (6.3 MB — its
+sibling drafts are in `.gitignore` and it is not).
+
+Do not guess the result: today's 25–32 MB gzip estimate for the 5 m tier was an
+extrapolation that did not hold, and a pack is not the sum of its blobs. Measure after.
+
+### The method, which worked today
+
+- `git filter-repo` is **not installed** and `pip install` is PEP 668-blocked on this
+  machine. `git filter-branch --index-filter 'git rm -r --cached --ignore-unmatch
+  <paths>' -- main` did 87 commits in seconds. Then `rm -rf .git/refs/original`,
+  `git reflog expire --expire=now --all`, `git gc --prune=now --aggressive`.
+- **`cp -a .git` somewhere first.** It is 103 MB and it costs nothing.
+- **Restrict it to `-- main`.** `gh-pages` is an orphan branch that has never held these
+  paths, and it is the *published* one; today's rewrite left its hash byte-identical to
+  the remote's, which is the only reason the rewrite was safe. Check it afterwards with
+  `git show-ref refs/heads/gh-pages` against `git ls-remote --heads origin`.
+- `main` has never been pushed — `git branch -a` lists only `remotes/origin/gh-pages` —
+  so nothing needs force-pushing. Confirm that is still true before starting.
+- Verify with `git fsck`, `git log --oneline | wc -l` (87 + whatever is new), and a
+  `git status` that is clean with the files still on disk.
+
+### Four things to settle before running it, not after
+
+1. **A clone would no longer be able to build the site.** The code would be there and
+   the data would not. On this machine everything is reproducible —
+   `DEM/pngp_heightmap.png` is on disk (untracked), `process-heightmap.mjs` makes the
+   heightfield and `build-height-tier.mjs` the two tier levels — but that is a property
+   of this machine, not of the repository.
+2. **The published `gh-pages` branch holds the shipped copies and it is on the remote.**
+   That is the real safety net for the three tracked bins, and it should be written
+   down before anyone relies on it, because it is not obvious and it is one force-push
+   away from not being true.
+3. **`.gitignore` needs the forward-looking pattern**, not just a `git rm --cached`:
+   `public/data/*.bin` covers the tier levels and every future heightfield rebuild.
+   Note what that does to `tools/dev/deploy.sh`, which builds from the local `public/`
+   and therefore still works here and nowhere else.
+4. **Then the READMEs have to say how a clone gets its data**, per asset, or the repo
+   quietly becomes un-buildable by anybody else. `tools/dtm-source/README.md` already
+   does this for the DEM mosaic (added 2026-08-14, including which
+   `~/pngp-dtm-work/` copies must not be deleted); this extends the same treatment to
+   every derived asset.
+
+### And the state it is starting from
+
+Everything below this section is done, committed and green: the 5 m mosaic, the
+two-level tier with 10 m as the default, the HUD panel, and a clean 14-of-14 test suite.
+**Nothing is published** — that instruction still stands.
+
 ## Two levels, 10 m as the default, and a panel that stopped shouting (2026-08-14, later)
 
 The user tried the 5 m tier and gave the verdict this machine cannot: *"selezionando
