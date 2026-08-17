@@ -2,6 +2,55 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## The ground photo at 10 m, and a size diagnosis I got wrong (2026-08-17, late)
+
+**The basemap is 10.24 m/px for everyone now**, their decision after seeing the
+comparison: *"Nuovo default."* It had been 20.48 m/px since the start only because it
+copied `heightfield.json`'s grid, while Sentinel-2's visible bands are 10 m native -
+half the resolution the source already provided, from scenes needing no account and no
+key.
+
+**Being the default is what forced the engineering.** An opt-in tier could have had its
+menu entry disabled where the GPU cannot hold the texture; a default has no escape
+route. WebGL2 guarantees only 2048, this machine reports exactly 8192, and plenty of
+mobile caps at 4096. So the photograph ships at TWO resolutions and the hardware picks:
+`basemap.json` is a levels manifest (schema 2, coarsest first, heighttier's shape), and
+`pickBasemapLevel()` takes the finest level the reported limit can hold. Verified across
+limits - 4096 and 8191 get the 20.48 m level, 8192 and 16384 the 10.24 m one - and on
+the live site only the chosen file is fetched.
+
+Measured from the published site: first load **20.0 -> 24.2 MB**. WebP does not gzip
+further, so the +4.21 MB is exact. The gain is in the middle and far distance (53.1% of
+the frame changes at eye level, mean delta 4.4/255); underfoot it is nearly nothing,
+because a 10 m texel is still 10 m across.
+
+Also measured, and it corrected the instrument twice: the ground cover is **not drawn at
+all** from 400 m up, so an aerial "cover off" and "cover on" pair asked the same question
+(0.03% apart); and at eye level the scatter covers only 2.1% of the frame, so the
+photograph is the ground colour rather than something hidden under grass.
+
+### THE SIZE DIAGNOSIS I GOT WRONG, which is the part worth reading
+
+`.git` went 32 -> 74 MB over the day's deploys and I attributed it to gh-pages history
+bloat, on the strength of gh-pages holding **107.0 MB** of blob content against main's
+37.1. `tools/dev/reset-gh-pages.sh` collapsed 13 commits into 1 - tree identical by
+construction via `git commit-tree`, all 18 published files verified byte-for-byte over
+HTTP afterwards, `fsck` clean - and recovered **three megabytes**.
+
+**A sum of uncompressed blob sizes is not a measure of what a pack costs.** Git
+delta-compresses near-duplicate binaries so well that the superseded copies were nearly
+free already. What `.git` actually holds is the site: the current published tree is
+**77.2 MB in 19 files**, half of it the 38.1 MB five-metre tier level, while **main alone
+packs to 14 MB**. The growth was the site getting bigger - the tier `.bin` reaching
+gh-pages for the first time - not history accumulating.
+
+So: **do not come to that script expecting space back.** Its real value is that it makes
+collapsing the published branch provably harmless, which is worth having for when the
+history genuinely is long. The lever that would work on disk is not keeping gh-pages
+locally at all (`deploy.sh` recreates it as an orphan when absent), trading ~56 MB of
+disk for fetching the branch per deploy. **They chose to keep it**: 71 MB is fine once you
+know 57 of it is the site.
+
 ## PUBLISHED, and how a publish check is run from now on (2026-08-17)
 
 **The site is live again** at https://dev-lop77.github.io/pngp-viewer/ with the models
