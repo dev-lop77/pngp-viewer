@@ -21,7 +21,7 @@ reproducible project and one that only builds on one laptop.
 | `tools/hydrology-draft.json` | 6.3 MB | `node tools/fetch-hydrology.mjs` (network: Overpass) |
 | `tools/forest-draft.json` | — | `node tools/fetch-forest.mjs` (network: Overpass) |
 | `tools/ndvi-draft.bin` + `.json` | — | `python3 tools/basemap-source/build-ndvi.py` (needs the Sentinel-2 scenes) |
-| `tools/landcover-osm-draft.json` | 11.6 MB | `node tools/fetch-landcover-osm.mjs` (see the filename note in `.gitignore`) |
+| `tools/landcover-osm-draft.json` | 11.6 MB | `node tools/fetch-landcover-osm.mjs` — but that pipeline is retired, read its header first |
 
 The *manifests* (`heightfield.json`, `heighttier.json`, …) **are** tracked. They are a
 few KB, they carry the calibration and the verified licence text, and they name the

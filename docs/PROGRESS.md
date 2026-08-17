@@ -2,6 +2,42 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## The landcover draft nobody read (2026-08-17, after the purge)
+
+The user picked this off the three things left over: *sistemare il landcover-draft*.
+It looked like one typo and was six, all left by the same rename.
+
+**Diagnosed before touching anything, because "which name is right" was the whole
+question.** Both names entered in the same commit (`d1e3857`), so it was never a rename
+that half-landed — and the decider was the draft on disk, whose own `generatedBy` reads
+`tools/fetch-landcover.mjs`: **a third name that does not exist any more.** That gives
+the real history. This pair was once `fetch-landcover.mjs` / `build-landcover.mjs`;
+when the satellite NDVI route won and took those names, the OSM pair was suffixed
+`-osm` and the draft renamed on disk by hand — and step 1 kept every pre-rename string
+it had.
+
+So `tools/landcover-osm-draft.json` is the right name, on three independent votes: step
+2 reads it, `.gitignore` listed it, and it is what is actually on disk. Step 1's
+`OUT_FILE` was the odd one out. Fixed there, along with the five other stale strings —
+`Usage:`, the `User-Agent`, the draft's own `generatedBy`, the closing `Next:` line, and
+**two header sentences that had become actively misleading**, since
+`build-landcover.mjs` today is the *satellite* pipeline, a different thing that reads a
+different draft and ships its output.
+
+`.gitignore` goes back to one name, the two-name safety net from the purge commit being
+dead weight once the halves agree.
+
+**What was verified, and what was not.** Step 2 was re-run against the existing draft
+and reproduces both masks **byte-identically** (`landcover-grass.df39c0b7.png`,
+`landcover-shrub.5e10c718.png`, and `landcover.json` apart from `generatedAt`), so the
+consuming half is untouched. Step 1 was **not** run: it is an Overpass round trip for
+tens of MB feeding a retired pipeline. Its write path is one `writeFileSync(OUT_FILE,
+…)` and `OUT_FILE` now equals step 2's `DRAFT` — that is the whole invariant, read
+rather than executed, and worth saying plainly instead of implying a run.
+
+Step 1's header also says **RETIRED** now, in front of the Overpass query rather than
+only at the top of step 2 where somebody about to spend that round trip would not look.
+
 ## The heavy .bin are out of git, history included (2026-08-17)
 
 The user's standing instruction from the close of 2026-08-14, done first thing as
@@ -71,11 +107,11 @@ longer holds a copy to fall back on.
 4. `tools/README.md` covers every derived asset, and `tools/dtm-source/README.md` now
    points at it.
 
-Found while in there and **recorded rather than fixed**, because correcting it changes
-what the pipeline reads: `fetch-landcover-osm.mjs` writes `tools/landcover-draft.json`
-while `build-landcover-osm.mjs` reads `tools/landcover-osm-draft.json`. Only the
-second name was ignored, so re-running the fetch would have dropped an 11 MB untracked
-file into `git status` — exactly today's failure mode. Both names are ignored now.
+Found while in there, and **then fixed at the user's choosing** — see the next section.
+`fetch-landcover-osm.mjs` wrote `tools/landcover-draft.json` while
+`build-landcover-osm.mjs` reads `tools/landcover-osm-draft.json`, so the fetch would
+have dropped an 11 MB untracked file into `git status` under a name nothing consumed:
+exactly today's failure mode.
 
 `tools/dev/deploy.sh` is unchanged and still publishes from the local `public/`, so it
 works here and nowhere else. **Nothing is published** — that instruction still stands.

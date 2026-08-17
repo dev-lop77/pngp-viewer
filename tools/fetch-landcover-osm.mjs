@@ -1,9 +1,21 @@
 #!/usr/bin/env node
 // Step 1 of the landcover-mask pipeline (grass and shrubs, 2026-08-12): pull the
 // raw open-vegetation polygons covering our bbox from Overpass and cache them on
-// disk. tools/build-landcover.mjs turns the cache into the shipped masks; this
-// file does no interpretation beyond assigning each polygon a CLASS, which is
-// the one thing the rasteriser cannot recover from geometry alone.
+// disk. tools/build-landcover-osm.mjs turns the cache into masks; this file does
+// no interpretation beyond assigning each polygon a CLASS, which is the one thing
+// the rasteriser cannot recover from geometry alone.
+//
+// RETIRED, and read this before spending an Overpass round trip on it: the shipped
+// grass and scree masks come from the satellite NDVI instead
+// (tools/basemap-source/build-ndvi.py, tools/build-landcover.mjs), and step 2's
+// output is deliberately parked in tools/landcover-unshipped/. See the retirement
+// notice at the top of tools/build-landcover-osm.mjs. Both halves still run.
+//
+// The `-osm` in these filenames is what that decision left behind: this pair was
+// once fetch-landcover.mjs / build-landcover.mjs, and the satellite route took
+// those names. Every reference below was renamed to match on 2026-08-17 - the
+// draft's own path had been the pre-rename one since the split, so this script
+// wrote a file that step 2 did not read.
 //
 // Same fetch/build split, same mirror walking and the same gitignored draft as
 // tools/fetch-forest.mjs - read that file's header for why. This is deliberately
@@ -28,16 +40,16 @@
 // `natural=fell` is carried as its own class instead of being folded into grass
 // because it is not the same thing: it is the thin, discontinuous turf of the
 // alpine zone, and the difference between it and a mown valley meadow is most of
-// what the eye uses to read altitude on a hillside. build-landcover.mjs weights
+// what the eye uses to read altitude on a hillside. build-landcover-osm.mjs weights
 // it down; keeping the distinction here means that weight can be retuned without
 // another Overpass round trip.
 //
-// Usage: node tools/fetch-landcover.mjs
+// Usage: node tools/fetch-landcover-osm.mjs
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import proj4 from 'proj4';
 
-const OUT_FILE = 'tools/landcover-draft.json';
+const OUT_FILE = 'tools/landcover-osm-draft.json';
 const ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
@@ -90,7 +102,7 @@ for (const url of ENDPOINTS) {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         Accept: 'application/json',
-        'User-Agent': 'pngp-viewer/0.1 (tools/fetch-landcover.mjs, landcover mask extraction)',
+        'User-Agent': 'pngp-viewer/0.1 (tools/fetch-landcover-osm.mjs, landcover mask extraction)',
       },
       body: `data=${encodeURIComponent(query)}`,
     });
@@ -139,7 +151,7 @@ function polygonsOf(list, ringsOf) {
 }
 
 const draft = {
-  generatedBy: 'tools/fetch-landcover.mjs',
+  generatedBy: 'tools/fetch-landcover-osm.mjs',
   generatedAt: new Date().toISOString(),
   bboxWgs84: { south, west, north, east },
   source: {
@@ -202,4 +214,4 @@ console.log(
     `${points.toLocaleString()} vertices -> ${OUT_FILE}`,
 );
 for (const t of TAGS) console.log(`  ${t.class.padEnd(10)} ${(byClass[t.class] ?? 0).toString().padStart(5)}`);
-console.log('\nNext: node tools/build-landcover.mjs');
+console.log('\nNext: node tools/build-landcover-osm.mjs');

@@ -9,11 +9,6 @@ tools/dev/logs/
 
 tools/forest-draft.json
 tools/hydrology-draft.json
-# Both names, because the two halves of that pipeline disagree: fetch-landcover-osm.mjs
-# writes landcover-draft.json and build-landcover-osm.mjs reads landcover-osm-draft.json
-# (the file on disk has the longer name, so it was renamed by hand at some point). Until
-# one of them is corrected, ignoring only one name lets an 11 MB draft turn up untracked.
-tools/landcover-draft.json
 tools/landcover-osm-draft.json
 tools/landcover-unshipped/
 tools/ndvi-draft.bin
