@@ -75,8 +75,23 @@ export function sanitize(raw) {
     time: time == null ? null : clamp(time, 0, 1),
     sky: WEATHER_KEYS.includes(raw.sky) ? raw.sky : null,
   };
-  // A preference, not part of the view - present only in stored state.
+  // PREFERENCES, not part of the view: present only in stored state, never in a
+  // shared link. The distinction matters and `sound` set it - a link that carried
+  // quality settings would impose the sender's machine on the recipient's, and the
+  // three below are exactly the settings someone picks by watching their own frame
+  // counter. The user reported the gap: "la scelta del livello di Terrain e Models non
+  // viene salvata nel browser".
+  //
+  // Each is stored as a NUMBER and merely range-checked here. Whether a particular
+  // value is one the control actually offers is main.js's business, because the option
+  // lists live in index.html and this module must not grow a second copy of them.
   if (typeof raw.sound === 'boolean') state.sound = raw.sound;
+  const terrain = num(raw.terrain); // 0 = no tier, else the tier level plus one
+  if (terrain != null) state.terrain = clamp(Math.round(terrain), 0, 9);
+  const models = num(raw.models); // 0 = standard, 1 = high
+  if (models != null) state.models = clamp(Math.round(models), 0, 1);
+  const cover = num(raw.cover); // ground cover density, 0..1
+  if (cover != null) state.cover = clamp(cover, 0, 1);
   return state;
 }
 

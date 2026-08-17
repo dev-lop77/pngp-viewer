@@ -485,6 +485,12 @@ function captureViewState() {
     time: lighting.fraction,
     sky: weather ? weather.current : null,
     sound: audio.enabled,
+    // Quality preferences. Read off the controls rather than off the holders they
+    // drive, because the control is what the user chose - a holder can be mid-ramp
+    // (the terrain tier cross-fades over 0.5 s) and would save a value nobody picked.
+    terrain: envTerrain ? Number(envTerrain.value) : null,
+    models: envModels ? Number(envModels.value) : null,
+    cover: envGroundcover ? Number(envGroundcover.value) : null,
   };
 }
 
@@ -544,6 +550,22 @@ let saveAccum = 0;
 let lastSaved = '';
 let spawnSettled = false;
 
+// Put a stored quality choice back on its control, BEFORE that control's own start-up
+// code reads it. That ordering is the whole trick: the terrain tier's bootstrap calls
+// applyTerrainQuality(), which reads envTerrain.value, so setting the value first makes
+// the stored level load instead of the default with no second loading path.
+//
+// Only from storedState, never from a shared link - see the note in viewstate.js. And
+// only if the control still offers that value: option lists change, and a select forced
+// to a value it does not have reads back as empty, which would then be saved.
+function restoreChoice(el, value) {
+  if (!el || value == null) return false;
+  const wanted = String(value);
+  if (![...el.options].some((o) => o.value === wanted)) return false;
+  el.value = wanted;
+  return true;
+}
+
 function saveNow() {
   // Nothing before the spawn is real: until the restore-or-Le-Pont decision has
   // run, the camera is still at the 3,000 m placeholder, and saving that would
@@ -552,7 +574,11 @@ function saveNow() {
   if (!spawnSettled) return;
   const state = captureViewState();
   if (!state) return;
-  const signature = buildHash(state) + (state.sound ? '&s=1' : '&s=0');
+  // buildHash() deliberately leaves the preferences out - they are not part of a
+  // shareable view - so the signature has to carry them itself or a change of quality
+  // would never be detected and never saved.
+  const signature = `${buildHash(state)}&s=${state.sound ? 1 : 0}`
+    + `&t=${state.terrain}&m=${state.models}&c=${state.cover}`;
   if (signature === lastSaved) return;
   lastSaved = signature;
   saveViewState(state);
@@ -953,6 +979,10 @@ if (envTerrain) {
         + `${mb < 10 ? mb.toFixed(1) : mb.toFixed(0)} MB`;
     }
   };
+  // A stored choice beats the Medium default, and it has to be put on the control
+  // BEFORE the bootstrap below reads it - which is also what keeps a returning visitor
+  // who chose Standard from downloading 6.7 MB they had already turned down.
+  restoreChoice(envTerrain, storedState?.terrain);
   // Medium is the default, so its level loads without being asked for - but AFTER the
   // scene is up rather than in front of it. 7 MB ahead of the first frame would trade
   // an instant start for a better ground, and the ground can arrive a moment late.
@@ -968,6 +998,7 @@ function applyGroundcoverDensity() {
   groundcover?.applyDensity();
 }
 envGroundcover.addEventListener('change', applyGroundcoverDensity);
+restoreChoice(envGroundcover, storedState?.cover);
 GROUNDCOVER_DENSITY.value = Number(envGroundcover.value);
 
 // The high-resolution flora and fauna models. Nothing to load and nothing to
@@ -980,6 +1011,7 @@ function applyModelDetail() {
   vegetation?.applyDetail();
 }
 envModels.addEventListener('change', applyModelDetail);
+restoreChoice(envModels, storedState?.models);
 applyModelDetail();
 
 // Ambient sound: the checkbox and 'M' are two views of the same state, so both

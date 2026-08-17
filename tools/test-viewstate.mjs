@@ -168,6 +168,38 @@ await page.goto(url, { waitUntil: 'domcontentloaded' });
 await waitForSpawn();
 results.afterResetReload = await readView();
 
+// THE QUALITY CHOICES ARE PREFERENCES AND HAVE TO SURVIVE A RELOAD (2026-08-17).
+// The user's report: "la scelta del livello di Terrain e Models non viene salvata nel
+// browser." They were absent from the sanitiser, so they were dropped on the way to
+// localStorage no matter what the page did with them.
+//
+// Terrain is deliberately set to Standard rather than to a finer level: it is the one
+// value whose restore is observable without waiting on a download, and picking it also
+// checks the case that matters most - a visitor who turned the tier OFF must not have
+// 6.7 MB fetched for them again on the next visit.
+const pickQuality = async (terrain, models, cover) => {
+  await page.evaluate(({ terrain, models, cover }) => {
+    for (const [id, v] of [['env-terrain', terrain], ['env-models', models], ['env-groundcover', cover]]) {
+      const el = document.getElementById(id);
+      el.value = String(v);
+      el.dispatchEvent(new Event('change'));
+    }
+  }, { terrain, models, cover });
+  await page.waitForTimeout(2600); // one autosave interval plus slack
+};
+const readQuality = () => page.evaluate(() => ({
+  terrain: document.getElementById('env-terrain').value,
+  models: document.getElementById('env-models').value,
+  cover: document.getElementById('env-groundcover').value,
+  stored: JSON.parse(localStorage.getItem('pngp.viewer.v1') ?? 'null')?.state ?? null,
+}));
+
+await pickQuality(0, 1, 0.2);
+results.qualityPicked = await readQuality();
+await page.goto(url, { waitUntil: 'domcontentloaded' });
+await waitForSpawn();
+results.qualityReloaded = await readQuality();
+
 await browser.close();
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
@@ -242,6 +274,20 @@ check(distXZ(results.afterReset, results.firstVisit) < 5, "'back to Le Pont' did
 check(results.afterReset.mode === 'walk', "'back to Le Pont' left the camera in fly mode");
 check(distXZ(results.afterResetReload, results.firstVisit) < 5,
   "the autosave undid 'back to Le Pont' - the reset must be what gets saved");
+
+console.log('\nQuality choices across a reload:');
+console.log(`  picked      terrain ${results.qualityPicked.terrain}, models ${results.qualityPicked.models},`
+  + ` cover ${results.qualityPicked.cover}`);
+console.log(`  stored      terrain ${results.qualityPicked.stored?.terrain}, models ${results.qualityPicked.stored?.models},`
+  + ` cover ${results.qualityPicked.stored?.cover}`);
+console.log(`  after load  terrain ${results.qualityReloaded.terrain}, models ${results.qualityReloaded.models},`
+  + ` cover ${results.qualityReloaded.cover}`);
+check(results.qualityPicked.stored?.terrain === 0 && results.qualityPicked.stored?.models === 1
+  && results.qualityPicked.stored?.cover === 0.2,
+  'the quality choices reach localStorage at all - they used to be dropped by the sanitiser');
+check(results.qualityReloaded.terrain === '0' && results.qualityReloaded.models === '1'
+  && results.qualityReloaded.cover === '0.2',
+  'and every one of them is back on its control after a reload');
 
 if (problems.length) console.log(`\nPage problems:\n  ${problems.join('\n  ')}`);
 if (failures.length) {
