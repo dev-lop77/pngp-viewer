@@ -2,6 +2,89 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## NEXT SESSION: ASK WHERE TO START. DO NOT PICK.
+
+Their instruction closing 2026-08-17: *"Salva il punto in cui siamo arrivati e chiedimi
+da dove iniziare all'inizio della prossima sessione di lavoro."*
+
+So the first move is a question, not work. Four refinements were ANALYSED and NOTHING was
+implemented - no code was written for any of them, and the working tree is clean at the
+published state. They also declined a "which do I start with" menu mid-analysis because
+they wanted to clarify the premises first, so put the open questions below in front of
+them rather than a priority list.
+
+### The four they raised, with what the data says
+
+**1. Forest roads, e.g. Thumel to Rifugio Benevolo.** And a correction of mine that
+matters: *"Il sentiero, oltre la strada, che collega Thumel al Rifugio esiste ed e il
+numero 13."* They were right. `segnavia 13`, "Thumel - Rifugio Benevolo", 3,742 m, IS in
+`~/pngp-trails-work/pngp_sentieri.geojson` - **0 of its 108 points fall inside the park
+polygon**, closest approach **516 m** outside, so the clip drops it. My earlier claim that
+no such trail existed came from filtering the SHIPPED trails by start/end name, which only
+proves what survived the clip. Do not diagnose absence from a derived file again.
+
+The road itself is available: OSM has **42 `highway=track` ways** in that box, all
+unnamed, mostly `surface=ground`, plus 7 unclassified and 5 service.
+
+**2. The waterfall and Lago Goletta - two different causes.**
+- `Lago Goletta III` is in the OSM hydrology draft, **58 m across** (the minimum is 20),
+  and **0 of 18 points inside the boundary**. Their guess was right: it is excluded for
+  being outside the park.
+- The waterfall is not a boundary problem. That valley has **5 waterfall nodes** in OSM,
+  of which only `Cascata Entrelor` is NAMED (and already ships). The other four are
+  **unnamed**, and `WATERFALL_ALLOWLIST` in `build-hydrology.mjs` matches by name and
+  osmId, so an unnamed node was never a candidate. Two of them sit **342 m** and **491 m**
+  from the trail, so one is very likely the one they mean - but which is a guess until
+  they name it.
+- Also checked and NOT the cause here: `fetch-osm.mjs` asks only for
+  `node["waterway"="waterfall"]`, so a waterfall mapped as a way would be invisible.
+  There are none mapped that way in this valley.
+
+**THE COMMON CAUSE, and it explains exactly what they see and do not see: the inclusion
+rules disagree with each other.** Huts get `HUT_BUFFER_M = 750`; trails and lakes get a
+strict inside-only test; waterfalls get a hand-curated allowlist. That is why the refuge
+appears while the trail to it and the lake above it do not.
+
+**A SUSPICION TO SETTLE BEFORE LOOSENING ANY TOLERANCE.** A refuge at 2,286 m in the
+upper Val di Rhemes measuring 516 m to 1.3 km OUTSIDE the park is odd. The polygon is OSM
+relation 919270 via Nominatim (7,857 vertices, `tools/park-boundary.geojson`). Either the
+upper Rhemes really is excluded, or that polygon is imprecise there - and if it is the
+polygon, half of points 1 and 2 are bad data rather than rules to relax. Check against the
+Ente Parco's own perimeter first.
+
+**3. Extending to Valgrisenche costs less than it sounds.** The terrain **already covers
+it** - no new DEM - and the data is **already downloaded**:
+
+| | in hand | shipped |
+|---|---|---|
+| trails (source) | 1,130 | 73 |
+| POI draft | 2,595 | 426 |
+| lakes | 1,517 | 198 |
+| glaciers | 216 | 47 |
+| rivers | 125 | 10 |
+
+So the cost is the inclusion rule and the payload, not acquisition. Opening to the whole
+bbox multiplies the vector files about 6x (1.1 MB -> ~6 MB on a 24.2 MB first load).
+Valgrisenche alone is far less and has not been measured yet.
+
+**4. Trail number/name along the trace - the cheapest of the four.** `trails.json`
+already carries `segnavia` (e.g. `"12 - 13A - 11B"`), `name`, `difficulty`, `lengthM`,
+`elevGainM`. Nothing in any pipeline has to change; it is purely rendering.
+
+### The clarifications they have NOT answered - ask these
+
+1. **Is the upper Val di Rhemes actually in the park?** They know the ground; if it is,
+   the OSM polygon is wrong and loosening tolerances would treat the symptom.
+2. **Park, or region?** Trail 13, Lago Goletta and Valgrisenche are all OUTSIDE the
+   boundary. The real question may not be how much tolerance to grant but whether the
+   viewer shows the park or the area around it.
+3. **Which waterfall, and what is it called?** Four unnamed candidates; naming it
+   identifies it instead of guessing by proximity.
+4. **How should a trail be labelled?** Always visible or only near, on the trace or on a
+   detached label, number only or the long name too.
+5. **Should a forest road look different from a footpath**, or just be another trace?
+
+
 ## The ground photo at 10 m, and a size diagnosis I got wrong (2026-08-17, late)
 
 **The basemap is 10.24 m/px for everyone now**, their decision after seeing the
