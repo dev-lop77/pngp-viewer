@@ -70,9 +70,27 @@ function materialFor(variant, colored) {
 const colored = setName !== 'tree';
 const built = set.variants.map((v) => ({ variant: v, ...buildVariant(v, { colored }) }));
 
-// Spacing: wide enough that neighbours never overlap at this camera, derived from
-// the models' own footprint rather than guessed.
-const spanM = set.heightM * (set.heightM > 4 ? 0.62 : 1.15);
+// Three-quarter front, so a heading is one yaw. Declared before the spacing
+// because the spacing depends on how wide the models are AT this angle.
+const YAW = 0.62;
+
+// Spacing from the models' MEASURED footprint, not from their height. A fox is
+// 1.1 m long and 0.54 m tall, so spacing by height (the first pass) overlapped
+// two of them and hid the very brush the candidate was adding. The width that
+// matters is the rotated one: a box dx by dz turned by YAW spans
+// |dx cos| + |dz sin| across the screen.
+const spanM = (() => {
+  let widest = 0;
+  for (const b of built) {
+    b.geometry.computeBoundingBox();
+    const bb = b.geometry.boundingBox;
+    const s = setName === 'tree' ? TREE_RADIUS_RATIO * set.heightM : 1;
+    const dx = (bb.max.x - bb.min.x) * s;
+    const dz = (bb.max.z - bb.min.z) * (setName === 'tree' ? s : 1);
+    widest = Math.max(widest, Math.abs(dx * Math.cos(YAW)) + Math.abs(dz * Math.sin(YAW)));
+  }
+  return widest * 1.3;
+})();
 const startX = -((built.length - 1) / 2) * spanM;
 
 const placed = built.map((b, i) => {
@@ -89,7 +107,7 @@ const placed = built.map((b, i) => {
   // sits on +Z, so 0 is head-on and the first pass's 0.82*PI turned them almost
   // fully away - which judged four rumps. This shows the head, the horn sweep and
   // one flank at once, which is how you actually meet one on a slope.
-  mesh.rotation.y = 0.62;
+  mesh.rotation.y = YAW;
   scene.add(mesh);
   if (showWire) {
     const wire = new THREE.Mesh(
@@ -104,11 +122,15 @@ const placed = built.map((b, i) => {
   return { ...b, mesh, scale };
 });
 
-const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.05, 2000);
+// fov 60, because that is main.js's camera. The first pass used 42, which drew
+// every candidate about 30% larger than the app ever will - an instrument that
+// flatters what it measures, which is the one thing a bench must not do.
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.05, 2000);
 
 function frame() {
-  const crownW = setName === 'tree' ? set.heightM * TREE_RADIUS_RATIO * 2 : set.heightM;
-  const rowWidth = (built.length - 1) * spanM + crownW;
+  // The row is (n-1) gaps plus one model's own footprint - and spanM already
+  // carries that footprint, measured.
+  const rowWidth = (built.length - 1) * spanM + spanM / 1.3;
   // Far enough back to hold the whole row, but never nearer than the requested
   // viewing distance - so `dist` is a floor on how close the eye gets, not a
   // promise about framing.
@@ -144,11 +166,15 @@ function draw() {
   labels.innerHTML = '';
   const base = placed[0].triangles;
   const colW = window.innerWidth / placed.length;
+  const box = rowBox();
   placed.forEach((p, i) => {
     const el = document.createElement('div');
     el.className = 'label';
     el.style.left = `${colW * (i + 0.5)}px`;
-    el.style.bottom = '10px';
+    // Directly under the row, not at the page bottom. Pinning them to the bottom
+    // meant the crop had to keep every empty pixel between the models' feet and
+    // the labels - up to 400 px of bare ground in a shot meant to show a coat.
+    el.style.top = `${box.y1 + 14}px`;
     // A tick, so a column is tied to its model even when the row is narrow.
     const world = new THREE.Vector3(p.mesh.position.x, 0, 0).project(camera);
     el.style.setProperty('--tick-dx', `${((world.x + 1) / 2) * window.innerWidth - colW * (i + 0.5)}px`);
@@ -176,10 +202,45 @@ function draw() {
 draw();
 window.addEventListener('resize', draw);
 
+// Where the row actually sits on screen, in CSS pixels, so the shooter can crop
+// the empty sky off without moving the camera. Cropping rather than approaching is
+// the point: it magnifies the image while leaving every pixel the one the app would
+// have drawn at this distance, so a shape cannot be approved at a size the game
+// never shows it.
+function rowBox() {
+  const box = new THREE.Box3();
+  for (const p of placed) {
+    p.mesh.updateMatrixWorld();
+    box.union(new THREE.Box3().setFromObject(p.mesh));
+  }
+  const pts = [];
+  for (const x of [box.min.x, box.max.x]) {
+    for (const y of [box.min.y, box.max.y]) {
+      for (const z of [box.min.z, box.max.z]) {
+        const v = new THREE.Vector3(x, y, z).project(camera);
+        pts.push([((v.x + 1) / 2) * window.innerWidth, ((-v.y + 1) / 2) * window.innerHeight]);
+      }
+    }
+  }
+  return {
+    x0: Math.min(...pts.map((q) => q[0])),
+    y0: Math.min(...pts.map((q) => q[1])),
+    x1: Math.max(...pts.map((q) => q[0])),
+    y1: Math.max(...pts.map((q) => q[1])),
+  };
+}
+
 // For tools/dev/shoot-models.mjs: the numbers it reports come from here rather
 // than from a second count of the same geometry.
 window.__models = {
   set: setName,
+  rowBox,
+  labelsBottom: () => {
+    let bottom = 0;
+    for (const el of labels.children) bottom = Math.max(bottom, el.offsetTop + el.offsetHeight);
+    return bottom;
+  },
+  viewport: () => ({ w: window.innerWidth, h: window.innerHeight }),
   variants: placed.map((p) => ({
     label: p.variant.label,
     triangles: p.triangles,

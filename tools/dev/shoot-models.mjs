@@ -25,11 +25,20 @@ const OUT_DIR = 'tools/dev/logs/models';
 // Each set is shot at two ranges: the one where the detail is supposed to pay for
 // itself, and one where it plausibly stops paying. A single distance would let a
 // candidate win on a range nobody meets it at.
+// The near distance per species is NOT the same number, because the animals are
+// not the same size: it is chosen to put each one at a comparable ~150 px, which is
+// the only fair way to compare treatments across a 1.4 m ibex and a 0.2 m squirrel.
+// The header of every shot prints the pixel height, so the choice is visible rather
+// than hidden in this table.
 const SHOTS = {
   ibex: [
     { dist: 5, why: 'close - the range the detail is for' },
     { dist: 22, why: 'the range you usually first see one' },
   ],
+  chamois: [{ dist: 4, why: 'walked down - it flees at 2.08 m/s against your 4' }],
+  fox: [{ dist: 2.5, why: 'a curious fox comes to you' }],
+  marmot: [{ dist: 1.6, why: 'as close as 62 px at 4 m is worth showing' }],
+  squirrel: [{ dist: 1.1, why: 'the smallest animal in the park, at 38 px in play' }],
   tree: [
     { dist: 24, why: 'standing under it' },
     { dist: 90, why: 'across a valley shoulder' },
@@ -38,7 +47,10 @@ const SHOTS = {
 
 mkdirSync(OUT_DIR, { recursive: true });
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1600, height: 640 } });
+// The app's own viewport, so the models are the size the app draws them. The frame
+// gets CROPPED to the row afterwards rather than the camera moved in - see rowBox()
+// in model-preview.js.
+const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 
 const errors = [];
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
@@ -55,7 +67,18 @@ for (const set of sets) {
     await page.waitForFunction(() => window.__models?.variants?.length > 0, { timeout: 20000 });
     const info = await page.evaluate(() => window.__models);
     const name = `${set}-${shot.dist}m${wire ? '-wire' : ''}.png`;
-    await page.screenshot({ path: `${OUT_DIR}/${name}` });
+    // Crop the empty sky above the row and nothing else: full width (the labels are
+    // in fixed columns across it) and from a little above the tallest model down to
+    // the bottom of the page.
+    const box = await page.evaluate(() => window.__models.rowBox());
+    const vp = await page.evaluate(() => window.__models.viewport());
+    const labelsBottom = await page.evaluate(() => window.__models.labelsBottom());
+    const top = Math.max(0, Math.floor(box.y0) - 48);
+    const bottom = Math.min(vp.h, Math.ceil(labelsBottom) + 14);
+    await page.screenshot({
+      path: `${OUT_DIR}/${name}`,
+      clip: { x: 0, y: top, width: vp.w, height: Math.max(80, bottom - top) },
+    });
     console.log(`\n${set} @ ${shot.dist} m (${shot.why}) -> ${OUT_DIR}/${name}`);
     const baseTris = info.variants[0].triangles;
     for (const v of info.variants) {
