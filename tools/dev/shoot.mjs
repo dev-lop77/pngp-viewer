@@ -116,6 +116,21 @@ if (at) {
 // --models=0|1 drives the Models control before the shot (added 2026-08-17 for the
 // high-detail flora/fauna option). Set BEFORE the wait below, because the near-tree set
 // is refilled from the render loop and needs a frame to appear.
+// --cover=0|0.2|0.5|1 drives the Ground cover control. Added 2026-08-17 to judge the
+// basemap: the grass and scree scatter sits ON the imagery, so a shot at Lush answers
+// "does the resolution show in practice" and a shot at Off answers "how much detail is
+// in the photograph at all". Those are two different questions and both are wanted.
+const cover = flags.get('cover');
+if (cover !== undefined) {
+  await page.evaluate((v) => {
+    const sel = document.getElementById('env-groundcover');
+    sel.value = String(v);
+    sel.dispatchEvent(new Event('change'));
+  }, cover);
+  await page.waitForTimeout(2500);
+  console.log(`Ground cover: ${cover}`);
+}
+
 const models = flags.get('models');
 if (models !== undefined) {
   await page.evaluate((v) => {

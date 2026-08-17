@@ -343,6 +343,7 @@ def srgb_encode(x):
 
 def main():
     global SATURATION, FULL_SCALE, WEBP_QUALITY
+    max_dim = None
     for arg in sys.argv[1:]:
         if arg.startswith('--saturation='):
             SATURATION = float(arg.split('=', 1)[1])
@@ -350,6 +351,8 @@ def main():
             FULL_SCALE = float(arg.split('=', 1)[1])
         elif arg.startswith('--quality='):
             WEBP_QUALITY = int(arg.split('=', 1)[1])
+        elif arg.startswith('--max-dim='):
+            max_dim = int(arg.split('=', 1)[1])
         elif arg not in ('--use-cache',):
             raise SystemExit(f'unknown argument: {arg}')
 
@@ -365,7 +368,34 @@ def main():
         'width': hf['dimensions']['width'],
         'height': hf['dimensions']['height'],
     }
-    log(f'== Grid, from public/data/heightfield.json: {grid["width"]}x{grid["height"]} {grid["crs"]}')
+    # --max-dim scales the OUTPUT grid while leaving the bbox exactly as it is, the same
+    # convention (and the same flag name) as tools/process-heightmap.mjs.
+    #
+    # Keeping the bbox identical is the whole reason this is safe: the terrain samples
+    # the basemap with its own normalised UVs, so a finer photograph changes the texel
+    # count and nothing else - no second projection comes into existence. It is the same
+    # property the height tier relies on ("Resolution is a separate question from grid
+    # alignment, because UVs are normalised").
+    #
+    # Sentinel-2's visible bands are 10 m native, and this grid has been 20.48 m since
+    # the start - half the resolution the source already provides, for free. 8192 is the
+    # useful ceiling rather than the native 8388: plenty of GPUs cap MAX_TEXTURE_SIZE at
+    # 8192, and 8192 costs 10.24 m/px, 2.4% coarser than native, for a texture far more
+    # hardware can actually hold.
+    if max_dim:
+        longest = max(grid['width'], grid['height'])
+        if max_dim < longest:
+            log(f'== --max-dim={max_dim} is below the base grid\'s {longest}; refusing to'
+                ' build a basemap coarser than the one that ships')
+            raise SystemExit(2)
+        scale = max_dim / longest
+        grid['width'] = round(grid['width'] * scale)
+        grid['height'] = round(grid['height'] * scale)
+        res = (grid['xmax'] - grid['xmin']) / grid['width']
+        log(f'== --max-dim={max_dim}: grid scaled x{scale:.4f} -> {grid["width"]}x{grid["height"]}'
+            f' = {res:.2f} m/px (Sentinel-2 visible is 10 m native)')
+    log(f'== Grid: {grid["width"]}x{grid["height"]} {grid["crs"]}'
+        f'  (bbox from public/data/heightfield.json, unchanged)')
 
     log('== Elevation on the same grid (for the de-shading)')
     dem = dem_on_grid(grid)
