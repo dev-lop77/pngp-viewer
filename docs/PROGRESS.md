@@ -2,74 +2,103 @@
 
 Read this first at the start of each session. Update it before ending one.
 
-## NEXT SESSION STARTS HERE: take the heavy .bin out of git, history included
+## The heavy .bin are out of git, history included (2026-08-17)
 
-The user's instruction at the close of 2026-08-14: *"segnati per la prossima volta di
-iniziare rimuovendo da git i file bin pesanti, anche dallo storico."* **Before any other
-work**, because every tier rebuild makes it worse — today's added 33 MB to `.git` in one
-commit, and `.git` is 103 MB again after having been cut to 70.
+The user's standing instruction from the close of 2026-08-14, done first thing as
+asked: *"iniziare rimuovendo da git i file bin pesanti, anche dallo storico."* They
+widened it when asked, taking `tools/hydrology-draft.json` and the superseded
+7.4 MB `trails.json` in the same pass.
 
-### What is there
+**Measured, because a pack is not the sum of its blobs**: `.git` 103 → **32 MB**, and
+`main`'s largest remaining blob is `basemap.56ba707b.webp` at 1.7 MB. All 92 commits
+survived (`--prune-empty` dropped none — the subject list diffs clean against the
+backup), `git fsck` is clean, and `gh-pages` is still `be1ce23`, byte-identical to the
+remote.
 
-Tracked now, and all three are files the site actually serves:
+The 32 MB is not `main`'s: **the two 18.4 MB blobs left in the repository belong to
+`gh-pages`**, which was deliberately not rewritten. That is also what makes them the
+base heightfield's off-machine copy.
 
-| file | size |
-|---|---|
-| `public/data/heighttier.6a73fcb8.bin` (5 m level) | 38.1 MB |
-| `public/data/heightfield.3e0525a4.bin` (the base) | 18.4 MB |
-| `public/data/heighttier.c4305763.bin` (10 m level) | 9.5 MB |
+### The one thing that bit, and the backup that made it a non-event
 
-In history as well: two superseded `heighttier` bins (38.1 + 9.5 MB) and two superseded
-`heightfield` bins (18.4 + 4.6 MB). **Every `.bin` blob ever committed is 136.6 MB** of
-content inside a 103 MB pack. Also worth a decision while in there:
-`public/data/trails.json` (7.4 MB) and `tools/hydrology-draft.json` (6.3 MB — its
-sibling drafts are in `.gitignore` and it is not).
+`git filter-branch --index-filter` does not touch the working tree *during* the
+rewrite, but it **checks out the rewritten HEAD when it finishes** — so all five files
+vanished from disk the moment it succeeded. Restored from the `cp -a .git` backup with
+`git --git-dir=<backup> cat-file blob <old-head>:<path>`, and verified by hash rather
+than by size: all three `.bin` match their manifests' `sha256Prefix`, and the base
+matches `gh-pages`' published copy over the full digest.
 
-Do not guess the result: today's 25–32 MB gzip estimate for the 5 m tier was an
-extrapolation that did not hold, and a pack is not the sum of its blobs. Measure after.
+So the advice stands and gets sharper: **`cp -a .git` somewhere outside the repo first**
+(`/home/lorenzo/extra/pngp-viewer-git-backup-20260817` here), and expect to restore the
+working tree afterwards rather than hoping it survived.
 
-### The method, which worked today
+Otherwise the method was exactly as recorded: `git filter-repo` still not installed,
+`filter-branch --index-filter "git rm -r --cached --ignore-unmatch 'public/data/*.bin'
+…" --prune-empty -- main` over 92 commits in about 4 seconds, then
+`rm -rf .git/refs/original`, `git reflog expire --expire=now --expire-unreachable=now
+--all`, `git gc --prune=now --aggressive`. A quoted glob is better than a list of
+hashed names: git matches the pathspec against the index, so it caught all seven.
 
-- `git filter-repo` is **not installed** and `pip install` is PEP 668-blocked on this
-  machine. `git filter-branch --index-filter 'git rm -r --cached --ignore-unmatch
-  <paths>' -- main` did 87 commits in seconds. Then `rm -rf .git/refs/original`,
-  `git reflog expire --expire=now --all`, `git gc --prune=now --aggressive`.
-- **`cp -a .git` somewhere first.** It is 103 MB and it costs nothing.
-- **Restrict it to `-- main`.** `gh-pages` is an orphan branch that has never held these
-  paths, and it is the *published* one; today's rewrite left its hash byte-identical to
-  the remote's, which is the only reason the rewrite was safe. Check it afterwards with
-  `git show-ref refs/heads/gh-pages` against `git ls-remote --heads origin`.
-- `main` has never been pushed — `git branch -a` lists only `remotes/origin/gh-pages` —
-  so nothing needs force-pushing. Confirm that is still true before starting.
-- Verify with `git fsck`, `git log --oneline | wc -l` (87 + whatever is new), and a
-  `git status` that is clean with the files still on disk.
+### The reproducibility claim was measured, not asserted
 
-### Four things to settle before running it, not after
+This is the whole justification for untracking derived data, so it was tested rather
+than argued. In a scratch copy of the repo, from the mosaics in `~/pngp-dtm-work/`:
+`process-heightmap.mjs` on `merged-10m/` reproduced `heightfield.3e0525a4.bin`
+**byte-identically**, hashed filename included, and `build-height-tier.mjs` on the 5 m
+mosaic then reproduced both `heighttier.c4305763.bin` and `heighttier.6a73fcb8.bin`
+byte-identically too. Both manifests matched apart from `generatedAt`.
 
-1. **A clone would no longer be able to build the site.** The code would be there and
-   the data would not. On this machine everything is reproducible —
-   `DEM/pngp_heightmap.png` is on disk (untracked), `process-heightmap.mjs` makes the
-   heightfield and `build-height-tier.mjs` the two tier levels — but that is a property
-   of this machine, not of the repository.
-2. **The published `gh-pages` branch holds the shipped copies and it is on the remote.**
-   That is the real safety net for the three tracked bins, and it should be written
-   down before anyone relies on it, because it is not obvious and it is one force-push
-   away from not being true.
-3. **`.gitignore` needs the forward-looking pattern**, not just a `git rm --cached`:
-   `public/data/*.bin` covers the tier levels and every future heightfield rebuild.
-   Note what that does to `tools/dev/deploy.sh`, which builds from the local `public/`
-   and therefore still works here and nowhere else.
-4. **Then the READMEs have to say how a clone gets its data**, per asset, or the repo
-   quietly becomes un-buildable by anybody else. `tools/dtm-source/README.md` already
-   does this for the DEM mosaic (added 2026-08-14, including which
-   `~/pngp-dtm-work/` copies must not be deleted); this extends the same treatment to
-   every derived asset.
+Worth re-running after any change to `src/heightfield.js`, `src/heighttier.js` or
+either build script — the moment the output stops being reproducible, the history no
+longer holds a copy to fall back on.
+
+### Where the four things to settle landed
+
+1. A clone genuinely cannot build the site now, and `tools/README.md` is the answer to
+   it: the **new per-asset index** of which script rebuilds what, from where, in which
+   order. Its chief warning is that the base heightfield needs the **10 m** mosaic
+   while the tier needs the **5 m** one that `DEM/` currently holds — `heightfield.json`
+   records its own source grid (8388 × 4823 at 10 m/px, = `merged-10m`), which is how
+   that was confirmed rather than assumed.
+2. **The old point 2 here was wrong** and is corrected in `tools/README.md`: `gh-pages`
+   is the safety net for the *base* bin only. **The two tier levels were never
+   published**, so their only copies are this working tree and the mosaic they derive
+   from — both on this one disk. Publishing the tier would give them the same net.
+3. `.gitignore` takes `public/data/*.bin` — a pattern, not three names, because the
+   filenames carry a content hash and every rebuild invents a new one. Also noted:
+   both build scripts *delete* stale hashed bins as they write, which on a machine
+   with the shipped copies and not the mosaics is a way to lose them.
+4. `tools/README.md` covers every derived asset, and `tools/dtm-source/README.md` now
+   points at it.
+
+Found while in there and **recorded rather than fixed**, because correcting it changes
+what the pipeline reads: `fetch-landcover-osm.mjs` writes `tools/landcover-draft.json`
+while `build-landcover-osm.mjs` reads `tools/landcover-osm-draft.json`. Only the
+second name was ignored, so re-running the fetch would have dropped an 11 MB untracked
+file into `git status` — exactly today's failure mode. Both names are ignored now.
+
+`tools/dev/deploy.sh` is unchanged and still publishes from the local `public/`, so it
+works here and nowhere else. **Nothing is published** — that instruction still stands.
+
+### What was checked afterwards
+
+The whole change is git-only, but the working tree's `.bin` had been deleted and
+restored, so the question was whether the site still draws the same terrain.
+
+- **14 of 14 test files pass**, no `FAIL` line anywhere in the output.
+  `test-height-tier` is the one that matters here and its 24 checks are all green,
+  including that turning the finest level on still moves the drawn surface 41.10 m
+  *with* every scatter standing on it.
+- **`.gitignore` does not follow the data into the build.** Worth checking rather than
+  assuming, since a bundler that consulted git would have quietly shipped a terrainless
+  site: a fresh `npm run build` still copies all three `.bin` into `dist/data/`,
+  byte-identical to `public/data/`. Vite walks `publicDir` with the filesystem, not with
+  git.
 
 ### And the state it is starting from
 
 Everything below this section is done, committed and green: the 5 m mosaic, the
-two-level tier with 10 m as the default, the HUD panel, and a clean 14-of-14 test suite.
-**Nothing is published** — that instruction still stands.
+two-level tier with 10 m as the default, and the HUD panel.
 
 ## Two levels, 10 m as the default, and a panel that stopped shouting (2026-08-14, later)
 
