@@ -8,6 +8,12 @@ tools/verify-screenshot.png
 tools/dev/logs/
 
 tools/forest-draft.json
+tools/hydrology-draft.json
+# Both names, because the two halves of that pipeline disagree: fetch-landcover-osm.mjs
+# writes landcover-draft.json and build-landcover-osm.mjs reads landcover-osm-draft.json
+# (the file on disk has the longer name, so it was renamed by hand at some point). Until
+# one of them is corrected, ignoring only one name lets an 11 MB draft turn up untracked.
+tools/landcover-draft.json
 tools/landcover-osm-draft.json
 tools/landcover-unshipped/
 tools/ndvi-draft.bin
@@ -21,3 +27,19 @@ tools/ndvi-draft.json
 # it is 3 KB and it carries the calibration and the CC BY attributions.
 DEM/pngp_heightmap.png
 DEM/*.tif
+
+# The binary heightfields the viewer downloads: the base grid and the two levels
+# of the optional high-resolution tier (user's decision, 2026-08-17 - "rimuovendo
+# da git i file bin pesanti, anche dallo storico"). Every .bin ever committed came
+# to 136.6 MB of blobs, a third of it superseded by the next rebuild, and each
+# rebuild added ~48 MB more to a history that can never give it back.
+#
+# They are DERIVED, not authored: tools/process-heightmap.mjs makes the base and
+# tools/build-height-tier.mjs the tier levels, both deterministically, so the same
+# mosaic yields byte-identical output and the hashed filenames still match their
+# manifests. tools/README.md says which mosaic each one needs - and they are not
+# the same mosaic, which is the trap.
+#
+# A pattern, not three names: the filenames carry a content hash, so every rebuild
+# invents a new one and a list would go stale on the next run.
+public/data/*.bin

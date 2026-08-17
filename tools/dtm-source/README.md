@@ -111,3 +111,10 @@ keep it reproducible. **Do not delete them without reading this:**
 
 `tinitaly/` and `piemonte/` are the other two sources and are re-fetchable by
 script; these three are not.
+
+**And since 2026-08-17 the derived heightfields are untracked too**, not just the
+mosaic: `public/data/*.bin` is in `.gitignore` and gone from the history. `tools/README.md`
+is now the per-asset index — which script rebuilds what, in which order, and the fact
+that the base heightfield needs `merged-10m/` while the tier needs `merged/`. Getting
+that pair the wrong way round produces a plausible surface that disagrees with every
+baked elevation in the project.
