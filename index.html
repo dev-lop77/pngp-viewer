@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PNGP Viewer</title>
+    <style>
+      html, body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #05070a;
+      }
+      canvas {
+        display: block;
+      }
+      /* Attribution is collapsed behind a labelled toggle rather than always
+         expanded: with all three DEM sources, the trail network, OSM and the
+         CC BY "data was modified" statement it ran to four lines across the
+         bottom of the view. CC BY 4.0 and ODbL both ask for attribution
+         "reasonable to the medium" rather than permanently expanded, and a
+         visible, clearly-labelled control is the standard mapping-app pattern
+         (Leaflet and Mapbox collapse theirs the same way). The affordance
+         itself stays on screen at all times - the credits are one click away,
+         not buried. */
+      #credits-box {
+        position: fixed;
+        bottom: 8px;
+        right: 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+        font: 11px/1.4 -apple-system, system-ui, sans-serif;
+      }
+      #credits-toggle {
+        padding: 3px 8px;
+        border: 0;
+        border-radius: 6px;
+        background: rgba(10, 14, 20, 0.55);
+        color: rgba(255, 255, 255, 0.8);
+        font: inherit;
+        cursor: pointer;
+      }
+      #credits-toggle:hover,
+      #credits-toggle:focus-visible {
+        background: rgba(10, 14, 20, 0.8);
+        color: #fff;
+      }
+      #credits {
+        /* Grows upward from the button, so it never reaches #controls-hint. */
+        order: -1;
+        max-width: min(40em, 90vw);
+        max-height: 40vh;
+        overflow-y: auto;
+        padding: 6px 9px;
+        border-radius: 6px;
+        background: rgba(10, 14, 20, 0.72);
+        color: rgba(255, 255, 255, 0.85);
+        text-align: right;
+      }
+      #credits a {
+        color: #9fd0ff;
+      }
+      #credits a {
+        color: inherit;
+        pointer-events: auto;
+      }
+      #top-left {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-width: 20em;
+      }
+      #poi-search input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 6px 10px;
+        border: none;
+        border-radius: 6px;
+        background: rgba(10, 14, 20, 0.75);
+        color: #fff;
+        font: 13px/1.4 -apple-system, system-ui, sans-serif;
+      }
+      #poi-search input::placeholder {
+        color: rgba(255, 255, 255, 0.55);
+      }
+      /* "Copy link" and "back to Le Pont" (2026-08-05). They live with the search
+         box rather than with the environment controls because all three answer
+         the same question - where am I, and where do I want to be. */
+      #view-actions {
+        display: flex;
+        gap: 6px;
+      }
+      #view-actions button {
+        padding: 4px 9px;
+        border: 0;
+        border-radius: 6px;
+        background: rgba(10, 14, 20, 0.75);
+        color: rgba(255, 255, 255, 0.85);
+        font: 11px/1.4 -apple-system, system-ui, sans-serif;
+        cursor: pointer;
+      }
+      #view-actions button:hover,
+      #view-actions button:focus-visible {
+        background: rgba(10, 14, 20, 0.95);
+        color: #fff;
+      }
+      #poi-info {
+        padding: 10px 14px;
+        background: rgba(10, 14, 20, 0.75);
+        border-radius: 6px;
+        color: #fff;
+        font: 13px/1.4 -apple-system, system-ui, sans-serif;
+        display: none;
+      }
+      #poi-info .name {
+        font-size: 15px;
+        font-weight: 600;
+        margin-bottom: 2px;
+      }
+      #poi-info .warning {
+        color: #ffb74d;
+      }
+      #fps {
+        position: fixed;
+        top: 8px;
+        right: 10px;
+        padding: 3px 7px;
+        background: rgba(10, 14, 20, 0.55);
+        border-radius: 4px;
+        color: #fff;
+        font: 11px/1.4 -apple-system, system-ui, sans-serif;
+        pointer-events: none;
+      }
+      #env-controls {
+        position: fixed;
+        bottom: 8px;
+        left: 10px;
+        /* Fixed, so the panel has one right edge rather than one per row: without it
+           the width came from whichever <select> had the longest option and the three
+           of them disagreed. The number is measured, not guessed - the widest row
+           label is "Ground cover" at 81 px and the widest option "Medium · 10 m ·
+           6.7 MB" at 143 px in this font, so the content has to hold 81 + 6 + the
+           select's 176 and the padding adds 20. Guessing it first produced a panel
+           that wrapped one row and truncated another. */
+        width: 286px;
+        padding: 8px 10px;
+        background: rgba(10, 14, 20, 0.55);
+        border-radius: 6px;
+        color: #fff;
+        font: 12px/1.6 -apple-system, system-ui, sans-serif;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      /* Every row is label on the left, control on the right, every control the same
+         width. */
+      #env-controls > label {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+      }
+      #env-controls select {
+        /* The native widget is a light box sized by its longest option - three of
+           them meant three widths, all of them bright against a dark HUD. This is
+           #credits-toggle's language instead, which is what the rest of the HUD
+           speaks. */
+        appearance: none;
+        -webkit-appearance: none;
+        /* 143 px of the longest option's text, plus 7 of left padding, 21 for the
+           chevron and 2 of border. Every select the same, so the column is a column. */
+        width: 176px;
+        padding: 2px 21px 2px 7px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 6px;
+        background-color: rgba(255, 255, 255, 0.08);
+        /* The chevron that appearance:none removes, drawn inline rather than fetched:
+           this page loads no external assets. */
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23fff' stroke-opacity='.75' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 7px center;
+        background-size: 9px 6px;
+        color: #fff;
+        font: inherit;
+        /* AFTER font:inherit, which is a shorthand and resets line-height - setting it
+           before had no effect at all, and the measurement said so: 25.19 px where the
+           arithmetic promised 22. "Tre select ALTE" was half of what the user
+           reported, so this is measured rather than assumed: the native widget was
+           19 px tall in this font and the first restyle came out at 27, making worse
+           the exact thing it was meant to fix. 16 of line box + 4 of padding + 2 of
+           border is 22. The panel's 1.6 line-height is right for reading a label and
+           too loose for a control. */
+        line-height: 16px;
+        cursor: pointer;
+      }
+      #env-controls select:hover,
+      #env-controls select:focus-visible {
+        background-color: rgba(255, 255, 255, 0.17);
+        border-color: rgba(255, 255, 255, 0.32);
+      }
+      #env-controls select:disabled {
+        opacity: 0.55;
+        cursor: progress;
+      }
+      /* The dropdown list itself is drawn by the OS, so this is as dark as it can be
+         asked to go - and it stays legible where the browser ignores it. */
+      #env-controls option {
+        background: #10151c;
+        color: #fff;
+      }
+      #env-time {
+        /* Its own full-width line: the read-out sits up on the label's row. */
+        flex: 0 0 100%;
+        width: 100%;
+        margin: 2px 0 0;
+        accent-color: #9fd0ff;
+      }
+      #env-time-label {
+        color: rgba(255, 255, 255, 0.75);
+        font-variant-numeric: tabular-nums;
+      }
+      /* A checkbox and its text read left to right, so this row is the one that does
+         not push its two halves to opposite edges. */
+      #env-controls label.env-check {
+        justify-content: flex-start;
+        gap: 6px;
+      }
+      #env-controls input[type="checkbox"] {
+        margin: 0;
+        accent-color: #9fd0ff;
+      }
+      #nav-hud {
+        position: fixed;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 14px;
+        background: rgba(10, 14, 20, 0.55);
+        border-radius: 8px;
+        color: #fff;
+        font: 12px/1.4 -apple-system, system-ui, sans-serif;
+        pointer-events: none;
+        white-space: nowrap;
+      }
+      #compass {
+        position: relative;
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.45);
+        flex-shrink: 0;
+      }
+      .compass-label {
+        position: absolute;
+        font-size: 9px;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.8);
+      }
+      .compass-label.n { top: 1px; left: 50%; transform: translateX(-50%); }
+      .compass-label.e { right: 2px; top: 50%; transform: translateY(-50%); }
+      .compass-label.s { bottom: 1px; left: 50%; transform: translateX(-50%); }
+      .compass-label.w { left: 2px; top: 50%; transform: translateY(-50%); }
+      #compass-needle {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 2px;
+        height: 16px;
+        background: #e5473a;
+        transform-origin: 50% 100%;
+        transform: translate(-50%, -100%) rotate(0deg);
+      }
+      #nav-text div {
+        margin: 1px 0;
+      }
+      .poi-label {
+        padding: 2px 6px;
+        background: rgba(10, 14, 20, 0.6);
+        border-left: 3px solid var(--poi-color, #fff);
+        border-radius: 3px;
+        color: #fff;
+        font: 11px/1.3 -apple-system, system-ui, sans-serif;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+        white-space: nowrap;
+        cursor: pointer;
+        /* The CSS2DRenderer container is pointer-events:none (main.js) so
+           clicks reach the canvas everywhere except an actual label. Needs
+           the cursor visible, i.e. pointer lock released with Esc - which no
+           longer stops you walking (src/controls.js), so this is now the
+           primary way to select a POI (docs/PROGRESS.md). */
+        pointer-events: auto;
+      }
+      #controls-hint {
+        position: fixed;
+        bottom: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 4px 10px;
+        background: rgba(10, 14, 20, 0.55);
+        border-radius: 6px;
+        color: rgba(255, 255, 255, 0.85);
+        font: 11px/1.4 -apple-system, system-ui, sans-serif;
+        pointer-events: none;
+        /* This is centred and #env-controls is a fixed 286 px against the left edge at
+           the same bottom, so on a narrow window the two overlapped and this line read
+           THROUGH the panel - two 55% panels stacked. Keeping clear of the panel's
+           column costs nothing on a wide screen (the line is ~700 px and this leaves
+           1300) and wraps it on a small one, which is the better of the two. The max()
+           is so a very narrow window shrinks it rather than collapsing it to nothing. */
+        max-width: max(12em, calc(100vw - 660px));
+        text-align: center;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-BqkSymMt.js"></script>
+  </head>
+  <body>
+    <div id="credits-box">
+      <button id="credits-toggle" type="button" aria-expanded="false" aria-controls="credits">credits…</button>
+      <div id="credits" hidden></div>
+    </div>
+    <div id="top-left">
+      <div id="poi-search">
+        <input type="text" id="poi-search-input" list="poi-search-list" placeholder="Search for a place…" autocomplete="off" />
+        <datalist id="poi-search-list"></datalist>
+      </div>
+      <div id="view-actions">
+        <button id="copy-link" type="button" title="Copy a link that opens this exact view">copy link</button>
+        <button id="reset-view" type="button" title="Back to the Le Pont trailhead, where the viewer opens by default">back to Le Pont</button>
+      </div>
+      <div id="poi-info"></div>
+    </div>
+    <div id="fps"></div>
+    <div id="controls-hint">Click to look around · Esc to release · W/S walk · A/D turn · Q/E sidestep · Shift run · F toggle walk/fly · Space/C up/down while flying · M sound · click a name to go there</div>
+    <div id="nav-hud">
+      <div id="compass">
+        <div class="compass-label n">N</div>
+        <div class="compass-label e">E</div>
+        <div class="compass-label s">S</div>
+        <div class="compass-label w">W</div>
+        <div id="compass-needle"></div>
+      </div>
+      <div id="nav-text">
+        <div id="nav-heading"></div>
+        <div id="nav-position"></div>
+        <div id="nav-nearest"></div>
+        <!-- The edelweiss hint. Its own line rather than folded into nav-nearest,
+             which names the closest POI: a flower is not a place, and both can be
+             worth saying at once. -->
+        <div id="nav-flower"></div>
+      </div>
+    </div>
+    <div id="env-controls">
+      <label>Time of day <span id="env-time-label"></span><input id="env-time" type="range" min="0" max="1" step="0.001" value="0.15" /></label>
+      <label>Weather
+        <select id="env-weather">
+          <option value="0">Clear skies</option>
+          <option value="1">Drifting clouds</option>
+          <option value="2">Rainstorm</option>
+          <option value="3">Snowfall</option>
+        </select>
+      </label>
+      <!-- Ground cover exists as a control, not just a constant, because grass is
+           the most expensive thing in this scene and only the person looking at
+           their own frame counter can judge it. Lush is the default by the user's
+           own choice (2026-08-12): see the maximum first, then cut. -->
+      <!-- The optional high-resolution terrain (2026-08-13, the user's topic 2;
+           two levels and Medium as the default since 2026-08-14). The value is the
+           tier LEVEL PLUS ONE, so 0 stays "no tier". The download sizes are written
+           in by main.js from heighttier.json - they were hardcoded here and went
+           stale the moment the tier was rebuilt, which is exactly what the user
+           noticed. data-name is the half that is ours to keep. -->
+      <label title="The high-resolution levels cover the park only; outside it the ground is the same 20.5 m surface either way.">Terrain
+        <select id="env-terrain">
+          <option value="0" data-name="Standard">Standard</option>
+          <option value="1" data-name="Medium" selected>Medium</option>
+          <option value="2" data-name="High">High</option>
+        </select>
+      </label>
+      <!-- The optional high-resolution flora and fauna models (2026-08-17, the rest
+           of the user's topic 2). An option to turn up, not a new default, exactly
+           as the terrain tier is - and like it, the fine model is only drawn where
+           it can be seen: src/wildlife.js switches per animal per frame on the
+           model's own on-screen height in PIXELS, not on a distance in metres,
+           because the same 20 m makes an ibex 24 px and a squirrel 3. -->
+      <label title="Finer animals and trees close to you. Further off, where the extra shapes are smaller than a few pixels, the standard models are drawn either way.">Models
+        <select id="env-models">
+          <option value="0" selected>Standard</option>
+          <option value="1">High</option>
+        </select>
+      </label>
+      <label>Ground cover
+        <select id="env-groundcover">
+          <option value="1">Lush</option>
+          <option value="0.5">Sparse</option>
+          <option value="0.2">Bare</option>
+          <option value="0">Off</option>
+        </select>
+      </label>
+      <!-- Ambient sound belongs with the other environment controls rather than
+           in its own corner: like time of day and weather it changes what the
+           park is like, not how the app is used. It cannot actually make a sound
+           until the first click anywhere (browser autoplay policy, src/audio.js). -->
+      <label class="env-check"><input id="env-audio" type="checkbox" checked /> Ambient sound (M)</label>
+    </div>
+  </body>
+</html>

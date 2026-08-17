@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "grid": "identical to heightfield.json: same dimensions, bboxCrsUnits, resolution and row order",
+  "crs": "EPSG:23032",
+  "bboxCrsUnits": {
+    "xmin": 329116,
+    "ymin": 5036775,
+    "xmax": 413000,
+    "ymax": 5085000
+  },
+  "dimensions": {
+    "width": 4096,
+    "height": 2355
+  },
+  "resolutionMPerPx": {
+    "x": 20.4794921875,
+    "y": 20.477707006369428
+  },
+  "rowOrientation": "row 0 = north edge (ymax); row N-1 = south edge (ymin)",
+  "encoding": {
+    "channels": 1,
+    "depth": 8,
+    "meaning": "fraction of the pixel covered by tree canopy, 0 = none, 255 = full",
+    "quantisedTo": "16 levels, stored at PNG sample depth 4 and scaled x17 on decode"
+  },
+  "coverage": {
+    "woodedPixels": 1604007,
+    "partialPixels": 500348,
+    "woodedFraction": 0.1663,
+    "slopeLimit": "canopy attenuated from 30 deg to zero at 45 deg, baked in",
+    "pixelsLostToSlope": 535710
+  },
+  "file": {
+    "name": "forest.c7b76145.png",
+    "bytes": 1009425,
+    "sha256Prefix": "c7b76145"
+  },
+  "source": {
+    "name": "OpenStreetMap contributors",
+    "attribution": "(c) OpenStreetMap contributors",
+    "license": "ODbL 1.0",
+    "licenseUrl": "https://opendatacommons.org/licenses/odbl/1-0/",
+    "query": "natural=wood + landuse=forest, ways and relations, out geom",
+    "modifications": "Derived product, not the original data: polygons were reprojected to EPSG:23032, rasterised to the heightfield grid under the even-odd rule (multipolygon holes removed), and stored as per-pixel canopy coverage.",
+    "fetchedAt": "2026-08-03T15:05:38.968Z"
+  },
+  "generatedBy": "tools/build-forest.mjs",
+  "generatedAt": "2026-08-10T12:34:22.215Z"
+}
