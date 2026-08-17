@@ -2,6 +2,88 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## PUBLISHED, and how a publish check is run from now on (2026-08-17)
+
+**The site is live again** at https://dev-lop77.github.io/pngp-viewer/ with the models
+option, the water fix and the quality persistence. Their instruction, after two years of
+"nothing is published": *"Commit e poi pubblica."* Treat publishing as permitted now
+rather than the exception it was.
+
+**The publish also closed the tier's off-machine gap by itself.** The push added
+`data/heighttier.c4305763.bin` and `data/heighttier.6a73fcb8.bin` to `gh-pages`, so the
+two levels that had existed only on this disk since the history purge now have a remote
+copy - verified byte-for-byte against the local files over HTTP.
+
+### Verified on the PUBLISHED site, not just on "built"
+
+`tools/verify.mjs` reports a WebGL context and no console errors, and that is not
+evidence - this project's own rule. What was measured instead, through the DOM only
+because `window.__pngp` does not exist in a production build:
+
+- The tier really applies: the ground under the camera at Le Pont reads **1952 m** with
+  Medium and **1953 m** with Standard, and **39.8% of the frame** differs between them.
+- With the tier applied, the stream at Le Pont is seated on the valley floor - the
+  defect they reported, at the place they reported it.
+- The quality choices survive a reload on the live site: stored
+  `{terrain: 0, models: 1}`, and both back on their controls afterwards.
+
+**Two screenshots were nearly thrown away as proof first.** Waiting for the Terrain
+select to be `!disabled` fires too early, so the first two live shots had no tier in
+either and looked identical - which reads as "the fix does nothing". The reliable signal
+is the option TEXT gaining its size (`Medium · 10 m · 6.7 MB`), because main.js writes
+that from the manifest only once the manifest is in hand.
+
+### The publish check is now the FAST subset
+
+Their instruction: *"Per la prossima pubblicazione esegui solo i test veloci e lancia i
+test completi solo su specifica richiesta od esigenza di (pre) debug."*
+
+`tools/dev/run-tests.sh` is new: `--fast` is the default (8 tests, **278 s**), `--all`
+runs the 14 (~30 min), and every run appends its own durations to
+`tools/dev/logs/test-times.tsv`. A fast run prints what it skipped, because the one way
+this goes wrong is a subset being read as full coverage.
+
+**The split is measured, and guessing it was wrong twice.** `test-sky` has almost no
+deliberate waits and takes 356 s; `test-groundcover`'s 33 s of sleeps are a tenth of its
+334. And `test-controls-focus` was put in the fast list on no evidence - its own first
+measurement, 156 s, moved it out before the script was committed. The slowness is not
+thoroughness: headless Chromium here is SwiftShader at about 1 fps.
+
+Two ways a suite run gets ruined, both earned today: **never edit `src/` while one is
+running** (Vite HMR serves a half-finished module and a test dies with "Execution
+context was destroyed" - a failure that is not one), and **never run `deploy.sh` during
+one either** (it creates and deletes `.deploy-worktree` in the watched root, which killed
+a run at `test-groundcover`).
+
+### NEXT: the ground photo at Sentinel's native 10 m
+
+Their topic, opened while waiting: higher-resolution terrain imagery, and their opening
+assumption was an external stream to avoid using more space. **The measurement reframes
+it - space is not the constraint.** At the measured 0.18 MB per megapixel, 10 m over the
+whole bbox is **~7 MB**, the same order as the terrain tier already shipping as the
+default. What bites is dimensions: WebP caps at 16,383 px a side, so beyond ~4.2 m/px
+over this bbox a single file is impossible, and 8388 px already exceeds the 8192 limit
+plenty of GPUs have. **Tiling is required to go finer whatever the hosting**, and once
+tiling exists, static tiles on gh-pages are no harder than third-party requests - so
+streaming does not solve the wall it appears to solve.
+
+They chose **10 m native from Sentinel, as an opt-in tier, with a comparison render
+first**. What is already verified: GDAL 3.8.4 with Python bindings is installed, and the
+scenes come from Sentinel-2 on AWS Open Data via the Earth Search STAC API with **no
+account and no key**, so a rebuild needs only network. The bbox must stay identical to
+`heightfield.json` - that is what keeps every UV unchanged and stops a second projection
+existing, the same property the forest and landcover masks have; only the pixel count
+changes. Cap the long side at 8192 (10.24 m/px, 2.4% coarser than native) and gate the
+option on `MAX_TEXTURE_SIZE`, for which the labelling code already has an `· unavailable`
+idiom.
+
+**Two costs a new imagery source would carry, and they rule out replacing Sentinel:**
+the NDVI that decides where grass grows is `(NIR - red)/(NIR + red)` and
+`build-ndvi.py` says outright that the visible bands cannot do it, while regional
+orthophotos are RGB only; and `build-basemap.py` divides the acquisition's own
+illumination back out using the DEM, which an orthophoto has no solar geometry for. So
+aerial can improve the look but not the data, and the two would coexist.
+
 ## High-resolution flora and fauna, the last optional extra (2026-08-17)
 
 **ACCEPTED and PUBLISHED.** The user's verdict on the built option: *"Molto bene, mi
