@@ -61,17 +61,50 @@ const fail = (msg) => {
 };
 const pass = (msg) => console.log(`ok   ${msg}`);
 
-console.log(`Basemap ${basemap.file.name} (${(basemap.file.bytes / 1e6).toFixed(2)} MB), `
-  + `scenes: ${basemap.source.scenes.map((s) => `${s.id.slice(-19, -9)}`).join(', ')}\n`);
+console.log(`Basemap, ${basemap.levels.length} level(s): `
+  + basemap.levels.map((l) => `${l.dimensions.width}x${l.dimensions.height} `
+    + `${l.resolutionMPerPx.x.toFixed(2)} m/px ${(l.file.bytes / 1e6).toFixed(2)} MB`).join('  |  ')
+  + `\nscenes: ${basemap.source.scenes.map((s) => `${s.id.slice(-19, -9)}`).join(', ')}\n`);
 
 // ---- part 1: the grid, before anything renders --------------------------
 for (const f of GRID_FIELDS) {
   if (basemap[f] === heightfield[f]) pass(`grid ${f} matches the heightfield`);
   else fail(`grid ${f}: basemap "${basemap[f]}" vs heightfield "${heightfield[f]}"`);
 }
-for (const k of ['width', 'height']) {
-  if (basemap.dimensions[k] === heightfield.dimensions[k]) pass(`grid ${k} ${basemap.dimensions[k]}`);
-  else fail(`grid ${k}: ${basemap.dimensions[k]} vs heightfield ${heightfield.dimensions[k]}`);
+// The basemap's pixel dimensions are NO LONGER the heightfield's (schema 2, 2026-08-17):
+// the photograph ships at 20.48 and 10.24 m/px while the heightfield stays at 20.48. So
+// this used to assert equal dimensions and that was only ever a PROXY for the property
+// that matters - the two rasters covering the same ground in the same order, which is
+// what lets the terrain sample the photo with its own normalised UVs and no second
+// projection. The bbox, crs and row-order checks around this one are that property, and
+// they are unchanged.
+//
+// What replaces the proxy is the real constraint on the dimensions: every level must
+// divide the SAME bbox, so no level is offset by a fraction of a texel from another.
+// That is the same invariant heighttier.json's levels are held to.
+const bboxW = heightfield.bboxCrsUnits.xmax - heightfield.bboxCrsUnits.xmin;
+const bboxH = heightfield.bboxCrsUnits.ymax - heightfield.bboxCrsUnits.ymin;
+for (const level of basemap.levels) {
+  const rx = bboxW / level.dimensions.width;
+  const ry = bboxH / level.dimensions.height;
+  const okX = Math.abs(rx - level.resolutionMPerPx.x) < 1e-6;
+  const okY = Math.abs(ry - level.resolutionMPerPx.y) < 1e-6;
+  if (okX && okY) {
+    pass(`level ${level.dimensions.width}x${level.dimensions.height} divides the shared bbox`
+      + ` at ${rx.toFixed(4)} x ${ry.toFixed(4)} m/px, as it claims`);
+  } else {
+    fail(`level ${level.dimensions.width}x${level.dimensions.height} claims`
+      + ` ${level.resolutionMPerPx.x} x ${level.resolutionMPerPx.y} m/px but the bbox gives`
+      + ` ${rx} x ${ry}`);
+  }
+}
+// Coarsest first, because src/basemap.js walks the list forwards keeping the last level
+// that fits the GPU's limit - a shuffled list would hand a small GPU a big texture.
+const widths = basemap.levels.map((l) => l.dimensions.width);
+if (widths.every((w, i) => i === 0 || w > widths[i - 1])) {
+  pass(`levels are ordered coarsest first (${widths.join(' < ')})`);
+} else {
+  fail(`levels are not in ascending order of width: ${widths.join(', ')}`);
 }
 for (const k of ['xmin', 'ymin', 'xmax', 'ymax']) {
   if (basemap.bboxCrsUnits[k] === heightfield.bboxCrsUnits[k]) pass(`grid ${k} ${basemap.bboxCrsUnits[k]}`);
@@ -291,6 +324,9 @@ const result = await page.evaluate(async () => {
     scale: BASEMAP_SCALE.value,
     fullScale: loaded.manifest.encoding.fullScale,
     textureSize: [img.width, img.height],
+    // The limit the level choice is made from, read from the same context that made it.
+    maxTextureSize: window.__pngp.renderer.capabilities.maxTextureSize,
+    chosenLevel: window.__pngp.getBasemapLevel?.()?.dimensions ?? null,
     tiles: terrain.stats.tiles,
   };
 });
@@ -300,11 +336,25 @@ await browser.close();
 const luma = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
 // ---- part 2: what the shader was given ---------------------------------
-if (result.textureSize[0] === basemap.dimensions.width && result.textureSize[1] === basemap.dimensions.height) {
-  pass(`the loaded texture is ${result.textureSize.join('x')}, as the manifest says`);
+// Which level the page loaded is the HARDWARE's choice, so this asserts it against the
+// limit this browser reports rather than against a fixed number. Checking it against the
+// finest level would fail on any machine that cannot hold it - i.e. exactly the machines
+// the fallback exists for.
+const affordable = basemap.levels.filter(
+  (l) => l.dimensions.width <= result.maxTextureSize && l.dimensions.height <= result.maxTextureSize,
+);
+const expected = affordable[affordable.length - 1] ?? basemap.levels[0];
+if (result.textureSize[0] === expected.dimensions.width
+  && result.textureSize[1] === expected.dimensions.height) {
+  pass(`the loaded texture is ${result.textureSize.join('x')} - the finest level this GPU can`
+    + ` hold, its MAX_TEXTURE_SIZE being ${result.maxTextureSize}`);
 } else {
-  fail(`the loaded texture is ${result.textureSize.join('x')}, manifest says `
-    + `${basemap.dimensions.width}x${basemap.dimensions.height}`);
+  fail(`the loaded texture is ${result.textureSize.join('x')} but with MAX_TEXTURE_SIZE`
+    + ` ${result.maxTextureSize} it should be ${expected.dimensions.width}x${expected.dimensions.height}`);
+}
+if (affordable.length === 0) {
+  fail(`no level fits MAX_TEXTURE_SIZE ${result.maxTextureSize} - the coarsest is`
+    + ` ${basemap.levels[0].dimensions.width} wide, so this GPU cannot show the ground photo at all`);
 }
 const expectedScale = result.fullScale * result.gain;
 if (Math.abs(result.scale - expectedScale) < 1e-6) {

@@ -168,6 +168,8 @@ let terrainSurface = null; // dev handle only, see the __pngp block at the end
 // naming it directly there is a ReferenceError, and one that only fires when a probe
 // calls it rather than at load, so nothing would report it.
 let canopySampler = null;
+// Which basemap level the GPU could hold. Dev handle only.
+let basemapLevel = null;
 const terrainPromise = loadTerrain().then((result) => {
   const { object, manifest, sampleRenderedHeight, update } = result;
   terrainSurface = result;
@@ -224,8 +226,12 @@ const forestPromise = loadForest().catch((err) => {
 // Until it lands - and forever, if it fails - the terrain draws the procedural
 // ground it drew through phase 7, so this is the one loader whose failure is
 // invisible rather than merely survivable.
-loadBasemap()
-  .then(({ manifest }) => {
+// The renderer's own reported limit decides which level of the photograph this machine
+// gets - see pickBasemapLevel(). Asked here rather than inside the loader because this
+// is where the renderer lives.
+loadBasemap(undefined, { maxTextureSize: renderer.capabilities.maxTextureSize })
+  .then(({ manifest, level }) => {
+    basemapLevel = level; // for the dev handle, so a test can assert which one was used
     // Prescribed verbatim by the EU legal notice on Copernicus Sentinel data for
     // adapted or modified data ("Contains modified Copernicus Sentinel data
     // [Year]"), and the data here IS modified - warped, de-shaded, mosaicked.
@@ -711,6 +717,7 @@ if (import.meta.env.DEV) {
     // this bbox was rebuilt. Added 2026-08-17, when a screenshot meant to show the
     // fine tree model was taken twice above the treeline.
     getCanopy: () => canopySampler,
+    getBasemapLevel: () => basemapLevel,
     getBirds: () => birds,
     // The satellite ground texture, published as the HOLDERS themselves so a probe
     // can A/B the ground colour in ONE session from ONE camera - the only honest

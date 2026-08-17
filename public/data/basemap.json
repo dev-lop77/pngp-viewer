@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 1,
-  "grid": "identical to heightfield.json: same dimensions, bboxCrsUnits, resolution and row order",
+  "schemaVersion": 2,
+  "grid": "the same bbox, crs and row order as heightfield.json. NOT the same pixel dimensions any more: the terrain samples this with normalised UVs, so a finer photograph changes texel count and nothing else.",
   "crs": "EPSG:23032",
   "bboxCrsUnits": {
     "xmin": 329116,
@@ -8,14 +8,38 @@
     "xmax": 413000,
     "ymax": 5085000
   },
-  "dimensions": {
-    "width": 4096,
-    "height": 2355
-  },
-  "resolutionMPerPx": {
-    "x": 20.4794921875,
-    "y": 20.477707006369428
-  },
+  "levels": [
+    {
+      "resolutionMPerPx": {
+        "x": 20.4794921875,
+        "y": 20.477707006369428
+      },
+      "dimensions": {
+        "width": 4096,
+        "height": 2355
+      },
+      "file": {
+        "name": "basemap.2f64b29d.webp",
+        "bytes": 1829766,
+        "sha256Prefix": "2f64b29d"
+      }
+    },
+    {
+      "resolutionMPerPx": {
+        "x": 10.23974609375,
+        "y": 10.238853503184714
+      },
+      "dimensions": {
+        "width": 8192,
+        "height": 4710
+      },
+      "file": {
+        "name": "basemap.d77907b5.webp",
+        "bytes": 6244280,
+        "sha256Prefix": "d77907b5"
+      }
+    }
+  ],
   "rowOrientation": "row 0 = north edge (ymax); row N-1 = south edge (ymin)",
   "encoding": {
     "channels": 3,
@@ -38,11 +62,6 @@
       10
     ],
     "snowKept": "SCL class 11 (snow/ice) is kept: the park has 47 real glaciers"
-  },
-  "file": {
-    "name": "basemap.56ba707b.webp",
-    "bytes": 1832614,
-    "sha256Prefix": "56ba707b"
   },
   "source": {
     "name": "Copernicus Sentinel-2 L2A (Collection 1), surface reflectance bands B04/B03/B02",

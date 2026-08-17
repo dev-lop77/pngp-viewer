@@ -113,9 +113,43 @@ function placeholder() {
 
 BASEMAP.value = placeholder();
 
-export async function loadBasemap(dataUrl = `${import.meta.env.BASE_URL}data`) {
+// Which level of the ground photograph this GPU can actually hold (schema 2, 2026-08-17).
+//
+// The imagery ships at two resolutions and the FINER one is the default, so unlike the
+// terrain tier there is no control to turn it off - which means a texture the hardware
+// cannot upload has no escape route. WebGL2 guarantees remarkably little here (the spec
+// floor is 2048), desktop GPUs typically report 16384, and plenty of mobile hardware
+// caps at 4096 or 8192. The 10.24 m level is 8192 wide: fine on this machine, which
+// reports exactly 8192, and impossible on half the phones in the world.
+//
+// So the choice is the hardware's, made from its own reported limit. Coarsest-first
+// order is the manifest's (the same convention heighttier.json uses), so walking it
+// forwards and keeping the last level that fits lands on the finest affordable one.
+//
+// `renderer` is passed in rather than reached for: this module has no business knowing
+// where the renderer lives, and a probe or a test may want to ask with a limit of its
+// own.
+export function pickBasemapLevel(manifest, maxTextureSize) {
+  const levels = manifest.levels ?? [];
+  if (!levels.length) throw new Error('basemap.json has no levels');
+  let chosen = levels[0];
+  for (const level of levels) {
+    const { width, height } = level.dimensions;
+    if (width <= maxTextureSize && height <= maxTextureSize) chosen = level;
+  }
+  return chosen;
+}
+
+export async function loadBasemap(
+  dataUrl = `${import.meta.env.BASE_URL}data`,
+  { maxTextureSize = 4096 } = {},
+) {
   const manifest = await fetch(`${dataUrl}/basemap.json`).then((r) => r.json());
-  const texture = await new THREE.TextureLoader().loadAsync(`${dataUrl}/${manifest.file.name}`);
+  // A conservative DEFAULT of 4096 on purpose: if a caller forgets to pass the real
+  // limit, the failure is a coarser photograph rather than a texture that will not
+  // upload on the visitor's machine.
+  const level = pickBasemapLevel(manifest, maxTextureSize);
+  const texture = await new THREE.TextureLoader().loadAsync(`${dataUrl}/${level.file.name}`);
 
   // Colour, unlike the canopy mask: the build script stored it sRGB-encoded on
   // purpose (8-bit linear bands visibly in the darks, and both WebP and JPEG
@@ -139,5 +173,7 @@ export async function loadBasemap(dataUrl = `${import.meta.env.BASE_URL}data`) {
   BASEMAP.value = texture;
   BASEMAP_SCALE.value = manifest.encoding.fullScale * BASEMAP_GAIN;
   BASEMAP_MIX.value = 1;
-  return { manifest, texture };
+  // `level` is reported so a probe or a test can assert which one this machine got -
+  // otherwise "the basemap loaded" says nothing about whether the fine one was used.
+  return { manifest, texture, level };
 }

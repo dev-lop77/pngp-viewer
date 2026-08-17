@@ -490,20 +490,62 @@ def finish(composite, grid, hf, used):
         raw = open(webp, 'rb').read()
         digest = hashlib.sha256(raw).hexdigest()[:8]
         name = f'basemap.{digest}.webp'
-        for old in os.listdir(DATA_DIR):
-            if old.startswith('basemap.') and old.endswith('.webp') and old != name:
-                os.remove(os.path.join(DATA_DIR, old))
         shutil.copyfile(webp, os.path.join(DATA_DIR, name))
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
+    # The level this run produced. RESOLUTION IS COMPUTED FROM THE GRID, not copied from
+    # heightfield.json as it used to be: that copy was harmless only while the two grids
+    # were the same size, and --max-dim made it a manifest that lied about its own image.
+    level = {
+        'resolutionMPerPx': {
+            'x': (grid['xmax'] - grid['xmin']) / grid['width'],
+            'y': (grid['ymax'] - grid['ymin']) / grid['height'],
+        },
+        'dimensions': {'width': grid['width'], 'height': grid['height']},
+        'file': {'name': name, 'bytes': len(raw), 'sha256Prefix': digest},
+    }
+
+    # LEVELS, coarsest first, exactly as heighttier.json orders its own - but chosen by
+    # the GPU rather than by a control: src/basemap.js takes the finest level that
+    # MAX_TEXTURE_SIZE can actually hold. 8192 is more than plenty of hardware allows,
+    # and unlike the terrain tier this is the DEFAULT, so there is no opting out of a
+    # texture that will not upload. A visitor whose GPU caps at 4096 gets the 4096 level
+    # and the same park.
+    #
+    # Merged with whatever is already on disk, because one run builds ONE level: the
+    # composite is warped at the target grid, so two resolutions mean two runs
+    # (--max-dim=8192 and then no flag, or the reverse). This is deliberately not
+    # disguised as a single command.
+    levels = []
+    existing_path = os.path.join(DATA_DIR, 'basemap.json')
+    if os.path.exists(existing_path):
+        try:
+            levels = json.load(open(existing_path)).get('levels', [])
+        except (ValueError, OSError):
+            levels = []
+    levels = [lv for lv in levels
+              if lv.get('dimensions', {}).get('width') != grid['width']]
+    levels.append(level)
+    levels.sort(key=lambda lv: lv['dimensions']['width'])
+
+    # Only now, and only files no surviving level points at: the previous version deleted
+    # every basemap webp but the one it had just written, which with two levels would
+    # have removed the other level's image on every run.
+    keep = {lv['file']['name'] for lv in levels}
+    for old in os.listdir(DATA_DIR):
+        if old.startswith('basemap.') and old.endswith('.webp') and old not in keep:
+            os.remove(os.path.join(DATA_DIR, old))
+            log(f'   removed {old}, which no level references any more')
+
     manifest = {
-        'schemaVersion': 1,
-        'grid': 'identical to heightfield.json: same dimensions, bboxCrsUnits, resolution and row order',
+        'schemaVersion': 2,
+        'grid': 'the same bbox, crs and row order as heightfield.json. NOT the same pixel '
+                'dimensions any more: the terrain samples this with normalised UVs, so a '
+                'finer photograph changes texel count and nothing else.',
         'crs': grid['crs'],
         'bboxCrsUnits': {k: grid[k] for k in ('xmin', 'ymin', 'xmax', 'ymax')},
-        'dimensions': {'width': grid['width'], 'height': grid['height']},
-        'resolutionMPerPx': hf['resolutionMPerPx'],
+        'levels': levels,
         'rowOrientation': hf['rowOrientation'],
         'encoding': {
             'channels': 3,
@@ -524,7 +566,9 @@ def finish(composite, grid, hf, used):
             'cloudRejectedSclClasses': list(SCL_REJECT),
             'snowKept': 'SCL class 11 (snow/ice) is kept: the park has 47 real glaciers',
         },
-        'file': {'name': name, 'bytes': len(raw), 'sha256Prefix': digest},
+        # No top-level 'file' any more: levels[] is the only place an image is named.
+        # Two names for one thing is how they come to disagree, and a reader that took
+        # the top-level one would silently ignore the GPU's limit.
         'source': {
             'name': 'Copernicus Sentinel-2 L2A (Collection 1), surface reflectance bands B04/B03/B02',
             # Prescribed verbatim by the EU legal notice on Copernicus Sentinel
