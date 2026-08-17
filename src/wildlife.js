@@ -483,6 +483,15 @@ const BUILDERS = {
   squirrel: buildSquirrel,
 };
 
+// Exported for the high-resolution model experiment (2026-08-17),
+// tools/dev/model-candidates.js. A candidate has to be built from THESE
+// primitives and compared against THESE builders: a preview that re-declared its
+// own copy of the current ibex would be comparing a candidate against a
+// look-alike that can drift from what ships, which is the same trap
+// vegetation.js's shared treeLattice() exists to avoid. Nothing on the shipped
+// path reads them through this export.
+export { BUILDERS as MODEL_BUILDERS, part, capsuleZ, legs, chain, COAT, SPECIES as MODEL_SPECIES };
+
 function speciesMesh(spec) {
   const merged = BufferGeometryUtils.mergeGeometries(BUILDERS[spec.name]());
   // Per instance, not per vertex: the current leg swing, computed on the CPU

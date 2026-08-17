@@ -113,6 +113,10 @@ export { SPACING_M as TREE_SPACING_M };
 // Exported for tools/test-snow.mjs, so it asserts against these numbers rather
 // than a second copy that could drift from them.
 export { CANOPY_COLOR, TREE_SNOW_BASE, TREE_SNOW_CROWN };
+// Same reason as wildlife.js's MODEL_BUILDERS export: the high-resolution model
+// preview (tools/dev/model-candidates.js) must draw the CURRENT tree from the
+// shipped numbers, not from a second copy of them.
+export { CONE_SEGMENTS, TREE_MIN_H, TREE_MAX_H, RADIUS_MIN, RADIUS_MAX };
 
 // Where the tree nearest (x, z) actually stands, applying the same wrap the
 // vertex shader does, from the same offsets - so this is the trunk the user can

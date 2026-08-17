@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>PNGP model candidates</title>
+    <!--
+      A bench for the high-resolution flora/fauna candidates (2026-08-17), served
+      by the Vite dev server at /tools/dev/model-preview.html so the bare `three`
+      import resolves the same way the app's does.
+
+      Deliberately NOT part of the app and NOT part of the build: vite builds
+      index.html only, so this file never reaches dist/, and tools/dev/deploy.sh
+      would refuse it at the site root anyway.
+
+      Usage: tools/dev/start-dev.sh, then
+        /tools/dev/model-preview.html?set=ibex&dist=8
+    -->
+    <style>
+      :root { color-scheme: dark; }
+      html, body { margin: 0; height: 100%; background: #1a1d21; overflow: hidden; }
+      canvas { display: block; }
+      #labels { position: fixed; inset: 0; pointer-events: none; }
+      .label {
+        position: absolute;
+        transform: translate(-50%, 0);
+        font: 13px/1.45 ui-sans-serif, system-ui, sans-serif;
+        color: #e8eaed;
+        text-align: center;
+        text-shadow: 0 1px 3px #000, 0 0 8px #000;
+        /* Bounded and wrapping: nowrap let two neighbouring notes run into each
+           other and read as one sentence belonging to neither model. */
+        max-width: 22ch;
+      }
+      .label b { font-weight: 600; }
+      .label .tris { color: #9fd0a0; font-variant-numeric: tabular-nums; }
+      .label .note { color: #9aa0a6; font-size: 11.5px; }
+      #head {
+        position: fixed; left: 14px; top: 12px;
+        font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: #9aa0a6; text-shadow: 0 1px 3px #000;
+      }
+      #head b { color: #e8eaed; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <div id="labels"></div>
+    <div id="head"></div>
+    <script type="module" src="./model-preview.js"></script>
+  </body>
+</html>
