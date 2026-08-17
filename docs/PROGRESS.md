@@ -2,6 +2,133 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## High-resolution flora and fauna, the last optional extra (2026-08-17)
+
+**ACCEPTED and PUBLISHED.** The user's verdict on the built option: *"Molto bene, mi
+piace ed è fluido"*, with **fps unchanged** from the 25-45 they already had — which is
+the measurement no instrument here can produce, and the reason the shape work was put
+in front of them before any of it was integrated.
+
+Their instruction opening the work was *"salta la parte di pre-verifica dell'fps.
+partiamo subito con dei test a cui io darò l'ok"*, so it went bench-first: candidates
+drawn side by side on `tools/dev/model-preview.html`, judged, then integrated.
+
+### The axis they chose, and the one they rejected
+
+Offered as **two axes** rather than three progressively bigger models, because these
+are flat-shaded merged primitives and that makes "higher resolution" two different
+questions: parts the model does not have, against segment counts plus smooth normals.
+
+They took **anatomy** and rejected **roundness** - the smooth-shaded high-segment ibex
+read as an inflated loaf, visibly worse than what shipped. Worth having asked: the
+whole triangle budget would otherwise have gone into the axis that made it worse.
+
+And the single most effective part of the accepted axis **costs no triangles at all**:
+scaling the body on X. A capsule's cross-section is a circle, so the shipped ibex reads
+as a barrel on sticks; a real one is deep through the chest and narrow across it.
+
+For the tree they took **3 tiers on a visible trunk** (41 triangles against the cone's
+7) and rejected a 5-tier version with drooping skirts - *"vira su pagoda"* - and a
+smooth 16-sided cone, which stays a cone.
+
+### How much each animal got was measured, not shared out evenly
+
+`alertM` looks like a floor on how close you get and is **not one**: the player walks
+at 4 m/s (`controls.js`) and every one of these flees slower, so any of them can be
+walked down. At 4 m, in the app's own fov-60 camera on a 900 px viewport, they stand
+**269, 209, 104, 62 and 38 px** tall (ibex, chamois, fox, marmot, squirrel). So chamois
+and fox took the full pass and marmot and squirrel only what survives 38-62 px. Even
+so the test measured a bold fox holding the camera at 5.95 m, so the reaction logic
+keeps its own distance regardless.
+
+### Two LOD mechanisms, for two different scarcities
+
+There are at most **248 animals** on screen and **27,889 tree slots**, so the two
+halves are not the same problem and are not solved the same way.
+
+- **Animals switch per animal per frame on their ON-SCREEN HEIGHT IN PIXELS**, not on a
+  distance in metres, derived from the live fov and viewport. A single metre threshold
+  would be wrong by construction: the same 20 m makes an ibex 24 px and a squirrel 3.
+  Below `HI_MIN_PX = 48` the standard model draws, because an ear or a horn knob is a
+  few pixels of a model that tall.
+- **Trees needed the opposite kind of fix.** The first version gave the 41-triangle
+  model to every slot, and the probe put a number on it: **+993,344 triangles, 2.11x
+  the whole scene**, of which the animals were +734. Trees at 440 m were being drawn at
+  full detail. Now the fine tree draws only within `HI_NEAR_M = 150`, on a short buffer
+  the CPU refills after every `HI_REFILL_M = 8` of walking - the same amortisation
+  `wildlife.js`'s rescan uses, which keeps this file's header promise that walking
+  costs nothing on the CPU. **+89,134 triangles instead of +993,344.**
+
+The handover is a HARD swap, not a cross-fade: a fade puts both models at half height
+at the midpoint, which is two half trees in one place. The two distance tests are exact
+complements, so every tree is drawn once and none twice. Both meshes share ONE offsets
+buffer so a tree cannot move when the level changes, and `vegCell` is derived from the
+world position so both hash the same tree to the same height, radius and tint.
+
+### The defect the user found by looking, and why nothing here caught it
+
+*"Quando seleziono high models, gli alberi spariscono."* Cause, confirmed by
+measurement rather than reasoning:
+
+**`attachAtmo()` wraps `onBeforeCompile` in a fresh arrow function, and three's default
+program cache key is `onBeforeCompile.toString()`.** So after attaching the atmosphere,
+both tree materials stringified to the *same* source - the wrapper's - shared **one
+compiled program**, and the fine mesh silently ran the coarse mesh's vertex shader,
+inheriting its near-hole test and collapsing every tree inside 150 m. Measured before
+and after: `sameKey` true -> false, programs 18 (one shared) -> 19 (one per key).
+
+The comment I had written there claimed the opposite, and was confidently wrong: two
+different closures do NOT give two keys once something re-wraps the hook. The fix is
+one explicit `customProgramCacheKey` per material. **This is the same trap the shrub
+layer hit running the grass shader** - it is in this file already, and it still cost a
+working feature.
+
+**A counter is not a pixel, again.** A collapsed instance still counts its triangles,
+so `probe-models.mjs` reported the fine trees as drawn while the screen held none.
+Three further attempts to measure pixels were each wrong in their own way, and all
+three are worth not repeating:
+
+1. `page.screenshot()` captures the whole PAGE, so the HUD's own DOM text is counted
+   over a cleared canvas. Five wildly different isolations all read **2.09% of the
+   frame** - the count *was* the HUD, constant by construction.
+2. `locator('canvas').screenshot()` does not fix it: Playwright clips a page shot to
+   the element's box, HUD included. The HUD has to be hidden too.
+3. `gl.readPixels()` on the default framebuffer returns nothing here (antialias is on,
+   so it is multisampled), which reads as "no trees" for every case including the one
+   known to work.
+
+What finally settled it was two full-scene shots from an identical camera inside a
+canopy-1.0 wood: **161,753 pixels differ, 12.8% of the frame.** Finding that wood
+needed `getCanopy` on the dev handle, because two earlier attempts photographed the
+treeline from above it.
+
+The probe also caught a fault in itself: it differenced two whole-scene triangle
+totals, and the terrain quadtree keeps refining for seconds, so two identical Standard
+frames differed by **44,384** - more than half of what was being attributed. It
+attributes to the governed meshes now and checks its own baseline drift.
+
+`tools/test-vegetation.mjs` asserts the cache keys from now on: two meshes, two
+distinct keys, one program compiled per level. That is the property that broke, and it
+is cheap and exact where the pixels were neither.
+
+### Where the code went
+
+`MODEL_DETAIL` lives in its own `src/modeldetail.js`, not in `wildlife.js`: putting it
+there made `vegetation.js` import `wildlife.js` while `wildlife.js` already imports
+`vegetation.js` for `nearestTree`. That cycle happens to work because nothing reads the
+binding at evaluation time, which is exactly the dependency that breaks later for a
+reason nobody can see.
+
+`tools/dev/model-candidates.js` is 145 lines, down from 565: it briefly held its own
+copy of all five accepted animals and the accepted tree, and now imports every model
+from `src/`. A bench comparing a candidate against a look-alike of what ships is not
+comparing anything.
+
+Two scoping bugs of the kind main.js's own comments warn about, both mine and both
+caught before they shipped: `vegetation` was a block-local `const` that the Models
+control referenced from outside its block, and `canopyAt` is built inside the terrain
+promise while the dev handle is at module scope.
+
 ## The landcover draft nobody read (2026-08-17, after the purge)
 
 The user picked this off the three things left over: *sistemare il landcover-draft*.

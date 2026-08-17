@@ -384,5 +384,49 @@ export async function loadWater(dataUrl = `${import.meta.env.BASE_URL}data`) {
     }
   }
 
-  return { group, manifest, update };
+  // Re-seat the water on the surface the terrain actually DRAWS, the same treatment
+  // trails.js and poi.js give their own geometry and for the same reason:
+  // tools/build-hydrology.mjs baked true heightfield elevations into water.json, and
+  // that is not the surface on screen.
+  //
+  // It exists because of a bug the user found (2026-08-17): "se vai a Le Pont, c'è un
+  // torrente e non è ancorato al terreno con i modelli Medium e High Terrain". The
+  // height tier moves the drawn surface by up to 44 m, and this module had no idea -
+  // measured at Le Pont, a river ribbon that sits within 3.7 m of the ground without
+  // the tier floated up to 11.9 m above it with the 10 m level on.
+  //
+  // NOT every child, and the exclusions are the substance of this function:
+  //
+  //   LAKES are left alone. A lake surface is LEVEL - that is what makes it a lake -
+  //   so following the bed would tilt it into a ramp. That leaves a real open question
+  //   the tier creates and this cannot answer: if the finer ground rises inside a
+  //   basin, the lake at its fixed waterLevelM is buried by it. Wrong in a different
+  //   way than a tilted lake would be, and the choice belongs to whoever owns the
+  //   hydrology data, not to a re-seating pass.
+  //
+  //   WATERFALLS are left alone because they are vertical: seating every vertex a
+  //   fixed height above the ground under it would flatten the fall into a puddle.
+  //   Their top and bottom would each need to follow their own end of the drop, which
+  //   is a change to how they are built rather than a pass over the buffer.
+  function alignToGround(heightAt) {
+    for (const child of group.children) {
+      const offsetM = child.name === 'water-glaciers' ? GLACIER_HEIGHT_OFFSET_M
+        : child.name === 'water-rivers' ? RIVER_HEIGHT_OFFSET_M
+          : null;
+      if (offsetM === null) continue; // lakes and the waterfall group - see above
+      const attr = child.geometry?.getAttribute('position');
+      if (!attr) continue;
+      const a = attr.array;
+      for (let i = 0; i < a.length; i += 3) {
+        const y = heightAt(a[i], a[i + 2]);
+        if (Number.isFinite(y)) a[i + 1] = y + offsetM;
+      }
+      attr.needsUpdate = true;
+      // Moved vertices would otherwise be culled against a stale bound, exactly as in
+      // trails.js's alignToGround.
+      child.geometry.computeBoundingSphere();
+    }
+  }
+
+  return { group, manifest, update, alignToGround };
 }

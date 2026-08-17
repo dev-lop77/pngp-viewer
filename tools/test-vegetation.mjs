@@ -152,6 +152,37 @@ const result = await page.evaluate(async () => {
   };
 });
 
+// The two levels of detail must compile to TWO programs (2026-08-17). This is a
+// regression guard for a defect the user found by looking and every counter here
+// missed: three's default program cache key is onBeforeCompile.toString(), and
+// attachAtmo() wraps that hook in a fresh arrow function, so both tree materials
+// stringified to the SAME source, shared one program, and the fine mesh silently ran
+// the coarse mesh's shader - which collapsed every tree inside the handover radius.
+// "Quando seleziono high models, gli alberi spariscono."
+//
+// Asserted on the CACHE KEYS rather than on pixels, because that is the property that
+// broke and it is cheap and exact. The pixels are checked above.
+const programs = await page.evaluate(async () => {
+  const sel = document.getElementById('env-models');
+  sel.value = '1';
+  sel.dispatchEvent(new Event('change'));
+  // Both meshes have to be drawn at least once before either has a program.
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  window.__pngp.renderer.render(window.__pngp.scene, window.__pngp.camera);
+  const keys = window.__pngp.renderer.info.programs.map((pr) => pr.cacheKey);
+  const veg = window.__pngp.scene.getObjectByName('vegetation-lod').children;
+  return {
+    distinctMaterialKeys: new Set(veg.map((m) => m.material.customProgramCacheKey())).size,
+    meshes: veg.length,
+    wrapped: keys.filter((k) => k.includes('pngp-veg-wrapped')).length,
+    nearWindow: keys.filter((k) => k.includes('pngp-veg-nearwindow')).length,
+  };
+});
+console.log(`
+the two tree levels of detail: ${programs.meshes} meshes, ` +
+  `${programs.distinctMaterialKeys} distinct program cache keys, ` +
+  `${programs.wrapped} wrapped + ${programs.nearWindow} near-window compiled`);
+
 await browser.close();
 
 console.log(`Mask ${result.maskSize}, max ${result.maskMax}, mean ${result.maskMean}`);
@@ -179,6 +210,17 @@ if (!wooded || wooded.changedPct < 5) {
 }
 if (!bare || bare.changedPct > 0.5) {
   console.log('\nFAIL: trees appeared above the treeline, where the mask is empty.');
+  failures++;
+}
+if (programs.meshes !== 2 || programs.distinctMaterialKeys !== 2) {
+  console.log(`\nFAIL: the two tree levels of detail share a program cache key` +
+    ` (${programs.distinctMaterialKeys} distinct across ${programs.meshes} meshes).` +
+    ' One of them is running the other\'s vertex shader.');
+  failures++;
+}
+if (programs.wrapped !== 1 || programs.nearWindow !== 1) {
+  console.log(`\nFAIL: expected one compiled program per tree level of detail, got` +
+    ` ${programs.wrapped} wrapped and ${programs.nearWindow} near-window.`);
   failures++;
 }
 if (failures || problems.length) process.exit(1);

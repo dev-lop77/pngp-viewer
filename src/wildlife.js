@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { attachAtmo } from './atmosphere.js';
 import { nearestTree, TREE_SPACING_M } from './vegetation.js';
+import { MODEL_DETAIL } from './modeldetail.js';
 
 // Wildlife (phase 6, docs/ARCHITECTURE.md §8): Alpine ibex above all - the park
 // was created in 1922 to save the last few hundred of them, and they are the
@@ -302,14 +303,29 @@ function capsuleZ(radius, length, radial = 7) {
   return g;
 }
 
+// Which corner each leg stands at, and which diagonal pair it swings with. Shared,
+// because the high-detail models add a thigh and a hoof PER LEG and each of those
+// has to land on the same corner and inherit the same swing sign as the leg it
+// belongs to - two copies of this table would let a hoof trot out of phase with
+// its own foot.
+const LEG_LAYOUT = (spreadX, spreadZ) => [
+  [+spreadX, +spreadZ, +1], // front left  \ diagonal pair, same phase
+  [-spreadX, -spreadZ, +1], // rear right   /
+  [-spreadX, +spreadZ, -1], // front right \ the other diagonal, antiphase
+  [+spreadX, -spreadZ, -1], // rear left    /
+];
+
+// One frame per species, at module scope so the standard and the high-detail model
+// of the same animal stand on identical legs at identical hip heights. As locals
+// they were two copies a divergence could hide in.
+const IBEX_FRAME = { legR: 0.055, legLen: 0.55, spreadX: 0.17, spreadZ: 0.3, hipY: 0.6 };
+const CHAMOIS_FRAME = { legR: 0.045, legLen: 0.46, spreadX: 0.13, spreadZ: 0.24, hipY: 0.48 };
+const MARMOT_FRAME = { legR: 0.035, legLen: 0.16, spreadX: 0.1, spreadZ: 0.11, hipY: 0.18 };
+const FOX_FRAME = { legR: 0.035, legLen: 0.34, spreadX: 0.09, spreadZ: 0.16, hipY: 0.36 };
+const SQUIRREL_FRAME = { legR: 0.016, legLen: 0.07, spreadX: 0.04, spreadZ: 0.05, hipY: 0.09 };
+
 function legs({ legR, legLen, spreadX, spreadZ, hipY }, color) {
-  const layout = [
-    [+spreadX, +spreadZ, +1], // front left  \ diagonal pair, same phase
-    [-spreadX, -spreadZ, +1], // rear right   /
-    [-spreadX, +spreadZ, -1], // front right \ the other diagonal, antiphase
-    [+spreadX, -spreadZ, -1], // rear left    /
-  ];
-  return layout.map(([x, z, sign]) => {
+  return LEG_LAYOUT(spreadX, spreadZ).map(([x, z, sign]) => {
     const g = new THREE.CylinderGeometry(legR, legR * 0.6, legLen, 5, 1);
     g.translate(x, hipY - legLen / 2, z);
     return part(g, color, { swing: sign, pivotY: hipY });
@@ -339,7 +355,7 @@ function chain(x, y0, z0, segments, color) {
 }
 
 function buildIbex() {
-  const frame = { legR: 0.055, legLen: 0.55, spreadX: 0.17, spreadZ: 0.3, hipY: 0.6 };
+  const frame = IBEX_FRAME;
   const body = capsuleZ(0.27, 0.9);
   body.translate(0, 0.62, 0);
   const neck = new THREE.CapsuleGeometry(0.13, 0.3, 2, 6);
@@ -367,7 +383,7 @@ function buildIbex() {
 }
 
 function buildChamois() {
-  const frame = { legR: 0.045, legLen: 0.46, spreadX: 0.13, spreadZ: 0.24, hipY: 0.48 };
+  const frame = CHAMOIS_FRAME;
   const body = capsuleZ(0.21, 0.7);
   body.translate(0, 0.5, 0);
   const neck = new THREE.CapsuleGeometry(0.1, 0.26, 2, 6);
@@ -393,7 +409,7 @@ function buildChamois() {
 }
 
 function buildMarmot() {
-  const frame = { legR: 0.035, legLen: 0.16, spreadX: 0.1, spreadZ: 0.11, hipY: 0.18 };
+  const frame = MARMOT_FRAME;
   const body = capsuleZ(0.13, 0.24, 6);
   body.translate(0, 0.2, 0);
   const head = capsuleZ(0.09, 0.08, 6);
@@ -412,7 +428,7 @@ function buildFox() {
   // and a tail nearly as long as the body. Legs and ear tips are the dark
   // "stockings" a red fox actually has, which is most of what makes the silhouette
   // read as a fox rather than a small dog.
-  const frame = { legR: 0.035, legLen: 0.34, spreadX: 0.09, spreadZ: 0.16, hipY: 0.36 };
+  const frame = FOX_FRAME;
   const body = capsuleZ(0.14, 0.42);
   body.translate(0, 0.38, 0);
   const neck = new THREE.CapsuleGeometry(0.1, 0.14, 2, 6);
@@ -451,7 +467,7 @@ function buildSquirrel() {
   // 25 cm of animal, and the tail is the whole silhouette: it arcs up behind the
   // back rather than trailing, which is what tells a squirrel apart from anything
   // else at this size.
-  const frame = { legR: 0.016, legLen: 0.07, spreadX: 0.04, spreadZ: 0.05, hipY: 0.09 };
+  const frame = SQUIRREL_FRAME;
   const body = capsuleZ(0.055, 0.11, 6);
   body.translate(0, 0.1, 0);
   const head = capsuleZ(0.045, 0.03, 6);
@@ -483,17 +499,336 @@ const BUILDERS = {
   squirrel: buildSquirrel,
 };
 
-// Exported for the high-resolution model experiment (2026-08-17),
-// tools/dev/model-candidates.js. A candidate has to be built from THESE
-// primitives and compared against THESE builders: a preview that re-declared its
-// own copy of the current ibex would be comparing a candidate against a
-// look-alike that can drift from what ships, which is the same trap
-// vegetation.js's shared treeLattice() exists to avoid. Nothing on the shipped
-// path reads them through this export.
-export { BUILDERS as MODEL_BUILDERS, part, capsuleZ, legs, chain, COAT, SPECIES as MODEL_SPECIES };
+// ---------------------------------------------------------------------------
+// The HIGH-DETAIL models (accepted by the user 2026-08-17, after seeing them on
+// tools/dev/model-preview.html). An OPTION to turn up, never a new default -
+// their framing from 2026-08-13: "modelli ad alta risoluzione come opzione da
+// alzare, non come nuovo default".
+//
+// The axis they chose is ANATOMY, not roundness. That matters and it was not
+// obvious: these are flat-shaded merged primitives, so smooth normals on a
+// higher-segment capsule read as an inflated loaf rather than as a finer animal,
+// and the candidate that did that came back visibly worse than what ships. So
+// every part below is a shape the model did not have - and the single most
+// effective one costs no triangles at all: scaling the body on X, because a
+// capsule's cross-section is a circle and a real ungulate is deep through the
+// chest and narrow across it.
+//
+// How much each species got was decided by measurement, not evenly. `alertM` looks
+// like a floor on how close you get and is not one - the player walks at 4 m/s
+// (controls.js) and every one of these flees slower - so at 4 m they stand 269,
+// 209, 104, 62 and 38 px tall in the app's own camera. Chamois and fox therefore
+// got the full pass and marmot and squirrel only what survives 38-62 px.
 
-function speciesMesh(spec) {
-  const merged = BufferGeometryUtils.mergeGeometries(BUILDERS[spec.name]());
+// A thigh: the shipped legs are one tapered cylinder each from hip to ground, so a
+// limb leaves the body as a stick pushed into it. Wide at the hip, tapering to the
+// knee - the reverse reads as a flap splayed under the belly.
+//
+// It carries its leg's OWN aLeg pair. Not a detail: aLeg.x is the swing sign and
+// aLeg.y the pivot height, so a thigh given the wrong pair stays put while the leg
+// under it rotates away.
+function thighs(frame, color) {
+  const { legR, legLen, spreadX, spreadZ, hipY } = frame;
+  return LEG_LAYOUT(spreadX, spreadZ).map(([x, z, sign]) => {
+    const g = new THREE.CylinderGeometry(legR * 2.1, legR * 1.15, legLen * 0.46, 6, 1);
+    g.scale(0.85, 1, 1); // a haunch is flatter across than along
+    g.translate(x, hipY - legLen * 0.2, z);
+    return part(g, color, { swing: sign, pivotY: hipY });
+  });
+}
+
+// A hoof or paw at the foot of each leg, on the same swing as the leg.
+function hooves(frame, color) {
+  const { legR, legLen, spreadX, spreadZ, hipY } = frame;
+  return LEG_LAYOUT(spreadX, spreadZ).map(([x, z, sign]) => {
+    const g = new THREE.CylinderGeometry(legR * 0.62, legR * 0.78, 0.07, 6, 1);
+    g.translate(x, hipY - legLen - 0.02, z);
+    return part(g, color, { swing: sign, pivotY: hipY });
+  });
+}
+
+// A flattened cone for an ear: a leaf, not a spike.
+function ear(side, y, z, len, color, { tilt = 0.5, sweep = 0.7 } = {}) {
+  const g = new THREE.ConeGeometry(len * 0.42, len, 5, 1);
+  g.scale(1, 1, 0.45);
+  g.rotateX(sweep);
+  g.rotateZ(side > 0 ? -tilt : tilt);
+  g.translate(side, y, z);
+  return part(g, color);
+}
+
+// A horn with transverse KNOBS, which is the point of an ibex: an adult male
+// carries 20-30 of them up the front face and they are what the eye reads as ibex
+// rather than goat. One torus each, placed on the same walked curve chain() uses,
+// so they follow the sweep for free.
+function ribbedHorn(x, y0, z0, segments, color, knobsPerSegment) {
+  const parts = chain(x, y0, z0, segments, color);
+  let y = y0;
+  let z = z0;
+  segments.forEach((s, si) => {
+    const a = (-s.angle * Math.PI) / 180;
+    const dy = Math.cos(a);
+    const dz = Math.sin(a);
+    const n = knobsPerSegment[si] ?? 0;
+    for (let k = 0; k < n; k++) {
+      const t = (k + 0.6) / (n + 0.2); // skip the very base, so knobs miss the joint
+      const r = s.r0 + (s.r1 - s.r0) * t;
+      const knob = new THREE.TorusGeometry(r * 0.94, r * 0.3, 4, 8);
+      knob.rotateX(Math.PI / 2 + a); // across the shaft, following its lean
+      knob.translate(x, y + dy * s.len * t, z + dz * s.len * t);
+      parts.push(part(knob, color));
+    }
+    y += dy * s.len;
+    z += dz * s.len;
+  });
+  return parts;
+}
+
+const IBEX_HORN = [
+  { len: 0.2, angle: 25, r0: 0.042, r1: 0.036 },
+  { len: 0.2, angle: 60, r0: 0.036, r1: 0.028 },
+  { len: 0.18, angle: 100, r0: 0.028, r1: 0.015 },
+];
+
+function buildIbexHi() {
+  const frame = IBEX_FRAME;
+  const body = capsuleZ(0.27, 0.9);
+  body.scale(0.76, 1, 1); // the free fix, and the biggest one
+  body.translate(0, 0.62, 0);
+  const brisket = capsuleZ(0.15, 0.34, 7);
+  brisket.scale(0.8, 1, 1);
+  brisket.translate(0, 0.5, 0.3);
+  const neck = new THREE.CapsuleGeometry(0.13, 0.3, 2, 6);
+  neck.rotateX(-0.8);
+  neck.translate(0, 0.82, 0.34);
+  const head = capsuleZ(0.1, 0.2, 6);
+  head.translate(0, 1.02, 0.55);
+  const muzzle = new THREE.CylinderGeometry(0.055, 0.082, 0.12, 6, 1);
+  muzzle.rotateX(Math.PI / 2);
+  muzzle.translate(0, 1.0, 0.68);
+  const parts = [
+    part(body, COAT.ibex),
+    part(brisket, COAT.ibex),
+    part(neck, COAT.ibex),
+    part(head, COAT.ibex),
+    part(muzzle, COAT.ibex),
+    ...legs(frame, COAT.ibex),
+    ...thighs(frame, COAT.ibex),
+    ...hooves(frame, COAT.horn),
+    ear(0.075, 1.06, 0.44, 0.13, COAT.ibex),
+    ear(-0.075, 1.06, 0.44, 0.13, COAT.ibex),
+  ];
+  // The beard an adult male carries, which hangs and so reads in silhouette.
+  parts.push(...chain(0, 0.96, 0.6, [{ len: 0.13, angle: 172, r0: 0.035, r1: 0.02 }], COAT.horn));
+  parts.push(...chain(0, 0.66, -0.44, [
+    { len: 0.1, angle: 120, r0: 0.035, r1: 0.028 },
+    { len: 0.07, angle: 165, r0: 0.028, r1: 0.015 },
+  ], COAT.horn));
+  const knobs = [4, 4, 3];
+  parts.push(...ribbedHorn(0.06, 1.12, 0.48, IBEX_HORN, COAT.horn, knobs));
+  parts.push(...ribbedHorn(-0.06, 1.12, 0.48, IBEX_HORN, COAT.horn, knobs));
+  return parts;
+}
+
+function buildChamoisHi() {
+  const frame = CHAMOIS_FRAME;
+  const body = capsuleZ(0.21, 0.7);
+  body.scale(0.78, 1, 1);
+  body.translate(0, 0.5, 0);
+  const brisket = capsuleZ(0.12, 0.26, 7);
+  brisket.scale(0.82, 1, 1);
+  brisket.translate(0, 0.4, 0.24);
+  const neck = new THREE.CapsuleGeometry(0.1, 0.26, 2, 6);
+  neck.rotateX(-0.6);
+  neck.translate(0, 0.66, 0.26);
+  const head = capsuleZ(0.085, 0.18, 6);
+  head.translate(0, 0.85, 0.42);
+  const muzzle = new THREE.CylinderGeometry(0.042, 0.062, 0.1, 6, 1);
+  muzzle.rotateX(Math.PI / 2);
+  muzzle.translate(0, 0.83, 0.54);
+  const parts = [
+    part(body, COAT.chamois),
+    part(brisket, COAT.chamois),
+    part(neck, COAT.chamois),
+    part(head, COAT.chamois),
+    part(muzzle, COAT.chamois),
+    ...legs(frame, COAT.chamois),
+    ...thighs(frame, COAT.chamois),
+    ...hooves(frame, COAT.horn),
+    // Long and pointed, unlike an ibex's.
+    ear(0.062, 0.89, 0.34, 0.15, COAT.chamois, { sweep: 0.45 }),
+    ear(-0.062, 0.89, 0.34, 0.15, COAT.chamois, { sweep: 0.45 }),
+  ];
+  // THE FACE MASK, and the reason a chamois earns its own pass: a dark band from
+  // the eye to the muzzle across a pale face names the species more reliably than
+  // its horns do, because they are short - at 200 px the mask is the bolder mark.
+  for (const side of [0.055, -0.055]) {
+    const mask = new THREE.BoxGeometry(0.022, 0.075, 0.16);
+    mask.translate(side, 0.865, 0.47);
+    parts.push(part(mask, COAT.stocking));
+  }
+  parts.push(...chain(0, 0.56, -0.34, [{ len: 0.09, angle: 140, r0: 0.03, r1: 0.018 }], COAT.stocking));
+  // Rings at the BASE, not along the length - the opposite distribution to an
+  // ibex's knobs, and itself part of telling the two apart.
+  const horn = [
+    { len: 0.15, angle: 8, r0: 0.022, r1: 0.018 },
+    { len: 0.09, angle: 80, r0: 0.018, r1: 0.009 },
+  ];
+  parts.push(...ribbedHorn(0.045, 0.92, 0.38, horn, COAT.horn, [3, 0]));
+  parts.push(...ribbedHorn(-0.045, 0.92, 0.38, horn, COAT.horn, [3, 0]));
+  return parts;
+}
+
+function buildFoxHi() {
+  const frame = FOX_FRAME;
+  const body = capsuleZ(0.14, 0.42);
+  body.scale(0.86, 1, 1);
+  body.translate(0, 0.38, 0);
+  const neck = new THREE.CapsuleGeometry(0.1, 0.14, 2, 6);
+  neck.rotateX(-1.05);
+  neck.translate(0, 0.4, 0.24);
+  const head = capsuleZ(0.075, 0.08, 6);
+  head.translate(0, 0.44, 0.34);
+  const muzzle = new THREE.CylinderGeometry(0.018, 0.055, 0.12, 5, 1);
+  muzzle.rotateX(Math.PI / 2);
+  muzzle.translate(0, 0.42, 0.45);
+  const bib = capsuleZ(0.06, 0.1, 6);
+  bib.translate(0, 0.34, 0.26);
+  // The cheek ruff: a fox's head is wider at the jaw than at the skull, and that
+  // is why the face reads as a wedge rather than as a cone.
+  const ruff = capsuleZ(0.085, 0.05, 7);
+  ruff.scale(1.15, 0.9, 1);
+  ruff.translate(0, 0.43, 0.3);
+  const parts = [
+    part(body, COAT.fox),
+    part(neck, COAT.fox),
+    part(ruff, COAT.fox),
+    part(head, COAT.fox),
+    part(muzzle, COAT.fox),
+    part(bib, COAT.bib),
+    ...legs(frame, COAT.stocking),
+    ...thighs(frame, COAT.fox), // russet above, black below: the stocking starts at the knee
+    ...hooves(frame, COAT.stocking),
+  ];
+  // Large ears with black backs - one of a red fox's two field marks.
+  for (const side of [0.052, -0.052]) {
+    const e = new THREE.ConeGeometry(0.042, 0.105, 5, 1);
+    e.scale(1, 1, 0.5);
+    e.rotateX(0.22);
+    e.rotateZ(side > 0 ? -0.3 : 0.3);
+    e.translate(side, 0.52, 0.31);
+    parts.push(part(e, COAT.fox));
+    const tip = new THREE.ConeGeometry(0.022, 0.04, 5, 1);
+    tip.scale(1, 1, 0.5);
+    tip.rotateX(0.22);
+    tip.rotateZ(side > 0 ? -0.3 : 0.3);
+    tip.translate(side, 0.575, 0.315);
+    parts.push(part(tip, COAT.stocking));
+  }
+  // The brush, the other field mark. Held OUT behind and barely dropping: angles
+  // are degrees from vertical, and a first pass at 95/108/122 curled it into the
+  // ground, where a fox's tail never is.
+  parts.push(...chain(0, 0.37, -0.22, [
+    { len: 0.18, angle: 92, r0: 0.078, r1: 0.078 },
+    { len: 0.15, angle: 99, r0: 0.078, r1: 0.062 },
+    { len: 0.12, angle: 106, r0: 0.062, r1: 0.044 },
+  ], COAT.fox));
+  parts.push(...chain(0, 0.3, -0.66, [{ len: 0.08, angle: 108, r0: 0.044, r1: 0.024 }], COAT.bib));
+  return parts;
+}
+
+// Marmot and squirrel: the LIGHT pass. 62 px and 38 px at 4 m, so only what
+// changes an outline at that size, and nothing that does not.
+function buildMarmotHi() {
+  const frame = MARMOT_FRAME;
+  const body = capsuleZ(0.13, 0.24, 6);
+  body.translate(0, 0.2, 0);
+  const head = capsuleZ(0.09, 0.08, 6);
+  head.translate(0, 0.26, 0.22);
+  // Set INSIDE the head's own front cap (head at z 0.22, radius 0.09, so the cap
+  // reaches about 0.31). Further out it reads as a shelf bolted past the face.
+  const muzzle = new THREE.CylinderGeometry(0.042, 0.07, 0.06, 6, 1);
+  muzzle.rotateX(Math.PI / 2);
+  muzzle.translate(0, 0.242, 0.265);
+  const parts = [
+    part(body, COAT.marmot),
+    part(head, COAT.marmot),
+    part(muzzle, COAT.marmot),
+    ...legs(frame, COAT.marmot),
+    ...thighs(frame, COAT.marmot),
+    // Small and round, set low and wide - not a squirrel's upright tufts.
+    ear(0.07, 0.31, 0.19, 0.055, COAT.marmot, { tilt: 0.9, sweep: 0.2 }),
+    ear(-0.07, 0.31, 0.19, 0.055, COAT.marmot, { tilt: 0.9, sweep: 0.2 }),
+  ];
+  // The shipped tail leaves the rump at 115 degrees from vertical, which draws it
+  // as a horizontal rod - the most visible thing wrong with the marmot at this
+  // range, and it is one number. Short, low, and bent rather than pointing.
+  parts.push(...chain(0, 0.21, -0.19, [
+    { len: 0.12, angle: 128, r0: 0.045, r1: 0.036 },
+    { len: 0.09, angle: 152, r0: 0.036, r1: 0.022 },
+  ], COAT.marmot));
+  return parts;
+}
+
+function buildSquirrelHi() {
+  const frame = SQUIRREL_FRAME;
+  const body = capsuleZ(0.055, 0.11, 6);
+  body.translate(0, 0.1, 0);
+  const head = capsuleZ(0.045, 0.03, 6);
+  head.translate(0, 0.145, 0.09);
+  const muzzle = new THREE.CylinderGeometry(0.022, 0.036, 0.035, 5, 1);
+  muzzle.rotateX(Math.PI / 2);
+  muzzle.translate(0, 0.138, 0.125);
+  const parts = [
+    part(body, COAT.squirrel),
+    part(head, COAT.squirrel),
+    part(muzzle, COAT.squirrel),
+    ...legs(frame, COAT.squirrel),
+  ];
+  for (const side of [0.025, -0.025]) {
+    const e = new THREE.ConeGeometry(0.012, 0.05, 4, 1);
+    e.translate(side, 0.187, 0.075);
+    parts.push(part(e, COAT.squirrel));
+  }
+  // The tail IS the squirrel at 38 px, so it is the only place the light pass
+  // spends anything: four segments and thicker through the middle, so it arcs over
+  // the back as a plume rather than as a bent rod.
+  parts.push(...chain(0, 0.11, -0.07, [
+    { len: 0.07, angle: 100, r0: 0.032, r1: 0.042 },
+    { len: 0.07, angle: 62, r0: 0.042, r1: 0.046 },
+    { len: 0.06, angle: 28, r0: 0.046, r1: 0.04 },
+    { len: 0.05, angle: 5, r0: 0.04, r1: 0.022 },
+  ], COAT.squirrel));
+  return parts;
+}
+
+const HI_BUILDERS = {
+  ibex: buildIbexHi,
+  chamois: buildChamoisHi,
+  marmot: buildMarmotHi,
+  fox: buildFoxHi,
+  squirrel: buildSquirrelHi,
+};
+
+// Exported for tools/dev/model-preview.html, the bench the user judges shapes on.
+// It compares against THESE builders rather than re-declaring its own copy of the
+// current animals, which is the same trap the shared treeLattice() avoids.
+export { BUILDERS as MODEL_BUILDERS, HI_BUILDERS, part, capsuleZ, legs, chain, COAT, SPECIES as MODEL_SPECIES };
+
+// When the high model stops being worth drawing, expressed in PIXELS of on-screen
+// height rather than in metres of distance. Metres would be the wrong unit: the
+// same 20 m makes an ibex 24 px tall and a squirrel 3, so one distance threshold
+// would either waste the detail on animals too small to show it or drop it off an
+// ibex still filling a fifth of the screen.
+//
+// 48 px is chosen as the point below which the added parts stop existing: an ear,
+// a hoof or a horn knob is a few pixels of a model that tall. Everything past it
+// draws the standard model, which is what shipped before this option and is
+// correct at that size.
+const HI_MIN_PX = 48;
+
+function speciesMesh(spec, { hi = false } = {}) {
+  const merged = BufferGeometryUtils.mergeGeometries((hi ? HI_BUILDERS : BUILDERS)[spec.name]());
   // Per instance, not per vertex: the current leg swing, computed on the CPU
   // where the walking state already lives. One float beats a time uniform plus
   // a phase attribute, and keeps every decision about gait in one place.
@@ -551,12 +886,30 @@ export function createWildlife({ sampleGroundHeight, canopyAt, onAlarm = null })
   const group = new THREE.Group();
   group.name = 'wildlife';
 
-  const state = SPECIES.map((spec) => ({
-    spec,
-    mesh: speciesMesh(spec),
-    herds: new Map(), // "ix:iz" -> herd, or null for "tested, nothing lives here"
-  }));
-  for (const s of state) group.add(s.mesh);
+  const state = SPECIES.map((spec) => {
+    const mesh = speciesMesh(spec);
+    const meshHi = speciesMesh(spec, { hi: true });
+    // The model's own height, MEASURED off the geometry rather than listed, so the
+    // pixel threshold below cannot drift from the shape it is thresholding.
+    meshHi.geometry.computeBoundingBox();
+    const bb = meshHi.geometry.boundingBox;
+    return {
+      spec,
+      mesh,
+      meshHi,
+      heightM: bb.max.y - bb.min.y,
+      herds: new Map(), // "ix:iz" -> herd, or null for "tested, nothing lives here"
+    };
+  });
+  // Both meshes carry the SAME name. Deliberate: they are two levels of detail of
+  // one animal, not two animals, and everything that walks this group - the
+  // wildlife test included - reads the species off mesh.name and counts instances
+  // across every child. Naming the fine one "wildlife-ibex-hi" would have made it
+  // a sixth species to every such reader.
+  for (const s of state) {
+    group.add(s.mesh);
+    group.add(s.meshHi);
+  }
 
   const matrix = new THREE.Matrix4();
   const basis = new THREE.Matrix4();
@@ -843,15 +1196,32 @@ export function createWildlife({ sampleGroundHeight, canopyAt, onAlarm = null })
       lastScanZ = camZ;
     }
 
-    for (const { spec, mesh, herds } of state) {
+    // How many pixels tall a 1 m object is at 1 m, in this frame's camera. The
+    // high-detail switch is a pixel threshold (see HI_MIN_PX), so it needs the
+    // camera's actual fov and the actual viewport - a fixed metre distance would
+    // mean something different on every window and at every fov.
+    const vpH = typeof window === 'undefined' ? 900 : window.innerHeight;
+    const pxPerMAt1M = vpH / (2 * Math.tan((camera.fov * Math.PI) / 360));
+
+    for (const { spec, mesh, meshHi, heightM, herds } of state) {
       const swings = mesh.geometry.getAttribute('aSwing');
+      const swingsHi = meshHi.geometry.getAttribute('aSwing');
+      // Beyond this the fine model is too small to show what it added. Zero when
+      // the option is off, which routes every animal to the standard mesh and
+      // leaves the fine one drawing nothing at all.
+      const hiDistM = MODEL_DETAIL.value ? (heightM * pxPerMAt1M) / HI_MIN_PX : 0;
       let drawn = 0;
+      let drawnHi = 0;
       for (const herd of herds.values()) {
         if (!herd) continue;
         for (const a of herd.animals) {
           stepAnimal(spec, herd, a, dt, camX, camZ);
-          if (drawn >= spec.capacity) continue; // keep simulating, stop drawing
           const dist = Math.hypot(a.x - camX, a.z - camZ);
+          // Which of the two meshes this animal goes into, decided per animal and
+          // per frame. Capacity is checked against the chosen one: a herd close
+          // enough to fill the fine mesh must not silently stop being drawn.
+          const useHi = dist <= hiDistM;
+          if ((useHi ? drawnHi : drawn) >= spec.capacity) continue; // keep simulating, stop drawing
           const fade = 1 - smoothstep(spec.fadeStartM, spec.visibleM, dist);
           if (fade <= 0) continue;
 
@@ -900,21 +1270,30 @@ export function createWildlife({ sampleGroundHeight, canopyAt, onAlarm = null })
           quaternion.setFromRotationMatrix(basis);
           scaleVec.setScalar(a.scale * fade);
           matrix.compose(position, quaternion, scaleVec);
-          mesh.setMatrixAt(drawn, matrix);
-          swings.setX(drawn, a.swing);
-          drawn++;
+          if (useHi) {
+            meshHi.setMatrixAt(drawnHi, matrix);
+            swingsHi.setX(drawnHi, a.swing);
+            drawnHi++;
+          } else {
+            mesh.setMatrixAt(drawn, matrix);
+            swings.setX(drawn, a.swing);
+            drawn++;
+          }
         }
       }
       mesh.count = drawn;
       mesh.instanceMatrix.needsUpdate = true;
       swings.needsUpdate = true;
+      meshHi.count = drawnHi;
+      meshHi.instanceMatrix.needsUpdate = true;
+      swingsHi.needsUpdate = true;
     }
   }
 
   // What a test needs to assert on: not pixels, but whether each animal is
   // standing somewhere its species would actually be. Read via window.__pngp.
   function snapshot() {
-    return state.flatMap(({ spec, mesh, herds }) => {
+    return state.flatMap(({ spec, mesh, meshHi, herds }) => {
       const out = [];
       for (const herd of herds.values()) {
         if (!herd) continue;
@@ -933,7 +1312,11 @@ export function createWildlife({ sampleGroundHeight, canopyAt, onAlarm = null })
             bold: a.bold,
             watching: a.watching,
             alarmed: !!a.alarmed,
-            drawn: mesh.count,
+            // Across BOTH levels of detail, because an animal drawn by the fine
+            // mesh is still drawn. Reporting only the standard mesh would make a
+            // close herd look undrawn to every test that reads this.
+            drawn: mesh.count + meshHi.count,
+            drawnHi: meshHi.count,
           };
           if (spec.reaction === 'hide') {
             // Enough to check the hiding actually works: how far the animal is

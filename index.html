@@ -384,6 +384,18 @@
           <option value="2" data-name="High">High</option>
         </select>
       </label>
+      <!-- The optional high-resolution flora and fauna models (2026-08-17, the rest
+           of the user's topic 2). An option to turn up, not a new default, exactly
+           as the terrain tier is - and like it, the fine model is only drawn where
+           it can be seen: src/wildlife.js switches per animal per frame on the
+           model's own on-screen height in PIXELS, not on a distance in metres,
+           because the same 20 m makes an ibex 24 px and a squirrel 3. -->
+      <label title="Finer animals and trees close to you. Further off, where the extra shapes are smaller than a few pixels, the standard models are drawn either way.">Models
+        <select id="env-models">
+          <option value="0" selected>Standard</option>
+          <option value="1">High</option>
+        </select>
+      </label>
       <label>Ground cover
         <select id="env-groundcover">
           <option value="1">Lush</option>

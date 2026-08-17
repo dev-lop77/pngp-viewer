@@ -113,6 +113,20 @@ if (at) {
   console.log(`Placed at (${ax}, ${ay}, ${az}) looking at (${tx}, ${ty}, ${tz})`);
 }
 
+// --models=0|1 drives the Models control before the shot (added 2026-08-17 for the
+// high-detail flora/fauna option). Set BEFORE the wait below, because the near-tree set
+// is refilled from the render loop and needs a frame to appear.
+const models = flags.get('models');
+if (models !== undefined) {
+  await page.evaluate((v) => {
+    const sel = document.getElementById('env-models');
+    sel.value = String(v);
+    sel.dispatchEvent(new Event('change'));
+  }, models);
+  await page.waitForTimeout(5000); // headless is ~1 fps, so this is a few real frames
+  console.log(`Models: ${models === '1' ? 'High' : 'Standard'}`);
+}
+
 const hud = await page.textContent('#nav-text').catch(() => '');
 await page.screenshot({ path: outFile });
 console.log(`HUD: ${hud.replace(/\s+/g, ' ').trim()}`);

@@ -19,6 +19,7 @@ import {
 import { GROUND_SEGMENTS } from './heighttier.js';
 import { createEdelweiss, FOUND_RADIUS_M } from './edelweiss.js';
 import { createWildlife } from './wildlife.js';
+import { setModelDetail } from './modeldetail.js';
 import { createBirds } from './birds.js';
 import { createAudio } from './audio.js';
 import { installAtmosphere } from './atmosphere.js';
@@ -162,6 +163,11 @@ creditLines.modified =
 let originReady = false; // geo.js's setLocalOrigin() runs inside loadTerrain() - localToWGS84() throws before that
 let terrainUpdate = null; // quadtree LOD needs the camera every frame (src/terrain.js)
 let terrainSurface = null; // dev handle only, see the __pngp block at the end
+// Also dev-handle only. The real sampler is built inside the terrain/forest promise
+// below, which is a different scope from the __pngp block at the end of this file -
+// naming it directly there is a ReferenceError, and one that only fires when a probe
+// calls it rather than at load, so nothing would report it.
+let canopySampler = null;
 const terrainPromise = loadTerrain().then((result) => {
   const { object, manifest, sampleRenderedHeight, update } = result;
   terrainSurface = result;
@@ -245,6 +251,10 @@ const landcoverPromise = loadLandcover().catch((err) => {
 });
 
 let wildlife = null; // animals carry state between frames, so they need the loop
+// Module scope because the Models control reaches it from outside the block that
+// creates it. It was a block-local const, so the control's applyDetail() call
+// referred to nothing at all.
+let vegetation = null;
 let birds = null; // same, and they need the POI list too (see below)
 let groundcover = null; // the density knob has to reach it after the HUD changes
 let landcoverCoverAt = null; // dev handle only: the CPU twin of what the shader samples
@@ -260,10 +270,16 @@ Promise.all([terrainPromise, forestPromise]).then(async ([terrain, forest]) => {
   const canopyAt = forest
     ? createCoverageSampler({ manifest: forest.manifest, texture: forest.texture })
     : () => 0;
+  canopySampler = canopyAt; // for the dev handle only - see the declaration above
 
   if (forest) {
-    const vegetation = createVegetation({ manifest: terrain.manifest, heightTexture: terrain.heightTexture });
+    vegetation = createVegetation({ manifest: terrain.manifest, heightTexture: terrain.heightTexture });
     scene.add(vegetation.object);
+    // The Models control is wired up long before the trees exist - it runs at
+    // startup, the forest arrives with the terrain - so whatever it chose has to be
+    // applied to them once they are here, or High would draw standard trees until
+    // the next time the control was touched.
+    vegetation.applyDetail();
 
     // Wildlife needs the same mask on the CPU: it decides where a herd can stand
     // in JavaScript, then keeps moving those animals from frame to frame.
@@ -557,6 +573,16 @@ Promise.all([terrainPromise, poiPromise, trailsPromise]).then(([{ sampleRendered
   // alignToGround) so markers plant in the ground and trails lie on the path.
   index.alignToGround(sampleRenderedHeight);
   trails.alignToGround(sampleRenderedHeight);
+  // And REGISTER them, because seating them once here is not enough: the height tier
+  // loads after the first frame and moves the drawn surface under them by up to 44 m.
+  // Measured at Le Pont before this was fixed - the dashed trails sat at a constant
+  // 1.50 m above the ground with no tier, and at -8.42 to +12.12 m with the 10 m level
+  // on. The user reported the river; the trails and the POI markers had it too.
+  registerSeatable({ name: 'poi', alignToGround: index.alignToGround });
+  registerSeatable({ name: 'trails', alignToGround: trails.alignToGround });
+  // And seat whatever else had already registered while the terrain was still
+  // loading - the water usually, since its fetch is small and lands first.
+  reseatOnDrawnSurface();
 
   // A shared link first, then where you left off, then Le Pont (src/viewstate.js).
   if (!applyViewState(pendingView)) goToDefaultSpawn();
@@ -566,9 +592,32 @@ Promise.all([terrainPromise, poiPromise, trailsPromise]).then(([{ sampleRendered
 });
 
 let waterUpdate = null;
-loadWater().then(({ group, manifest, update }) => {
+// Everything whose geometry was built from BAKED elevations and therefore has to be
+// re-seated whenever the drawn surface moves. See reseatOnDrawnSurface() below: the
+// height tier is what moves it, and these were being seated exactly once.
+const seatable = [];
+// Registering seats it straight away when the terrain is already up, so a layer that
+// arrives late does not wait for a change of tier level to be put on the ground. The
+// two loaders race in either order, so both sides handle it: this covers terrain-first,
+// and the spawn block below covers water-first.
+//
+// Without this the water kept its BAKED elevations whenever the tier was off, which
+// measured -0.97 to +3.68 m against the drawn ground where it should be a flat 3.00 -
+// and the negative end of that is a river running under the ground it belongs to.
+function registerSeatable(entry) {
+  seatable.push(entry);
+  if (terrainSurface) {
+    try {
+      entry.alignToGround(terrainSurface.sampleRenderedHeight);
+    } catch (err) {
+      console.error(`Could not seat ${entry.name} on the drawn surface:`, err.message);
+    }
+  }
+}
+loadWater().then(({ group, manifest, update, alignToGround }) => {
   scene.add(group);
   waterUpdate = update;
+  registerSeatable({ name: 'water', alignToGround });
   // Lakes, rivers and waterfalls become audible from the same geometry that
   // draws them - see buildWaterEarshot() in src/audio.js.
   audio.setWater(manifest);
@@ -626,6 +675,16 @@ if (import.meta.env.DEV) {
     get terrain() { return terrainSurface; },
     getPoiIndex: () => poiIndex,
     getWildlife: () => wildlife, // loads late, so a getter rather than the value
+    // Same reason, and a probe needs it for a second one: the fine trees' near set is
+    // refilled from the render loop, so anything that renders a frame of its own has
+    // to drive that itself or it measures a forest with no near trees in it.
+    getVegetation: () => vegetation,
+    // The canopy mask on the CPU, for the same reason getGroundHeight is here: a probe
+    // that wants to stand IN A WOOD has to be able to find one, and the alternative is
+    // coordinates copied into a tool - which is exactly what went stale the one time
+    // this bbox was rebuilt. Added 2026-08-17, when a screenshot meant to show the
+    // fine tree model was taken twice above the treeline.
+    getCanopy: () => canopySampler,
     getBirds: () => birds,
     // The satellite ground texture, published as the HOLDERS themselves so a probe
     // can A/B the ground colour in ONE session from ONE camera - the only honest
@@ -805,12 +864,34 @@ function rampTierMix(to) {
   previous?.(); // a new target supersedes an older wait rather than stranding it
   return p;
 }
+// Re-seat everything built from baked elevations onto the surface as it is drawn NOW.
+//
+// Called on every frame of the tier's cross-fade rather than only when it settles,
+// because the ground is moving throughout those 0.5 s: seating only at the end would
+// have a trail slide into place after the hill it lies on had already stopped. About
+// 2,200 vertices across trails, POI and the rivers, so it is a few thousand sampler
+// calls on the frames of one ramp and nothing at all otherwise.
+function reseatOnDrawnSurface() {
+  if (!terrainSurface) return;
+  const h = terrainSurface.sampleRenderedHeight;
+  for (const s of seatable) {
+    try {
+      s.alignToGround(h);
+    } catch (err) {
+      // One layer failing to re-seat must not stop the others, and must not take the
+      // render loop down with it.
+      console.error(`Could not re-seat ${s.name} on the drawn surface:`, err.message);
+    }
+  }
+}
+
 function updateTierMix(dt) {
   if (!terrainSurface || tierMix === tierMixTarget) return;
   const step = dt / TIER_FADE_S;
   const gap = tierMixTarget - tierMix;
   tierMix += Math.sign(gap) * Math.min(step, Math.abs(gap));
   terrainSurface.setHeightTierMix(tierMix);
+  reseatOnDrawnSurface();
   if (tierMix === tierMixTarget) {
     tierMixSettled?.();
     tierMixSettled = null;
@@ -888,6 +969,18 @@ function applyGroundcoverDensity() {
 }
 envGroundcover.addEventListener('change', applyGroundcoverDensity);
 GROUNDCOVER_DENSITY.value = Number(envGroundcover.value);
+
+// The high-resolution flora and fauna models. Nothing to load and nothing to
+// rebuild: both levels of every model are built at startup and the choice only
+// decides which mesh each animal's instance is written into, per frame - so this
+// is a flag, not a swap, and it can be flipped mid-stride without a hitch.
+const envModels = document.getElementById('env-models');
+function applyModelDetail() {
+  setModelDetail(Number(envModels.value));
+  vegetation?.applyDetail();
+}
+envModels.addEventListener('change', applyModelDetail);
+applyModelDetail();
 
 // Ambient sound: the checkbox and 'M' are two views of the same state, so both
 // paths go through here.
@@ -1022,6 +1115,9 @@ renderer.setAnimationLoop(() => {
   waterUpdate?.(timer.getElapsed());
   weather?.update(timer.getDelta(), camera);
   wildlife?.update(timer.getDelta(), camera);
+  // The fine trees' near set follows the camera. It costs nothing until the camera
+  // has walked HI_REFILL_M and nothing at all while Models is Standard.
+  vegetation?.update(camera);
   birds?.update(timer.getDelta(), camera);
   lighting.applyState(); // re-grades every frame so an in-progress weather transition stays live
   // The sky's own air column, which depends on how high the camera is rather than

@@ -347,6 +347,83 @@ if (loaded) {
   check(blocks && blocks.drawn > 0,
     `the block layer is drawing on the new surface too (${blocks?.drawn} of ${blocks?.of} instances)`);
 
+  // THE BAKED-ELEVATION LAYERS HAVE TO FOLLOW TOO, and they are a different mechanism
+  // from every scatter above: trails, POI markers and the water are built once from
+  // elevations baked at build time, so they cannot read the tier in a shader and are
+  // re-seated on the CPU instead (main.js's reseatOnDrawnSurface, driven from the
+  // cross-fade). That re-seat did not exist until 2026-08-17 and this is the defect the
+  // user found by looking: "se vai a Le Pont, c'e un torrente e non e ancorato al
+  // terreno con i modelli Medium e High Terrain".
+  //
+  // The property is that each layer sits at its OWN CONSTANT height above the drawn
+  // ground - not that the height is any particular number. A river ribbon is lifted 3 m
+  // and a trail 1.5 m to stay out of the depth buffer's way; what is wrong is the
+  // SPREAD. Before the fix the dashed trails ran from -8.42 to +12.12 m where they had
+  // been a flat 1.50, and the negative end of that is a trail underground.
+  // DRIVEN THROUGH THE CONTROL, not through terrain.js's API like the checks above.
+  // That distinction is the whole point here: the re-seat hangs off main.js's
+  // cross-fade, so a test that calls T.setHeightTierMix(1) directly moves the surface
+  // without ever running it - and would report the layers as adrift no matter how well
+  // the fix worked. Standard and then Medium, because each is a real ramp.
+  const rampVia = async (value) => {
+    await page.evaluate((v) => {
+      const sel = document.getElementById('env-terrain');
+      sel.value = String(v);
+      sel.dispatchEvent(new Event('change'));
+    }, value);
+    await page.waitForFunction((v) => {
+      const t = window.__pngp.terrain;
+      const mix = t?.heightTier?.mix ?? 0;
+      return v === '0' ? mix === 0 : mix >= 1;
+    }, value, { timeout: 180000 }).catch(() => {});
+  };
+  await rampVia('0');
+  await rampVia('1');
+
+  const seated = await page.evaluate(() => {
+    const p = window.__pngp;
+    const h = p.getGroundHeight();
+    const out = [];
+    for (const groupName of ['water', 'trails']) {
+      const g = p.scene.getObjectByName(groupName);
+      if (!g) continue;
+      for (const child of g.children) {
+        // Lakes are level by definition and waterfalls are vertical, so neither is
+        // seated a fixed height above the ground - see water.js's alignToGround.
+        if (child.name === 'water-lakes' || child.name === 'waterfalls') continue;
+        const pos = child.geometry?.getAttribute('position');
+        if (!pos) continue;
+        let min = Infinity;
+        let max = -Infinity;
+        let n = 0;
+        // EVERY vertex, not the ones near the camera. The first version filtered to
+        // 2 km and found nothing at all, because this test stands wherever the tier
+        // rectangle is and the trails and rivers are elsewhere - which failed the check
+        // for want of data rather than for want of seating. These layers are global and
+        // the property is global, so sample the lot, thinned to keep it quick.
+        const stride = Math.max(1, Math.floor(pos.count / 4000));
+        for (let i = 0; i < pos.count; i += stride) {
+          const x = pos.getX(i);
+          const z = pos.getZ(i);
+          const ground = h(x, z);
+          if (!Number.isFinite(ground)) continue;
+          const d = pos.getY(i) - ground;
+          if (d < min) min = d;
+          if (d > max) max = d;
+          n++;
+        }
+        if (n > 8) out.push({ name: child.name, n, spread: max - min, min, max });
+      }
+    }
+    return out;
+  });
+  // 0.05 m of slack for float error in the sampler, not for a layer that is off.
+  const drifted = seated.filter((l) => l.spread > 0.05);
+  check(seated.length > 0 && drifted.length === 0,
+    `the baked-elevation layers are still seated on the drawn surface: `
+    + seated.map((l) => `${l.name} ${l.min.toFixed(2)} m over ${l.n} verts`).join(', '),
+    drifted.map((l) => `${l.name} spreads ${l.spread.toFixed(2)} m (${l.min.toFixed(2)} to ${l.max.toFixed(2)})`).join(' | '));
+
   // AND SWAPPING BACK DOWN HAS TO GIVE THE LEVEL BACK. The finest LOD is derived from
   // whichever level is installed, so a swap that forgot to re-derive it would draw the
   // coarse level's data on the fine level's triangulation - a surface finer than the
