@@ -2,6 +2,45 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## PUBLISHED (2026-08-18, second publish of the day)
+
+Live at https://dev-lop77.github.io/pngp-viewer/ after the user's "committa e
+pubblica questa versione". Pages reported `built` after **224 s** - four times the
+usual, because the 5 m tier is now 51.03 MB and the push warns about it (GitHub
+recommends under 50 MB; the hard limit is 100, so it is a warning and not a wall,
+but it is one to watch).
+
+**Verified against the CDN, not the build.** `heightfield.json` comes back with
+`ymin 5027000`, **four sources**, and `liabilityNotice` present - which is the whole
+point of the licence work, since that array is what the credits panel is built from.
+The credits panel on the LIVE site opens to **7 lines** with the Copernicus notice on
+its own, its own licence link (the COP-DEM-30 PDF, not CC BY 4.0), and the Article
+6(c) liability sentence beneath it. `node tools/verify.mjs <site>`: WebGL2 context,
+no console or page errors. A screenshot from the exact viewpoint the user reported
+the grey wall from now shows the valley (`tools/dev/logs/live-nevaio.png`).
+
+**First load, measured on the wire** by summing content-length over the initial load
+including the default Medium tier: **31.60 MB**, against 25.97 before today - so
+**+5.63 MB** for a map that is 20% taller and finally contains the whole park. The
+local estimate had been 31.23 MB; the gap is Pages' gzip level against node's.
+
+| | MB on the wire |
+|---|---|
+| heightfield.bin | 12.78 |
+| heighttier 10 m (the default) | 8.78 |
+| basemap 8192 | 7.07 |
+| canopy + landcover masks | 1.84 |
+| water.json | 0.46 |
+| trails.json | 0.26 |
+| bundle | 0.24 |
+| roads.json | 0.12 |
+| **outerring.png** | **0.02** |
+| poi + ferrata + manifests | 0.03 |
+
+The outer-ring field is 0.02 MB of that, and it is what makes the map stop having
+edges.
+
+
 ## The glacier you walked under, and the licence that was blocking publication (2026-08-18, third session)
 
 **The user reported it from a viewpoint**: *"il grigio direi che è il nevaio non
