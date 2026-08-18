@@ -2,6 +2,47 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## NEXT SESSION: the three they named on closing (2026-08-18)
+
+Their words, closing a session that ended published and with nothing pending:
+*"La prossima volta possiamo parlare di come migliorare i bordi della mappa,
+eventualmente un leggero blur per dare il senso di profondità, aggiungere qualche
+modello 3d ad esempio dei rifugi e bivacchi e qualche croce sommitale."*
+
+Three topics, and **they are topics to discuss, not a queue to start on** - the last
+two sessions both opened with a question and were better for it. What is already
+known about each, so the conversation can start from facts:
+
+**1. The edges of the map, and a slight blur for depth.** The terrain stops dead at
+the DEM bbox - 84 x 48 km - where a 150 m skirt (`SKIRT_DEPTH_M`, src/terrain.js)
+hangs down to hide the gap between tiles and the void. From inside the park you
+never see it; from a high fly-through toward the border you get a straight-edged
+plateau against the sky. Worth separating two different wants before building
+anything: the EDGE itself (a hard geometric line where the data ends) and DEPTH (the
+aerial perspective already fades distance - src/atmosphere.js - so "blur" may mean
+more haze at the horizon, a depth-of-field pass, or simply fading the ground out
+before it runs out). They are different fixes and only one of them is cheap.
+
+**2. Models for the huts and bivouacs.** The data is ready: 45 huts in poi.json,
+each carrying `hutKind` - `alpine_hut` (a staffed rifugio), `wilderness_hut` and
+`shelter:basic_hut` (a bivacco), which are three genuinely different buildings and
+should not get one model. Every animal and tree in this project is PROCEDURAL
+geometry authored in JS (`buildIbex()` and friends in src/wildlife.js, two detail
+levels via src/modeldetail.js), and there is a bench for judging shapes side by side
+under the app's own light: tools/dev/model-preview.html + model-candidates.js. A
+rifugio is a box with a pitched roof; a bivacco is the red half-cylinder everyone
+recognises. The open question is what replaces the marker post and label when a
+building stands there.
+
+**3. Summit crosses.** 252 peaks in poi.json, and here is the trap, already measured
+on this project: a peak's `elevationM` is its real altitude, and the drawn mesh sits
+TENS of metres below it on a sharp summit - which is why poi.js plants its markers
+with `sampleRenderedHeight` rather than the real number (see its own comment). A
+cross placed at the true altitude would float; placed on the drawn surface it will
+be right where the walker stands. Also worth asking: on all 252, or only the ones
+that really have one?
+
+
 ## PUBLISHED (2026-08-18)
 
 Live at https://dev-lop77.github.io/pngp-viewer/ - the user said "puoi pubblicare"
