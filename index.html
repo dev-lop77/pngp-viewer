@@ -315,6 +315,27 @@
         white-space: nowrap;
         pointer-events: none;
       }
+      /* The Alta Via waymark: the real thing painted on the rocks - a yellow
+         triangle with the route number in it (src/trails.js). Fixed pixel size
+         on purpose, since the whole point is being readable from across a
+         valley, where a scaled one would be a speck. clip-path rather than the
+         border trick because the number has to sit INSIDE the triangle; the
+         drop-shadow stands in for the outline clip-path forbids. */
+      .av-badge {
+        width: 22px;
+        height: 19px;
+        clip-path: polygon(50% 0, 100% 100%, 0 100%);
+        background: #f2c200;
+        color: #101010;
+        font: 700 9px/1 -apple-system, system-ui, sans-serif;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        padding-bottom: 2px;
+        box-sizing: border-box;
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.75));
+        pointer-events: none;
+      }
       #controls-hint {
         position: fixed;
         bottom: 8px;

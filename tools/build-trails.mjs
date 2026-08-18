@@ -34,6 +34,22 @@ const region = loadRegion();
 
 const round1 = (n) => Math.round(n * 10) / 10;
 
+// WHICH LONG-DISTANCE ROUTE IS THIS PART OF? The user asked on 2026-08-18 for the
+// Alta Via trails to be marked with their own triangle-and-number waymark, and it
+// turned out to need no new data at all: the VDA dataset already says so in
+// `nuovo_segn`, mixed in with the local trail numbers - "AV2 - 21",
+// "13 - AV2 - TVC", "VA - AV2", or just "AV2".
+//
+// Read as a number rather than matched against a list of the routes that exist
+// today, so an Alta Via we do not currently reach (AV1 runs along the far side of
+// the Aosta valley) needs nothing here if the region ever grows to it. Measured on
+// the whole source: 37 features carry AV1, 49 carry AV2, and NOTHING carries AV3 -
+// the user asked for "Alta Via 2 e 3", and 3 is not in this dataset.
+function altaViaOf(segnavia) {
+  const match = /\bAV\s*(\d+)\b/.exec(String(segnavia ?? ''));
+  return match ? Number(match[1]) : null;
+}
+
 // Convert one GeoJSON ring ([E,N] pairs) to local [x,y,z] points, sampling
 // our own heightfield for y - the same rules as the GPU terrain (§4/§10).
 // Also reports whether any point falls near the known VDA/Piemonte nodata
@@ -147,6 +163,8 @@ for (const feature of geojson.features) {
   trails.push({
     id: p.sen_codice ?? p.CodSen,
     segnavia: p.nuovo_segn ?? null,
+    // The number in the Alta Via waymark, or null - see altaViaOf() above.
+    altaVia: altaViaOf(p.nuovo_segn),
     name: p.sen_nome_s ?? null,
     difficulty: p.sen_diffic ?? null,
     lengthM: round1(p.shape_Leng),
@@ -186,6 +204,11 @@ console.log(
     (unexplainedBad ? ` (max ${maxUnexplainedDiff.toFixed(1)} m)` : '') +
     '.',
 );
+const byAltaVia = trails.reduce((acc, t) => {
+  if (t.altaVia) acc[`AV${t.altaVia}`] = (acc[`AV${t.altaVia}`] ?? 0) + 1;
+  return acc;
+}, {});
+console.log(`Alta Via membership, from the source's own segnavia field:`, byAltaVia);
 console.log(
   `${outsideRegionCount} of ${geojson.features.length} trails never enter the region ` +
     `(${region.parts.map((p) => p.name).join(' + ')}) and were dropped -> ${trails.length} left.`,

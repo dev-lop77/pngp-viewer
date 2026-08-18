@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { attachAtmo } from './atmosphere.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { attachAtmo, attachAtmoFatLine } from './atmosphere.js';
 import { isHiddenByTerrain } from './labels.js';
 
 // CAI difficulty scale (docs/ARCHITECTURE.md §3) shown via line STYLE, not
@@ -46,6 +49,43 @@ const LABEL_MAX_DIST_M = 400;
 const LABEL_MAX_OFFSET_M = 6;
 const LABEL_MIN_OFFSET_M = 1.5;
 const LABEL_OFFSET_PER_M = 0.02;
+
+// THE ALTA VIA, the user's addition on their second look: mark the trails that
+// are part of one "con il tipico simbolo del triangolo con il numero dentro.
+// Visibile da molto più lontano rispetto ai numeri dei sentieri. Ingrossando
+// leggermente la linea."
+//
+// So two things, and they answer the same want from two distances. Up close the
+// trace itself is heavier: a soft yellow casing drawn UNDER the red trail line,
+// slightly wider, which leaves the CAI dash pattern legible on top instead of
+// filling in its gaps (a thicker red line would have hidden the difficulty the
+// pattern exists to show). From far away the waymark does the work: a yellow
+// triangle with the route number in it, the real thing painted on the rocks,
+// readable long after a 1 px dashed line has faded into the slope.
+//
+// Yellow because that is the colour of the waymark itself, and reusing it for
+// the casing ties the two together - the line and the triangle say the same
+// thing in the same colour.
+const ALTA_VIA_COLOR = 0xf2c200;
+const ALTA_VIA_WIDTH_PX = 3;
+// Slightly BELOW the trail line's own offset so the red always wins the depth
+// test where they overlap, whatever the viewing angle - a casing that flickers
+// through the line it is meant to sit under would be worse than no casing.
+const ALTA_VIA_HEIGHT_OFFSET_M = 1.2;
+// One waymark every 2 km of route, which on the 116 km of Alta Via 2 inside the
+// region comes to a few dozen - enough that one is in sight along a valley,
+// few enough that a ridge crest does not turn into a row of triangles. The
+// route's own stretches overlap in the source (the numbered trails and the
+// TAPPA stages are separate features over the same ground), so a badge is
+// dropped when another is already within MIN_GAP.
+const AV_BADGE_SPACING_M = 2000;
+const AV_BADGE_MIN_GAP_M = 400;
+// 6 km, i.e. "molto più lontano" than the 400 m trail labels - the length of a
+// valley rather than the ground under your feet.
+const AV_BADGE_MAX_DIST_M = 6000;
+const AV_BADGE_MAX_OFFSET_M = 40;
+const AV_BADGE_MIN_OFFSET_M = 3;
+const AV_BADGE_OFFSET_PER_M = 0.01;
 
 function pushSegment(bucket, x0, y0, z0, x1, y1, z1) {
   bucket.push(x0, y0 + HEIGHT_OFFSET_M, z0, x1, y1 + HEIGHT_OFFSET_M, z1);
@@ -133,6 +173,28 @@ function distanceToBounds(b, x, z) {
   return Math.hypot(dx, dz);
 }
 
+// Walks a line and returns a point every `spacing` metres of real ground
+// distance - where the Alta Via waymarks go. Distance is measured in XZ, like
+// every other length in this file.
+function pointsAlong(line, spacing, firstAt) {
+  const out = [];
+  let since = firstAt;
+  for (let i = 1; i < line.length; i++) {
+    const [x0, y0, z0] = line[i - 1];
+    const [x1, y1, z1] = line[i];
+    const segLen = Math.hypot(x1 - x0, z1 - z0);
+    if (segLen === 0) continue;
+    let at = spacing - since;
+    while (at < segLen) {
+      const t = at / segLen;
+      out.push([x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, z0 + (z1 - z0) * t]);
+      at += spacing;
+    }
+    since = (since + segLen) % spacing;
+  }
+  return out;
+}
+
 // Merges all ~1,130 trails into one draw call per line style (4, plus a
 // 5th for the ferrata tick overlay) instead of one per trail - §10's
 // "instancing for repeated geometry" principle applied to lines.
@@ -141,17 +203,53 @@ export async function loadTrails(dataUrl = `${import.meta.env.BASE_URL}data`) {
 
   const positionsByStyle = { solid: [], dashed: [], dotted: [], ferrata: [] };
   const ferrataTicks = [];
+  const altaViaPoints = []; // the casing, one flat [x,y,z,x,y,z,...] segment list
 
   for (const trail of data.trails) {
     const style = STYLE_BY_DIFFICULTY[trail.difficulty] ?? DEFAULT_STYLE;
     for (const line of trail.lines) {
       pushLine(positionsByStyle[style], line);
       if (style === 'ferrata') pushFerrataTicks(ferrataTicks, line);
+      if (trail.altaVia) {
+        for (let i = 1; i < line.length; i++) {
+          const [x0, y0, z0] = line[i - 1];
+          const [x1, y1, z1] = line[i];
+          altaViaPoints.push(
+            x0, y0 + ALTA_VIA_HEIGHT_OFFSET_M, z0,
+            x1, y1 + ALTA_VIA_HEIGHT_OFFSET_M, z1,
+          );
+        }
+      }
     }
   }
 
   const group = new THREE.Group();
   group.name = 'trails';
+  const thinLines = []; // the LineSegments children, kept out of group.children walks
+
+  // The Alta Via casing goes in FIRST so it is drawn before the red trail line
+  // on top of it - belt and braces with its lower height offset.
+  let altaViaCasing = null;
+  let altaViaPositions = null;
+  let altaViaMaterial = null;
+  if (altaViaPoints.length) {
+    altaViaPositions = new Float32Array(altaViaPoints);
+    const geometry = new LineSegmentsGeometry();
+    geometry.setPositions(altaViaPositions);
+    altaViaMaterial = attachAtmoFatLine(
+      new LineMaterial({
+        color: ALTA_VIA_COLOR,
+        linewidth: ALTA_VIA_WIDTH_PX,
+        transparent: true,
+        opacity: 0.85,
+        resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
+      }),
+    );
+    altaViaCasing = new LineSegments2(geometry, altaViaMaterial);
+    altaViaCasing.name = 'trails-alta-via-casing';
+    altaViaCasing.renderOrder = -1;
+    group.add(altaViaCasing);
+  }
 
   // One label per trail, parked at its first point until the first update pass
   // moves it to whichever point you are nearest. Hidden to begin with: a label
@@ -172,24 +270,50 @@ export async function loadTrails(dataUrl = `${import.meta.env.BASE_URL}data`) {
     labels.push({ object, lines: trail.lines, bounds: boundsOf(trail.lines) });
   }
 
+  // The waymarks: a yellow triangle with the route number, spaced along the
+  // route and thinned where the source's overlapping features would stack them.
+  const badges = [];
+  for (const trail of data.trails) {
+    if (!trail.altaVia) continue;
+    for (const line of trail.lines) {
+      // Starting half a spacing in, not a full one: several of the source's Alta
+      // Via features are shorter than 2 km on their own, and from the start they
+      // would have carried no waymark at all.
+      for (const [x, y, z] of pointsAlong(line, AV_BADGE_SPACING_M, AV_BADGE_SPACING_M / 2)) {
+        if (badges.some((b) => Math.hypot(b.x - x, b.z - z) < AV_BADGE_MIN_GAP_M)) continue;
+        const el = document.createElement('div');
+        el.className = 'av-badge';
+        el.textContent = String(trail.altaVia);
+        el.title = `Alta Via ${trail.altaVia}`;
+        const object = new CSS2DObject(el);
+        object.center.set(0.5, 1);
+        object.visible = false;
+        object.position.set(x, y + AV_BADGE_MAX_OFFSET_M, z);
+        group.add(object);
+        badges.push({ object, x, z, groundY: y });
+      }
+    }
+  }
+
   if (positionsByStyle.solid.length) {
-    group.add(
+    thinLines.push(
       buildLineSegments(positionsByStyle.solid, attachAtmo(new THREE.LineBasicMaterial({ color: TRAIL_COLOR })), 'trails-solid'),
     );
   }
   if (positionsByStyle.dashed.length) {
     const material = attachAtmo(new THREE.LineDashedMaterial({ color: TRAIL_COLOR, dashSize: 30, gapSize: 20 }));
-    group.add(buildLineSegments(positionsByStyle.dashed, material, 'trails-dashed'));
+    thinLines.push(buildLineSegments(positionsByStyle.dashed, material, 'trails-dashed'));
   }
   if (positionsByStyle.dotted.length) {
     const material = attachAtmo(new THREE.LineDashedMaterial({ color: TRAIL_COLOR, dashSize: 4, gapSize: 16 }));
-    group.add(buildLineSegments(positionsByStyle.dotted, material, 'trails-dotted'));
+    thinLines.push(buildLineSegments(positionsByStyle.dotted, material, 'trails-dotted'));
   }
   if (positionsByStyle.ferrata.length) {
     const material = attachAtmo(new THREE.LineBasicMaterial({ color: TRAIL_COLOR }));
-    group.add(buildLineSegments(positionsByStyle.ferrata, material, 'trails-ferrata-line'));
-    group.add(buildLineSegments(ferrataTicks, material, 'trails-ferrata-ticks'));
+    thinLines.push(buildLineSegments(positionsByStyle.ferrata, material, 'trails-ferrata-line'));
+    thinLines.push(buildLineSegments(ferrataTicks, material, 'trails-ferrata-ticks'));
   }
+  for (const child of thinLines) group.add(child);
 
   let groundHeightAt = null; // set by alignToGround(); until then the labels skip the occlusion test
 
@@ -205,10 +329,15 @@ export async function loadTrails(dataUrl = `${import.meta.env.BASE_URL}data`) {
   //
   // Dashed styles need computeLineDistances() re-run: it measures real 3D
   // segment lengths, so moving vertices changes where the dashes fall.
+  //
+  // The casing and the badges are re-seated here too, and NOT by walking
+  // group.children: that group also holds the DOM labels and a LineSegments2,
+  // whose geometry carries a `position` attribute of its own - the 8-vertex
+  // quad template every segment is instanced from. Writing ground heights into
+  // that would deform the quad rather than move the line.
   function alignToGround(heightAt) {
     groundHeightAt = heightAt;
-    for (const child of group.children) {
-      if (!child.geometry) continue; // the CSS2D labels ride in the same group
+    for (const child of thinLines) {
       const attr = child.geometry.getAttribute('position');
       const a = attr.array;
       for (let i = 0; i < a.length; i += 3) {
@@ -218,6 +347,16 @@ export async function loadTrails(dataUrl = `${import.meta.env.BASE_URL}data`) {
       child.geometry.computeBoundingSphere(); // moved vertices would otherwise cull against a stale bound
       if (child.material.isLineDashedMaterial) child.computeLineDistances();
     }
+    if (altaViaCasing) {
+      for (let i = 0; i < altaViaPositions.length; i += 3) {
+        altaViaPositions[i + 1] = heightAt(altaViaPositions[i], altaViaPositions[i + 2]) + ALTA_VIA_HEIGHT_OFFSET_M;
+      }
+      altaViaCasing.geometry.attributes.instanceStart.data.needsUpdate = true;
+      altaViaCasing.geometry.computeBoundingSphere();
+    }
+    for (const badge of badges) {
+      badge.groundY = heightAt(badge.x, badge.z);
+    }
   }
 
   // One pass per HUD tick (4 Hz, same as the POI markers): for each trail near
@@ -225,7 +364,8 @@ export async function loadTrails(dataUrl = `${import.meta.env.BASE_URL}data`) {
   // decide whether it is shown. Distance is tested against the trail's bounding
   // rectangle first, so the per-point scan only runs for trails already known
   // to be close, and the terrain occlusion march only for those that survive
-  // that.
+  // that. The Alta Via badges are handled in the same pass - they are fixed in
+  // place, so all they need is the distance and the occlusion test.
   function updateLabels(camera) {
     const { x: cx, y: cy, z: cz } = camera.position;
     for (const label of labels) {
@@ -262,7 +402,26 @@ export async function loadTrails(dataUrl = `${import.meta.env.BASE_URL}data`) {
       label.object.position.set(bestX, groundY + offset, bestZ);
       label.object.visible = !isHiddenByTerrain(groundHeightAt, camera, label.object.position);
     }
+
+    for (const badge of badges) {
+      const dist = Math.hypot(badge.x - cx, badge.groundY - cy, badge.z - cz);
+      if (dist > AV_BADGE_MAX_DIST_M) {
+        badge.object.visible = false;
+        continue;
+      }
+      const offset = Math.min(
+        AV_BADGE_MAX_OFFSET_M,
+        Math.max(AV_BADGE_MIN_OFFSET_M, dist * AV_BADGE_OFFSET_PER_M),
+      );
+      badge.object.position.set(badge.x, badge.groundY + offset, badge.z);
+      badge.object.visible = !isHiddenByTerrain(groundHeightAt, camera, badge.object.position);
+    }
   }
 
-  return { group, manifest: data, alignToGround, updateLabels };
+  // A fat line's width is in screen pixels, so it has to be told the canvas size.
+  function setResolution(width, height) {
+    altaViaMaterial?.resolution.set(width, height);
+  }
+
+  return { group, manifest: data, alignToGround, updateLabels, setResolution };
 }
