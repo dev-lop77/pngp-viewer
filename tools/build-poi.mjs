@@ -46,6 +46,11 @@ const HUT_BUFFER_M = 750;
 // Rifugio Vittorio Emanuele II's "Nuovo" and "Vecchio" are adjacent but are
 // two real, separately interesting buildings.
 const HUT_DEDUPE_M = 150;
+// A trailhead claims its own node by id (tools/trailheads.json is read before
+// any tag), but the SAME hamlet can also carry a second place node a few metres
+// away, and then Bruil would be labelled twice - once green as a trailhead and
+// once as a village. Matched on name within this distance.
+const VILLAGE_DEDUPE_M = 400;
 
 const draft = JSON.parse(readFileSync(DRAFT_FILE, 'utf8'));
 const heightfieldManifest = JSON.parse(readFileSync(HEIGHTFIELD_FILE, 'utf8'));
@@ -85,7 +90,7 @@ for (const p of draft.pois) {
     });
     continue;
   }
-  if (p.category !== 'hut') continue;
+  if (p.category !== 'hut') continue; // villages, peaks, passes: inside or not at all
   const outsideByM = Math.round(region.metresOutside(p.local.x, p.local.z));
   if (outsideByM <= HUT_BUFFER_M) kept.push({ ...p, outsideByM });
   else if (outsideByM <= 3000) nearMisses.push({ ...p, outsideByM });
@@ -108,6 +113,22 @@ for (const p of kept) {
   } else if (p.ele != null && twin.ele == null) {
     inside[inside.indexOf(twin)] = p;
   }
+}
+
+// A village that is really one of the 25 curated trailheads, wearing a second
+// OSM node - see VILLAGE_DEDUPE_M.
+const trailheadPoints = inside.filter((p) => p.category === 'trailhead');
+const beforeVillageDedupe = inside.length;
+for (let i = inside.length - 1; i >= 0; i--) {
+  const p = inside[i];
+  if (p.category !== 'village') continue;
+  const twin = trailheadPoints.find(
+    (t) => t.name === p.name && Math.hypot(t.local.x - p.local.x, t.local.z - p.local.z) <= VILLAGE_DEDUPE_M,
+  );
+  if (twin) inside.splice(i, 1);
+}
+if (beforeVillageDedupe !== inside.length) {
+  console.log(`${beforeVillageDedupe - inside.length} village node(s) dropped as duplicates of a curated trailhead.`);
 }
 
 const byCategory = inside.reduce((acc, p) => {
@@ -144,6 +165,7 @@ const pois = inside.map((p) => ({
   // name people use - "Eaux Rousses" is mapped as "L'Eau-Rousse".
   name: p.displayName ?? p.name,
   hutKind: p.category === 'hut' ? p.hutKind : undefined,
+  placeKind: p.category === 'village' ? p.placeKind : undefined,
   valley: p.valley,
   elevationM: p.elevationM,
   osmElevationM: p.ele,
@@ -158,7 +180,7 @@ const output = {
   localOrigin: heightfieldManifest.localOrigin,
   axes: heightfieldManifest.axes,
   coordUnits: 'local scene meters {x, z} at ground level - see localOrigin/axes above, same frame as the terrain',
-  categories: ['peak', 'hut', 'pass', 'waterfall', 'lake', 'trailhead'],
+  categories: ['peak', 'hut', 'pass', 'waterfall', 'lake', 'trailhead', 'village'],
   count: pois.length,
   boundary: region.describe(
     'a POI is included if it falls inside one of these polygons (point-in-polygon), except ' +

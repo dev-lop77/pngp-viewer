@@ -2,7 +2,7 @@
   "note": [
     "Hand-curated allowlist of valley bases and trailheads, read by both",
     "tools/fetch-osm.mjs (which queries these ids directly) and",
-    "tools/build-poi.mjs (which lets them bypass the park-boundary test).",
+    "tools/build-poi.mjs (which lets them bypass the region test).",
     "",
     "WHY AN ALLOWLIST, when huts got a simple 750 m boundary buffer instead:",
     "there is no threshold that separates these from the noise. The wanted",
@@ -25,6 +25,16 @@
     "",
     "`displayName` overrides what the app shows, only where OSM's name would",
     "make a place unfindable by the name people actually use.",
+    "",
+    "STILL AN ALLOWLIST after the region replaced the park boundary on 2026-08-18,",
+    "and Planaval is why: it stands at the mouth of the Valgrisenche but belongs to",
+    "the comune of Arvier, so no region built from whole comuni will ever contain it.",
+    "The general place=village/hamlet layer added the same day (fetch-osm.mjs) does",
+    "not replace this either - it labels the villages you walk through, whereas these",
+    "22 (now 25) rows are the places a walk STARTS from, get the green trailhead",
+    "treatment, and are allowed in from outside. A node listed here is claimed by this",
+    "file: fetch-osm.mjs categorises it as a trailhead before any tag is looked at, so",
+    "it can never also appear as a village.",
     "",
     "NOT INCLUDED, deliberately: Ceresole Reale, Noasca, Locana, Rosone and",
     "Talosio are 0.87-4.9 km SOUTH of the DEM bbox, so there is no terrain",
@@ -53,6 +63,9 @@
     { "id": "n1335405595", "name": "Campiglia Soana", "valley": "Valle Soana" },
     { "id": "n63631263", "name": "Valprato Soana", "valley": "Valle Soana" },
     { "id": "n63629870", "name": "Ronco Canavese", "valley": "Valle Soana" },
-    { "id": "n1075437390", "name": "Piamprato", "valley": "Valle Soana" }
+    { "id": "n1075437390", "name": "Piamprato", "valley": "Valle Soana" },
+    { "id": "n1793025952", "name": "Valgrisenche", "valley": "Valgrisenche", "note": "user-requested 2026-08-18, with the valley itself now in the region" },
+    { "id": "n1800655618", "name": "Les Usellières", "displayName": "Usellières (Les Usellières)", "valley": "Valgrisenche", "note": "user-requested 2026-08-18; the alpine base above the Beauregard lake, start for the Alta Via 2 stage over Col Fenêtre" },
+    { "id": "n1365395068", "name": "Planaval", "valley": "Valgrisenche", "note": "user-requested 2026-08-18; start of Alta Via 2 TAPPA 05 - and it is in the comune of Arvier, i.e. OUTSIDE the region, which is exactly what this allowlist is for" }
   ]
 }

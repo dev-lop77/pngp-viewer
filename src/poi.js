@@ -10,6 +10,12 @@ const CATEGORY_STYLE = {
   waterfall: { color: 0x29b6f6 },
   lake: { color: 0x1e88e5 },
   trailhead: { color: 0x66bb6a }, // valley bases - green, the only category down among the trees
+  // The villages and hamlets, added 2026-08-18 at the user's request ("i nomi dei
+  // paesi all'interno delle valli siano di aiuto"). Pale sand: they share the
+  // valley floor with the green trailheads and had to be told apart from them at
+  // a glance, since a trailhead is a place a walk starts and a hamlet is just
+  // where you are.
+  village: { color: 0xe0d3b8 },
 };
 
 // English, like the rest of the UI - these had been Italian since phase 2 and
@@ -24,6 +30,7 @@ const CATEGORY_LABELS = {
   waterfall: 'Waterfall',
   lake: 'Lake',
   trailhead: 'Trailhead',
+  village: 'Village',
 };
 
 // The hut category covers both staffed rifugi and unstaffed bivacchi, and
@@ -31,6 +38,10 @@ const CATEGORY_LABELS = {
 // the 38 are bivacchi (tools/build-poi.mjs keeps OSM's tag as hutKind).
 function categoryLabel(poi) {
   if (poi.category === 'hut' && poi.hutKind === 'shelter:basic_hut') return 'Bivouac hut';
+  // 153 of the places are villages by category and hamlets in fact - 160 of the
+  // 166 place nodes inside the region are `place=hamlet`, so calling them all
+  // villages would be wrong for nearly all of them.
+  if (poi.category === 'village' && poi.placeKind === 'hamlet') return 'Hamlet';
   return CATEGORY_LABELS[poi.category] ?? poi.category;
 }
 
