@@ -261,6 +261,43 @@ definition. Merged bbox coverage went from ~88% to **100%**. It is a 30 m
 DSM, which would be the wrong source for any ground a walker can reach,
 which is why `src/outerring.js` makes sure no walker reaches it.
 
+**Its licence, read in full on 2026-08-18** ([COP-DEM-GLO-30-F, "Global 30m
+Full, Free & Open"](https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Data/DEM/resources/license/License-COPDEM-30.pdf)).
+The chain to it is worth writing down, because "Copernicus DEM" names several
+instances with different terms: the bucket used is `copernicus-dem-30m` on AWS
+Open Data, which [the registry](https://registry.opendata.aws/copernicus-dem/)
+records as GLO-30 Public mirrored by Sinergise, and GLO-30 Public is that
+instance. The higher-resolution WorldDEM-10 is expressly excluded from this
+licence, and is not used here.
+
+- **Article 4** grants, non-exclusively, worldwide and without limitation in
+  time: reproduction, distribution, communication to the General Public, and
+  adaptation/modification/combination with other data. **Article 5** makes it
+  free of charge. No non-commercial clause, no share-alike - every one of the
+  four rights this project needs is granted by name.
+- **It is NOT CC BY 4.0**, and must not be credited as though it were. That
+  was a live bug for a few hours: `src/main.js` joined every DEM attribution
+  into one string and put a single CC BY 4.0 link after it, which was true of
+  three sources and false of the fourth. Sources are grouped by licence now.
+- **Article 6(b)** prescribes the wording, and this mosaic is *adapted* data
+  (warped, mosaicked, resampled, quantised), so the "produced using" form
+  applies rather than the plain 6(a) notice. Verbatim, not paraphrasable, like
+  the VDA DTM's own required wording.
+- **Article 6(c)** is the one that is easy to lose, because it is not an
+  attribution: a liability disclaimer must accompany any distribution or
+  communication to the General Public. It ships as its own manifest field
+  (`liabilityNotice`) and its own credits line.
+- **Article 6(d)**: nothing may suggest the Provider or the Copernicus
+  programme endorses this project. **Article 9** keeps the IPR with Airbus
+  Defence and Space - use rights only, and no right to their marks or logos.
+
+**The near miss worth recording**: `merge-heightmaps.sh` read the Copernicus
+attribution file into a variable and never wrote it into `sources[]`, so the
+sidecar listed three sources for a four-source mosaic - and since the credits
+panel is built from that array, the site would have used the data and credited
+nobody. Nothing failed; the array was simply one entry short. Reading the
+licence is what found it.
+
 **Two traps in `merge-heightmaps.sh` that only bite when the bbox changes**,
 both fixed the same day and both silent rather than loud:
 

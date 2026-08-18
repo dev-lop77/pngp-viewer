@@ -2,6 +2,80 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## The glacier you walked under, and the licence that was blocking publication (2026-08-18, third session)
+
+**The user reported it from a viewpoint**: *"il grigio direi che è il nevaio non
+posizionato correttamente a terra"*. They were right, and the cause was one
+constant. `GLACIER_HEIGHT_OFFSET_M` was 2 m against `EYE_HEIGHT_M` 1.7, so standing
+anywhere on a glacier put the walker's head 29 cm UNDER the ice - measured by
+casting a ray straight up from the eye - and the material is DoubleSide, so what
+filled two thirds of the screen was the underside of the sheet. Now 1.0 m: nothing
+above the eye, ice 0.71 m below it.
+
+**Two wrong turns on the way, both worth keeping.** First the fade was blamed;
+measured at that spot it was 0.000. Then the glacier's vertices were checked
+against `getGroundHeight` - the same sampler that had placed them - which returned
+a tautological "2 m above the ground". That is the exact mistake commit a362e16 was
+named for, made again eight hours later.
+
+**A second, independent defect found while looking**: glaciers are ear-clipped from
+their outline and nothing else, so the longest triangle edge in the shipped set was
+**2,422 m**, and 74 of the 80 span more than 100 m of vertical inside one polygon -
+Gliairetta spans 1,122 m with 122 outline points. Corners on the ground, a flat
+sheet between them, cutting through the mountain. `refineToMaxEdge()` splits edges
+via a shared midpoint cache so neighbours cannot tear apart: longest edge 25 m,
+9,939 triangles -> 563,567. It had always been that way; what changed is that half
+those glaciers are across the frontier, where the terrain was nodata and flat until
+that morning, and a flat sheet on flat ground looks like nothing.
+
+**What is left, measured**: 1.25% of the ice still dips under the rock, because a
+triangle's interior is flat even when its corners are seated. The offset is squeezed
+between eye height above and sag below, so it cannot cover the tail. The way out is
+to stop drawing a glacier as a sheet chasing the ground and make it a terrain mask
+like `src/forest.js` - no geometry, no sag, nothing to walk under. Not done.
+
+**FPS on real hardware: the user measured it, unchanged.** That was the one number
+nobody could take from headless, and it had been open since the terrain grew 20% and
+the glaciers gained half a million triangles.
+
+### The Copernicus licence, read in full
+
+It was the only thing blocking publication, and it blocks nothing. The instance is
+**COP-DEM-GLO-30-F, "Global 30m Full, Free & Open"** - the chain matters, because
+"Copernicus DEM" names several instances with different terms: the bucket used is
+`copernicus-dem-30m` on AWS Open Data, which the registry records as GLO-30 Public
+mirrored by Sinergise, and GLO-30 Public is that instance. WorldDEM-10 is expressly
+excluded from this licence and is not used here.
+
+**Article 4** grants by name, non-exclusively, worldwide and without limitation in
+time: reproduction, distribution, communication to the General Public, and
+adaptation/modification/combination. **Article 5** makes it free. No non-commercial
+clause, no share-alike.
+
+**But reading it found a real breach, and a real mis-statement:**
+
+1. `merge-heightmaps.sh` read the Copernicus attribution into a variable and never
+   wrote it into `sources[]`. The sidecar listed three sources for a four-source
+   mosaic, and since the credits panel is built from that array, **the site would
+   have used the data and credited nobody.** Nothing failed - the array was one
+   entry short.
+2. `src/main.js` joined every DEM attribution into one string and put a single
+   CC BY 4.0 link after it. True of three sources, false of the fourth. Sources are
+   grouped by licence now, and one with its own licence carries its own link.
+
+**Article 6(c) is the obligation that is easy to lose**, because it is not an
+attribution: a liability disclaimer must accompany any communication to the general
+public. It ships as its own manifest field (`liabilityNotice`) and its own credits
+line. 6(b)'s wording is prescribed and this mosaic is ADAPTED data, so the
+"produced using" form applies, not the plain 6(a) one.
+
+Verified as rendered rather than as intended: the credits panel opens to **7 lines**
+with the Copernicus notice on its own, its own licence link, and the liability
+sentence beneath it. The regenerated heightmap PNG is byte-identical to the shipped
+one, so nothing downstream needed rebuilding - only `heightfield.json`, which now
+carries all four sources.
+
+
 ## The park was 18% off the map (2026-08-18, second session)
 
 Opened on topic 1 of the three - the edges of the map and a slight blur for
