@@ -38,8 +38,17 @@ const HEIGHT_OFFSET_M = 0.5;
 // trails' vertex count by about 3.5 - some 80,000 points across 648 km, which is
 // nothing on the GPU and a few milliseconds at load.
 const MAX_SEGMENT_M = 8;
-const FERRATA_TICK_SPACING_M = 40;
-const FERRATA_TICK_HALF_SIZE_M = 7;
+// The cable ticks, sized on the user's verdict of the first version: "Le croci
+// sono enormi e creano solo del caos. La linea dovrebbe essere composta da
+// piccole crocette che seguono la linea."
+//
+// They were 14 m across every 40 m - a fourteen-metre X drawn on a mountainside,
+// which is the size of a house, so from any distance it read as scattered
+// wreckage rather than as a line. 2.4 m every 6 m is the map convention it was
+// always meant to be: close enough together that the ticks ARE the line, small
+// enough that they merge into one from across the valley instead of shouting.
+const FERRATA_TICK_SPACING_M = 6;
+const FERRATA_TICK_HALF_SIZE_M = 1.2;
 
 // WHICH TRAIL AM I ON? Asked for by the user on 2026-08-18, in these words:
 // "Visibile da vicino con una etichetta vicina con numero e nome solo se

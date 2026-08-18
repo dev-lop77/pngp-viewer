@@ -40,6 +40,17 @@ A 50 m floor drops two fragments of 7 m and 22 m - stubs of routes OSM has barel
 mapped, one of them carrying a note that it is an alpine climb rather than a
 ferrata. Logged when it happens rather than filtered silently.
 
+**And then the ticks had to shrink.** *"Le croci sono enormi e creano solo del
+caos. La linea dovrebbe essere composta da piccole crocette che seguono la linea."*
+They were **14 m across every 40 m** - an X the size of a house, drawn on a
+mountainside - and at that size they are not a line symbol at all, they are debris
+scattered near a line. The number had been picked in phase 2 for a single EEA trail
+seen from a 26 km overview, and nobody had stood next to one since. Now **2.4 m
+every 6 m**: close enough that the ticks ARE the line, small enough to merge into
+one from across the valley. Checked at 57 m and at 311 m, which is the pair of
+distances that matters - the first is where they were chaos, the second is where
+they must not become noise.
+
 
 ## The traces were floating, and the cause was not the seating (2026-08-18, later still)
 
