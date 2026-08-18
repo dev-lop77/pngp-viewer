@@ -2,6 +2,174 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## The park was 18% off the map (2026-08-18, second session)
+
+Opened on topic 1 of the three - the edges of the map and a slight blur for
+depth - and it turned into a data session. The user answered the framing
+question in their own words: *"Ora spesso si interrompe sulle cime, molto meglio
+estenderlo di poco ma che scenda verso valle. Da qui si puo fare che dissolva e
+che non sia raggiungibile dal nostro avatar"*, with a viewpoint link to look at.
+
+**Looking at it was the whole thing.** The frame at 45.47156, 7.08402 had two
+defects and neither was the straight-edged plateau we had been discussing: a
+brown wall (a tile skirt seen edge-on against nothing) and a lake with its
+streams hanging in white space. The HUD said `alt 3340 m · ground 239 m` and
+238.51 m was exactly the mosaic's declared minimum - the cell underfoot was
+nodata, drawn as if it were ground.
+
+**Measured, in this order:**
+- 12.15% of the heightfield was nodata - the French and Swiss margin, known and
+  documented as harmless because it is "outside both the park and Italy". True,
+  and irrelevant: nodata is drawn, at the minimum elevation, so the frontier
+  crest ended in a 2,600 m cliff onto a flat floor.
+- **129.3 km2 - 18.2% of the park's 710 - had no terrain at all.** The park
+  reaches 7.67 km south of where the DEM stopped: Valle dell'Orco toward
+  Ceresole and Noasca, part of Val Soana. The old south edge was the VDA source
+  file's own edge, i.e. the regional border, i.e. the watershed crest - which is
+  exactly why the map could only ever break off on the summits.
+- `check-park-coverage.mjs` had reported 0.007% missing and was not wrong. Its
+  sampling grid was the RASTER's extent, so it asked "are the pixels I have
+  valid" and could not ask "do I have all the park's pixels". Fixed: it samples
+  the park's extent and counts "no pixel at all" apart from "pixel is nodata".
+- 5,871 points of `water.json` and 1,620 of `roads.json` were outside the
+  terrain entirely, up to 7.1 km past the south edge. That was the floating
+  lake. All of them fall inside the new bbox.
+
+**Decisions taken with the user**: extend south (not slide, which would have
+cost 0 MB but given up Mont Blanc's flank), and fill the foreign band with a
+global DEM so the crest descends into France and then dissolves. The quoted cost
+moved from +3.9 MB to +5.0 MB when the south margin grew from 100 m to 2.1 km -
+the fade band has to live OUTSIDE the park boundary or it dissolves the park.
+
+**Built**
+- `tools/dtm-source/bbox.sh` - the bbox in one place. It was four literals in six
+  scripts, which is survivable until the day it changes.
+- `ymin` 5036775 -> 5027000. Bbox 83.9 x 58.0 km. Heightfield 4096 x 2832,
+  23.2 MB raw. Elevation 219.26-4810.96 m. **Whole-bbox VALID_PERCENT 100**,
+  park uncovered 0.000% by a check that can now see both failure modes.
+- `tools/dtm-source/fetch-copernicus-dem.sh` - Copernicus GLO-30 from the AWS
+  Open Data mirror, two 1-degree tiles, plain HTTPS. Priority 4 of 4, cubic
+  rather than bilinear because it is the only source being upsampled (30 m onto
+  a 5 m grid) and bilinear at 6x leaves the source cells legible as flat quads.
+  **Its licence has NOT been read to this project's standard yet** - flagged in
+  the script header. Everything else here has been.
+- `tools/build-outer-ring.mjs` + `src/outerring.js` - a DISTANCE field, not a
+  flag: fading on a flag would move the hard edge from the bbox to the border
+  rather than remove it. 2048 x 1416, 23.0 kB, 15.18% of the grid is ring.
+- The fade itself in `src/terrain.js`, applied AFTER the fog rather than to the
+  albedo - albedo is what the sun multiplies, so fading there would dim the
+  ground towards black at night and leave the terrain legible at noon. Mixing
+  towards the same `fogColor` that `atmoApply` just used is exactly "more
+  distance", which is the model this project already has.
+- The boundary in `src/controls.js` - a slide, not a stop, so running along the
+  frontier works and only crossing it does not. CPU and GPU call the same
+  function so the wall cannot end up somewhere the eye does not expect it.
+
+**Three real bugs, all of the "plausible and wrong" kind**
+1. **Cached statistics.** `gdalinfo -stats` reads a `.aux.xml` sidecar keyed on
+   FILE NAME, and the rebuilt `merged.tif` had the old one's name. The first
+   merge normalised the 16-bit PNG against a range from three weeks earlier
+   (238.51-4809.81 instead of 219.26-4810.96), which would have clamped every
+   cell below the stale minimum to 0 - and 0 downstream means nodata. The new
+   low ground would have arrived as holes. Three scripts delete the sidecar now.
+2. **`gdal_calc` propagates input nodata** unless told otherwise, so the
+   outer-ring mask - which by definition looks for cells where three of four
+   inputs ARE nodata - came out empty. Empty is a very plausible-looking answer
+   for a mask. `--hideNoData` fixed it; 15.18%.
+3. **Editing a shell script while bash was running it.** Bash re-reads by byte
+   offset; five added lines put it mid-token. Cost one 20-minute merge. Mine.
+
+**Two traps disarmed before they fired**, both only reachable once the bbox
+moves: `merge-heightmaps.sh` was reading its own previous output as the VDA
+source, and was asserting the TARGET bbox onto the VDA PNG - which would have
+slid Valle d'Aosta 9.8 km south in silence.
+
+**Registration verified, with a test that can fail**: 250 peaks from `poi.json`,
+new drawn height against the old grid's baked-in value, mean absolute **9.88 m**;
+the same test with the origin shift omitted gives 796 m and reversed gives 988 m.
+The highest cell still lands 40 m from Mont Blanc's published summit.
+
+**The height tier found a source defect.** Its guard tripped at 110 m against a
+96 m codec, and the coordinate it now prints (it did not print one before) led
+to the Piemonte/Copernicus seam on the frontier crest - so the outer ring counts
+as a hole for the tier, which is right anyway: correcting 30 m data with 30 m
+data corrects nothing. The 5 m level then tripped again over Noasca, where
+**Piemonte DTM5 reads 1013.6 m against TINITALY's 857.4 and Copernicus's 858.2,
+with both neighbours 100 m away at 856 and 876** - an isolated spike. Measured
+over the 44.1 M cells Piemonte and TINITALY both cover: mean disagreement 0.81 m,
+sigma 3.3 m, and 1,245 cells (0.0028%) differ by more than 96 m. The guard is a
+proportion now, sitting between today's 5.6e-8 and the 8.6e-6 it was written to
+catch, and it prints every clipped pixel. Three were clipped, all within a
+kilometre of each other above Noasca.
+
+**Everything downstream was rebuilt**, because everything downstream is keyed to
+the grid: basemap (both levels - the 8192 one needs its own run, and the first
+pass left the OLD one in the manifest, misregistered, until that was caught),
+NDVI, the canopy and open-vegetation masks, and every vector build. The local
+origin moved 4,887.5 m in Z, so nothing that carried a local coordinate survived
+untouched. `poi.json` went 674 -> 708, `trails.json` 116.
+
+**The floating lake, measured again after the rebuild:**
+
+| | before | after |
+|---|---|---|
+| water points outside the terrain | 5,871 | 3 |
+| road points outside | 1,620 | 0 |
+| trails / POI / ferrata outside | 0 | 0 |
+
+The 3 that remain are one torrent overshooting the south edge by 175 m, inside
+the band that is fully dissolved anyway.
+
+**First load, measured rather than estimated** (`tools/dev/measure-load.mjs`, new
+- it takes the file LIST from a real browser and the SIZES from gzipping what it
+fetched, because `vite preview` serves uncompressed and would overstate the
+front page by ten megabytes): **31.23 MB against 25.97 before, +5.26 MB** - which
+is what was quoted to the user (+5.0) once the south margin grew to 2.1 km. The
+outer-ring field, which does all the visible work, is 0.02 MB of that.
+
+**Verified in a browser, at the user's own viewpoint.** `ground 239 m` became
+`ground 3063 m`; the brown wall and the white floor are gone; looking west from
+the frontier the ridges descend into France and fade. Screenshots in
+`tools/dev/logs/`: `edge-butto.png` (before), `edge-butto-after.png`,
+`ring-west.png`, `new-south-orco.png` - the last one is Valle dell'Orco, terrain
+that did not exist that morning.
+
+**The fast suite went red, and all four failures were the test rather than the
+viewer** - which took measuring to establish, not asserting:
+- `run-tests.sh` keeps only the TAIL of each test's output, so the suite showed
+  ONE failure where the test itself reports four. Nearly drew a conclusion from
+  a truncated log.
+- Two failures were four hand-typed local coordinates for "dense wood" sites -
+  eight lines under a comment saying a hand-typed coordinate would be one more
+  thing to keep true if the local frame ever moved. It moved. They are scanned
+  out of the shipped canopy mask at run time now.
+- The gait check watched 12 frames at dt 1/60 - **0.2 s**, against graze timers of
+  3.5 to 9 s. It had been passing on luck: catching an animal already mid-stride
+  in one fifth of a second. The window is 10 s now, and the first swing change
+  comes at 0.53 s.
+- The alignment check measured the surface normal over 0.5 m while
+  `src/wildlife.js` deliberately orients over the animal's own length (1.5 m for
+  an ibex, so one standing across a cell edge averages both facets). New terrain
+  moved the cell edges under a herd that had not moved, and the two definitions
+  disagreed by 14.4 deg. **Nothing was misaligned, and the proof was already in
+  the output**: the worst foot in that run was 4 cm off the ground, where a body
+  tilted 14 deg on a 30 deg slope would have lifted a hoof 29 cm. The test reads
+  the baseline from the module's own SPECIES table now - the arrangement
+  `src/terrain.js` already has with `test-terrain-albedo`.
+
+**Fast suite: 10 run, 0 failed, 485 s**, including the new `test-outerring`, which
+earned its place immediately by catching a contradiction of mine: the south margin
+was chosen at 2.1 km so the fade could live outside the park, and then the fade was
+set to 3 km, dissolving the last 900 m of the park's southern tip. It is 1.5 km,
+and the test asserts no park ground is faded at all.
+
+**Left open, deliberately**: the Piemonte DTM5 spikes are in the shipped DEM, not
+only in the tier - 1,245 cells over 96 m out of 44.1 M, invisible in practice. A
+de-spike pass over the mosaic is a real option and was not taken. And the
+**Copernicus licence has not been read to this project's standard**, unlike the
+other three; it must be before this is published.
+
+
 ## NEXT SESSION: the three they named on closing (2026-08-18)
 
 Their words, closing a session that ended published and with nothing pending:
