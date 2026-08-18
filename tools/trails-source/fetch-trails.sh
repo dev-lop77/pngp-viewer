@@ -35,10 +35,8 @@ ZIP_URL="https://geoprodotti.regione.vda.it/download/SENTIERI/sentieri.zip"
 # Same bbox as tools/dtm-source/extract-heightmap.sh. The dataset's native
 # CRS (EPSG:23032, ED50 UTM32N) already matches our DEM exactly - no
 # reprojection needed.
-XMIN=329116
-YMIN=5036775
-XMAX=413000
-YMAX=5085000
+# The target bbox lives in one place now - see the file for why.
+source "$(dirname "${BASH_SOURCE[0]}")/../dtm-source/bbox.sh"
 
 mkdir -p "$OUT_DIR"
 cd "$OUT_DIR"

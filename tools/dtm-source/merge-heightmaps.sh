@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
-# Merges the 3 DEM sources into one calibrated heightmap, priority-ordered
+# Merges the 4 DEM sources into one calibrated heightmap, priority-ordered
 # best-available-per-pixel (docs/PROGRESS.md, docs/ARCHITECTURE.md §3):
-#   1. VDA (DEM/pngp_heightmap.png) - best, but Valle d'Aosta only.
+#   1. VDA (~/pngp-dtm-work/vda-5m/) - best, but Valle d'Aosta only. NOT the
+#      repo's DEM/pngp_heightmap.png, which is this script's own output - see
+#      the comment on VDA_PNG below.
 #   2. Piemonte WCS (fetch-piemonte-dtm.sh) - fills most of the rest, but
 #      doesn't reach the highest glaciated peaks (verified).
-#   3. TINITALY (fetch-tinitaly.sh) - national mosaic, fills whatever's
-#      still missing.
-# Run fetch-piemonte-dtm.sh and fetch-tinitaly.sh first.
+#   3. TINITALY (fetch-tinitaly.sh) - national mosaic, fills whatever Italian
+#      ground the first two still missed.
+#   4. Copernicus GLO-30 (fetch-copernicus-dem.sh) - global, 30 m, and the only
+#      one that crosses the frontier. It exists for France and Switzerland,
+#      where the first three cannot go by definition, and is drawn faded and
+#      kept out of the walker's reach (added 2026-08-18).
+# Run fetch-piemonte-dtm.sh, fetch-tinitaly.sh and fetch-copernicus-dem.sh first.
 #
 # Technique: gdalwarp each source onto the exact same target grid (this
 # bbox, EPSG:23032, RES_M m/px) with its own real nodata value normalized to a
@@ -21,17 +27,32 @@ set -euo pipefail
 
 # --- EDIT THESE ---
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-VDA_PNG="$REPO_DIR/DEM/pngp_heightmap.png"
-VDA_META="$REPO_DIR/DEM/pngp_heightmap_meta.json"
+# The VDA-ONLY extraction, which is NOT DEM/pngp_heightmap.png. That file is
+# this script's own output from the last run, copied back into the repo, and
+# pointing VDA_PNG at it (as this script did until 2026-08-18) makes a re-run
+# eat its own tail: the previous mosaic comes back in at priority 1, so
+# Piemonte and TINITALY pixels get promoted above the sources that should
+# outrank them, and the merged nodata floor is re-imported as if it were real
+# Valle d'Aosta elevation. Harmless while the bbox never changed and every
+# input was identical; not harmless the moment either is true.
+# Told apart at a glance by their elevation ranges: VDA-only is 292.13-4810.96,
+# the mosaic 238.51-4809.81.
+VDA_PNG="$HOME/pngp-dtm-work/vda-5m/pngp_heightmap.png"
+VDA_META="$HOME/pngp-dtm-work/vda-5m/pngp_heightmap_meta.json"
 PIEMONTE_TIF="$HOME/pngp-dtm-work/piemonte/piemonte_dtm.tif"
 TINITALY_VRT="$HOME/pngp-dtm-work/tinitaly/tinitaly.vrt"
 TINITALY_ATTRIBUTION_FILE="$HOME/pngp-dtm-work/tinitaly/ATTRIBUTION.txt"
+# Priority 4 (lowest): a global DEM, used ONLY where all three Italian sources
+# are absent - i.e. across the French and Swiss border, which no Italian
+# product can or should cover. Before this, those 12% of the bbox were nodata
+# and the terrain shader drew them at the mosaic's minimum elevation, so the
+# frontier crest ended in a 2,600 m cliff down to a flat 238.5 m floor.
+COPERNICUS_VRT="$HOME/pngp-dtm-work/copernicus/copernicus.vrt"
+COPERNICUS_ATTRIBUTION_FILE="$HOME/pngp-dtm-work/copernicus/ATTRIBUTION.txt"
 OUT_DIR="$HOME/pngp-dtm-work/merged"
 
-XMIN=329116
-YMIN=5036775
-XMAX=413000
-YMAX=5085000
+# The target bbox lives in one place now - see the file for why.
+source "$(dirname "${BASH_SOURCE[0]}")/bbox.sh"
 # Must match the resolution of the VDA_PNG above: this script composites the
 # other two sources ONTO that grid, and gdal_merge.py needs all three aligned
 # to one geotransform. 5 m since 2026-08-14, for the high-resolution terrain
@@ -43,10 +64,10 @@ NODATA=-9999
 
 mkdir -p "$OUT_DIR"
 
-for f in "$VDA_PNG" "$VDA_META" "$PIEMONTE_TIF" "$TINITALY_VRT"; do
+for f in "$VDA_PNG" "$VDA_META" "$PIEMONTE_TIF" "$TINITALY_VRT" "$COPERNICUS_VRT"; do
   if [[ ! -f "$f" ]]; then
     echo "Missing input: $f" >&2
-    echo "Run fetch-piemonte-dtm.sh and fetch-tinitaly.sh first." >&2
+    echo "Run fetch-piemonte-dtm.sh, fetch-tinitaly.sh and fetch-copernicus-dem.sh first." >&2
     exit 1
   fi
 done
@@ -55,23 +76,34 @@ VDA_ELEV_MIN=$(python3 -c "import json; print(json.load(open('$VDA_META'))['elev
 VDA_ELEV_MAX=$(python3 -c "import json; print(json.load(open('$VDA_META'))['elevation_m']['max'])")
 echo "VDA source elevation range: $VDA_ELEV_MIN - $VDA_ELEV_MAX m"
 
+# The VDA PNG is a bare image: it carries no georeferencing at all, so step 1
+# has to ASSERT its corners. Those corners are the source's own, read from its
+# sidecar - never the target bbox. They coincided until 2026-08-18 and the
+# distinction cost nothing; now that YMIN has moved 9.8 km south, using the
+# target bbox here would stretch the whole of Valle d'Aosta over the taller
+# rectangle and misregister it by that distance, quietly and without an error.
+VDA_BBOX=$(python3 -c "import json; b=json.load(open('$VDA_META'))['bbox_utm32n']; print(b['xmin'], b['ymin'], b['xmax'], b['ymax'])")
+read -r VDA_XMIN VDA_YMIN VDA_XMAX VDA_YMAX <<< "$VDA_BBOX"
+echo "VDA source bbox: E $VDA_XMIN-$VDA_XMAX N $VDA_YMIN-$VDA_YMAX (target: E $XMIN-$XMAX N $YMIN-$YMAX)"
+
 echo
 echo "== Step 1: VDA PNG -> real-elevation GeoTIFF (pixel 0 = nodata, the same"
 echo "   undeclared sentinel docs/PROGRESS.md already found - now handled"
 echo "   explicitly instead of silently passing through as ~292m) =="
 VDA_RAW="$OUT_DIR/vda_raw.tif"
 VDA_ELEV="$OUT_DIR/vda_elevation.tif"
-gdal_translate -q -a_srs EPSG:23032 -a_ullr "$XMIN" "$YMAX" "$XMAX" "$YMIN" \
+gdal_translate -q -a_srs EPSG:23032 -a_ullr "$VDA_XMIN" "$VDA_YMAX" "$VDA_XMAX" "$VDA_YMIN" \
   "$VDA_PNG" "$VDA_RAW"
 gdal_calc.py --quiet -A "$VDA_RAW" --outfile="$VDA_ELEV" \
   --calc="where(A==0, $NODATA, A.astype(numpy.float32)*($VDA_ELEV_MAX-$VDA_ELEV_MIN)/65535.0+$VDA_ELEV_MIN)" \
   --NoDataValue=$NODATA --type=Float32 --overwrite
 
 echo
-echo "== Step 2: align all 3 sources to the same grid (bbox, EPSG:23032, ${RES_M}m/px) =="
+echo "== Step 2: align all 4 sources to the same grid (bbox, EPSG:23032, ${RES_M}m/px) =="
 VDA_ALIGNED="$OUT_DIR/vda_aligned.tif"
 PIEMONTE_ALIGNED="$OUT_DIR/piemonte_aligned.tif"
 TINITALY_ALIGNED="$OUT_DIR/tinitaly_aligned.tif"
+COPERNICUS_ALIGNED="$OUT_DIR/copernicus_aligned.tif"
 
 gdalwarp -q -overwrite -t_srs EPSG:23032 -te "$XMIN" "$YMIN" "$XMAX" "$YMAX" -tr "$RES_M" "$RES_M" \
   -r near -srcnodata $NODATA -dstnodata $NODATA "$VDA_ELEV" "$VDA_ALIGNED"
@@ -79,19 +111,64 @@ gdalwarp -q -overwrite -t_srs EPSG:23032 -te "$XMIN" "$YMIN" "$XMAX" "$YMAX" -tr
   -r bilinear -srcnodata $NODATA -dstnodata $NODATA "$PIEMONTE_TIF" "$PIEMONTE_ALIGNED"
 gdalwarp -q -overwrite -t_srs EPSG:23032 -te "$XMIN" "$YMIN" "$XMAX" "$YMAX" -tr "$RES_M" "$RES_M" \
   -r bilinear -srcnodata $NODATA -dstnodata $NODATA "$TINITALY_VRT" "$TINITALY_ALIGNED"
+# Cubic, not bilinear: this one is being blown up 6x (30 m native onto a 5 m
+# grid), and bilinear at that ratio leaves the source cells legible as a
+# lattice of flat quads. It is the only source that is upsampled rather than
+# downsampled, so it is the only one where the resampler shows.
+gdalwarp -q -overwrite -t_srs EPSG:23032 -te "$XMIN" "$YMIN" "$XMAX" "$YMAX" -tr "$RES_M" "$RES_M" \
+  -r cubic -srcnodata $NODATA -dstnodata $NODATA "$COPERNICUS_VRT" "$COPERNICUS_ALIGNED"
 
 echo
-echo "== Step 3: priority composite (tinitaly < piemonte < vda, later wins where valid) =="
+echo "== Step 3: priority composite (copernicus < tinitaly < piemonte < vda, later wins where valid) =="
 MERGED="$OUT_DIR/merged.tif"
 rm -f "$MERGED"
 gdal_merge.py -q -o "$MERGED" -n $NODATA -a_nodata $NODATA -ot Float32 \
-  "$TINITALY_ALIGNED" "$PIEMONTE_ALIGNED" "$VDA_ALIGNED"
+  "$COPERNICUS_ALIGNED" "$TINITALY_ALIGNED" "$PIEMONTE_ALIGNED" "$VDA_ALIGNED"
+
+# Which cells ended up on the global fallback - i.e. which ones are the coarse
+# outer ring rather than the park. The renderer needs to know: that ring is
+# what fades out, and what the avatar is kept out of. Computed here because
+# this is the only place that still has the per-source layers; downstream all
+# it can see is one number per cell with no provenance.
+echo
+echo "== Step 3b: outer-ring mask (1 = only the global DEM had data here) =="
+OUTER_MASK="$OUT_DIR/outer_ring.tif"
+# --hideNoData is load-bearing, not tidiness. Without it gdal_calc PROPAGATES
+# each input's nodata: any cell that is nodata in ANY input is written as the
+# output's nodata and the expression is never consulted. The cells this mask is
+# looking for are, by definition, the ones where three of the four inputs are
+# nodata - so the first version of this produced a mask that was empty
+# everywhere, and empty is a plausible-looking answer for a mask. Told to ignore
+# the declared nodata, the comparisons below do the work themselves.
+#
+# No --NoDataValue on the output either: 0 here means "local survey data covers
+# this", which is the answer for six cells out of seven and is not missing data.
+gdal_calc.py --quiet --hideNoData \
+  -A "$COPERNICUS_ALIGNED" -B "$TINITALY_ALIGNED" -C "$PIEMONTE_ALIGNED" -D "$VDA_ALIGNED" \
+  --outfile="$OUTER_MASK" --overwrite --type=Byte \
+  --calc="255*logical_and(A!=$NODATA, logical_and(B==$NODATA, logical_and(C==$NODATA, D==$NODATA)))"
+
+# Straight to the 8-bit PNG the repo-local build reads (tools/build-outer-ring.mjs),
+# so the mask arrives in DEM/ next to the heightmap it belongs with rather than
+# needing a hand-run gdal_translate that only this session would remember.
+gdal_translate -q -of PNG -ot Byte -b 1 -a_nodata none "$OUTER_MASK" "$REPO_DIR/DEM/outer_ring.png"
+echo "Wrote $REPO_DIR/DEM/outer_ring.png"
 
 echo
 echo "== Step 4: coverage check =="
 echo "Whole-bbox stats (informational - the bbox deliberately extends beyond"
 echo "the park/Italy toward Mont Blanc/France, §3 - a residual gap out there"
 echo "is expected and cannot be fixed with Italian sources):"
+# Drop any PAM sidecar first. GDAL caches statistics in <file>.aux.xml and keys
+# that cache on the FILE NAME, not on the contents - so a rebuilt merged.tif of
+# the same name is handed the previous run's numbers, with no warning and no
+# clue in the output that they are months old. On 2026-08-18 that fed step 5 a
+# stale range (238.51-4809.81 instead of the real 219.26-4810.96) and clamped
+# every cell below the old minimum to 0, which downstream reads as NODATA - so
+# the newly added low ground would have arrived as holes. These numbers set the
+# scale of the shipped heightmap; they are the last place to accept a cached
+# answer.
+rm -f "$MERGED.aux.xml"
 STATS=$(gdalinfo -stats "$MERGED" | grep -E "STATISTICS_(MINIMUM|MAXIMUM|VALID_PERCENT)")
 echo "$STATS"
 
@@ -102,11 +179,14 @@ node "$(dirname "${BASH_SOURCE[0]}")/check-park-coverage.mjs" "$MERGED" "$XMIN" 
 PARK_NODATA_PCT=$(python3 -c "import json; print(json.load(open('/tmp/check-park-coverage-result.json'))['pct'])")
 if awk -v v="$PARK_NODATA_PCT" 'BEGIN { exit !(v > 0.5) }'; then
   echo
-  echo "ERROR: ${PARK_NODATA_PCT}% of the REAL park still has no real elevation" >&2
-  echo "data after merging all 3 sources - that's the bug class just fixed for" >&2
-  echo "lakes (a fake floor masquerading as real elevation), and this time it's" >&2
-  echo "inside the park, not just the oversized margin. Investigate before" >&2
-  echo "proceeding - inspect $MERGED to find where." >&2
+  echo "ERROR: ${PARK_NODATA_PCT}% of the REAL park still has no elevation after" >&2
+  echo "merging all 4 sources. Read the breakdown above before assuming which" >&2
+  echo "kind of gap it is - they have different fixes:" >&2
+  echo "  'no pixel at all'  -> the bbox is too small. Move it in bbox.sh." >&2
+  echo "  'nodata'           -> the bbox is right and no source covered it." >&2
+  echo "Either way it is the bug class already fixed for lakes (a fake floor" >&2
+  echo "masquerading as real elevation), and this time inside the park rather" >&2
+  echo "than out in the margin. Inspect $MERGED to find where." >&2
   exit 1
 fi
 

@@ -26,10 +26,8 @@ OUT_DIR="$HOME/pngp-dtm-work"      # output location — outside the repo
 # Crop extent, UTM32N meters. Defaults match the area already calibrated
 # in the repo (docs/pngp_extraction_report.txt) — adjust if you want a
 # different/tighter area of interest.
-XMIN=329116
-YMIN=5036775
-XMAX=413000
-YMAX=5085000
+# The target bbox lives in one place now - see the file for why.
+source "$(dirname "${BASH_SOURCE[0]}")/bbox.sh"
 
 # Output resolution, meters/pixel. 10 m/px keeps this large an area a
 # manageable size while preserving plenty of terrain detail; the repo's

@@ -26,10 +26,8 @@ set -euo pipefail
 # reprojection: a systematic ~100-200m ED50/WGS84 offset can't move us
 # into a different 50km tile here) ---
 OUT_DIR="$HOME/pngp-dtm-work/tinitaly"
-XMIN=329116
-YMIN=5036775
-XMAX=413000
-YMAX=5085000
+# The target bbox lives in one place now - see the file for why.
+source "$(dirname "${BASH_SOURCE[0]}")/bbox.sh"
 
 ATTRIBUTION="Tarquini S., I. Isola, M. Favalli, A. Battistini, G. Dotta, (2023). TINITALY, a digital elevation model of Italy with a 10 meters cell size (Version 1.1). Istituto Nazionale di Geofisica e Vulcanologia (INGV). https://doi.org/10.13127/tinitaly/1.1 - CC BY 4.0"
 # --------------------
@@ -76,6 +74,7 @@ gdalbuildvrt -input_file_list "$TILE_LIST" "$VRT_OUT"
 echo
 echo "== Coverage check over our bbox =="
 gdalwarp -q -overwrite -te "$XMIN" "$YMIN" "$XMAX" "$YMAX" -tr 10 10 "$VRT_OUT" "$OUT_DIR/tinitaly_crop_check.tif"
+rm -f "$OUT_DIR/tinitaly_crop_check.tif.aux.xml"  # see merge-heightmaps.sh: PAM caches stats by filename
 gdalinfo -stats "$OUT_DIR/tinitaly_crop_check.tif" | grep -E "STATISTICS_(MINIMUM|MAXIMUM|VALID_PERCENT)|NoData"
 
 echo

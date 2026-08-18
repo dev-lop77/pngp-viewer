@@ -24,10 +24,8 @@ set -euo pipefail
 # --- EDIT THESE (defaults match the bbox already calibrated for the VDA
 # extraction, DEM/pngp_heightmap_meta.json) ---
 OUT_DIR="$HOME/pngp-dtm-work/piemonte"
-XMIN=329116
-YMIN=5036775
-XMAX=413000
-YMAX=5085000
+# The target bbox lives in one place now - see the file for why.
+source "$(dirname "${BASH_SOURCE[0]}")/bbox.sh"
 RES_M=5
 TILE_M=9000
 WCS_URL="https://geomap.reteunitaria.piemonte.it/ws/taims/rp-01/taimsdtmwcs/wcs_ice_2009_2011_dtm"
@@ -95,6 +93,7 @@ gdal_translate -co COMPRESS=DEFLATE -co PREDICTOR=3 -co TILED=YES "$VRT_OUT" "$T
 
 echo
 echo "== Coverage check =="
+rm -f "$TIF_OUT".aux.xml  # see merge-heightmaps.sh: PAM caches stats by filename
 gdalinfo -stats "$TIF_OUT" | grep -E "STATISTICS_(MINIMUM|MAXIMUM|VALID_PERCENT)|NoData"
 
 echo
