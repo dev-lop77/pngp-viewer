@@ -193,6 +193,9 @@ function altaViaTriangle(number) {
 
 function labelTextFor(trail) {
   const parts = [trail.segnavia, trail.name].filter((p) => p && String(p).trim());
+  // A via ferrata has no trail number, and what a walker wants in its place is
+  // how hard the cable is: OSM's via_ferrata_scale, 1 to 5.
+  if (trail.ferrataScale) parts.push(`ferrata ${trail.ferrataScale}`);
   return parts.join(' · ');
 }
 
@@ -248,13 +251,29 @@ function pointsAlong(line, spacing, firstAt) {
 // 5th for the ferrata tick overlay) instead of one per trail - §10's
 // "instancing for repeated geometry" principle applied to lines.
 export async function loadTrails(dataUrl = `${import.meta.env.BASE_URL}data`) {
-  const data = await fetch(`${dataUrl}/trails.json`).then((r) => r.json());
+  // THE VIA FERRATAS ride in the same list, and that is the whole trick: they are
+  // built (tools/build-ferrata.mjs) with a trail's own record shape, so the EEA
+  // line style with its cable ticks, the moving label, the seating on the drawn
+  // ground and the bounds test below all work on them without a second code path.
+  // They come from OSM rather than the VDA dataset - the user asked for the two
+  // they knew (Valgrisenche and Chanavey, 2026-08-18) and the regional trail
+  // dataset simply does not carry them.
+  //
+  // Failure here is survivable and must be: an older deploy has no ferrata.json,
+  // and the trails matter more than the three routes.
+  const [data, ferrata] = await Promise.all([
+    fetch(`${dataUrl}/trails.json`).then((r) => r.json()),
+    fetch(`${dataUrl}/ferrata.json`)
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null),
+  ]);
+  const trails = ferrata?.ferrata?.length ? [...data.trails, ...ferrata.ferrata] : data.trails;
 
   const positionsByStyle = { solid: [], dashed: [], dotted: [], ferrata: [] };
   const ferrataTicks = [];
   const altaViaPoints = []; // the casing, one flat [x,y,z,x,y,z,...] segment list
 
-  for (const trail of data.trails) {
+  for (const trail of trails) {
     const style = STYLE_BY_DIFFICULTY[trail.difficulty] ?? DEFAULT_STYLE;
     for (const source of trail.lines) {
       // Cut to MAX_SEGMENT_M first: everything below seats vertices on the drawn
@@ -314,7 +333,7 @@ export async function loadTrails(dataUrl = `${import.meta.env.BASE_URL}data`) {
   // moves it to whichever point you are nearest. Hidden to begin with: a label
   // is only ever shown by updateLabels(), which needs a camera.
   const labels = [];
-  for (const trail of data.trails) {
+  for (const trail of trails) {
     const text = labelTextFor(trail);
     if (!text) continue;
     const el = document.createElement('div');
@@ -332,7 +351,7 @@ export async function loadTrails(dataUrl = `${import.meta.env.BASE_URL}data`) {
   // The waymarks: a yellow triangle with the route number, spaced along the
   // route and thinned where the source's overlapping features would stack them.
   const badges = [];
-  for (const trail of data.trails) {
+  for (const trail of trails) {
     if (!trail.altaVia) continue;
     for (const line of trail.lines) {
       // Starting half a spacing in, not a full one: several of the source's Alta
@@ -482,5 +501,5 @@ export async function loadTrails(dataUrl = `${import.meta.env.BASE_URL}data`) {
     altaViaMaterial?.resolution.set(width, height);
   }
 
-  return { group, manifest: data, alignToGround, updateLabels, setResolution };
+  return { group, manifest: data, ferrataManifest: ferrata, alignToGround, updateLabels, setResolution };
 }

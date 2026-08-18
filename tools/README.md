@@ -90,6 +90,7 @@ the output stops being reproducible the history no longer has a copy to fall bac
 | `water.json` | yes | `build-hydrology.mjs` | `hydrology-draft.json` (**untracked**) + `osm-poi-draft.json` |
 | — includes the streams | | | fetched over the *region's* bbox, not the DEM's — see below |
 | `roads.json` | yes | `build-roads.mjs` | `roads-draft.json` (**untracked**) |
+| `ferrata.json` | yes | `build-ferrata.mjs` | `ferrata-draft.json` (tracked — 19 ways, 39 KB) |
 | `forest.json` + `forest.<hash>.png` | yes | `build-forest.mjs` | `forest-draft.json` (untracked) |
 | `landcover.json` + `landcover.<hash>.png` | yes | `build-landcover.mjs` | `ndvi-draft.bin/.json` (untracked) |
 | `basemap.json` + `basemap.<hash>.webp` | yes | `basemap-source/build-basemap.py` | Sentinel-2 L2A scenes |

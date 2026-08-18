@@ -509,6 +509,31 @@ tools/
                              per pixel rounds the lip away and the un-graced test measured a
                              1 m waterfall at Tsanteleina. Goletta: 137 m over a 232 m straight
                              run before, 114 m over a 133 m path (grade 0.86) after.
+  fetch-ferrata.mjs       Written 2026-08-18, last thing before publishing, because the user
+                             knew two were missing: "Ci dovrebbero essere almeno due vie
+                             ferrate, una in Valgrisenche, partenza vicino al capoluogo, ed
+                             una in Val di Rhemes, a Chanavey." Neither is in the VDA trail
+                             dataset - it has 10 EEA trails region-wide and none of them is a
+                             ferrata - so this asks OSM for `highway=via_ferrata` over the
+                             region's bbox: 19 ways, of which 13 inside the region. The
+                             approach and return footpaths OSM names after each ferrata are
+                             left out; they are footpaths.
+  build-ferrata.mjs       Written 2026-08-18. Region filter, then two jobs the roads did not
+                             need. JOINS the pieces: OSM splits a route wherever a tag
+                             changes, so Bethaz Bovard arrives as three ways and the Voie du
+                             Paradis as six (two of them suspension bridges), and drawn
+                             separately they would be LABELLED separately over the same rock
+                             face - grouped by name with the "- Primo troncone" / "1/2"
+                             suffixes stripped. And it sets difficulty EEA itself, because
+                             that is what a via ferrata IS and OSM has no CAI field, while
+                             carrying OSM's own via_ferrata_scale (1-5) through separately.
+                             Output uses a TRAIL's record shape on purpose, so src/trails.js
+                             merges the two lists and needs no second code path. 3 routes:
+                             Bethaz Bovard (Valgrisenche, 1,459 m, +919 m, scale 3), Casimiro
+                             (Chanavey, 660 m, +313 m, scale 3, one bridge) and La Voie du
+                             Paradis (Valsavarenche, inside the park, 609 m, +269 m, scale 3,
+                             two bridges) - the third was not asked for. A 50 m floor drops
+                             two fragments of 7 m and 22 m whose routes OSM has barely mapped.
   fetch-roads.mjs         Written 2026-08-18. The forest roads: OSM highway=track over the
                              REGION's bounding box (not the DEM bbox - tracks are dense where
                              people live, and Overpass refused the whole-bbox query outright),
@@ -1350,7 +1375,10 @@ pngp-viewer/
 │                              real normals from the height texture: three does NOT
 │                              derive them from a displacementMap, so before this the
 │                              terrain had no slope shading at all
-│   ├── trails.js           loads public/data/trails.json, one merged THREE.LineSegments
+│   ├── trails.js           loads public/data/trails.json AND public/data/ferrata.json (the
+│                              via ferratas are built with a trail's record shape, so they
+│                              merge into the same list and get the EEA cable-tick style, the
+│                              moving label and the seating for free), one merged THREE.LineSegments
 │                              draw call per line STYLE (§10) - difficulty is shown via
 │                              line pattern (solid/dashed/dotted/ferrata-ticks), not
 │                              color, matching real hiking-map convention (user request,

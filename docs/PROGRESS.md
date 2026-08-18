@@ -2,6 +2,45 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## The two via ferratas they knew were missing (2026-08-18, last before publishing)
+
+*"Ci dovrebbero essere almeno due vie ferrate, una in Valgrisenche, partenza vicino
+al capoluogo, ed una in Val di Rhemes, a Chanavey."* Both exist, and neither was
+ever going to arrive through the trail pipeline: the VDA dataset has **10 EEA
+trails in the whole region and not one of them is a ferrata** - EEA there means an
+exposed path with a cable or two, not a cabled route. OSM has them as
+`highway=via_ferrata`, with the cable scale on most of the ways.
+
+Three routes ship, of 19 ways fetched and 13 inside the region:
+
+| route | where | length | gain | scale |
+|---|---|---|---|---|
+| **Via Ferrata Bethaz Bovard** | Valgrisenche, above the capoluogo | 1,459 m | +919 m | 3 |
+| **Via Ferrata di Casimiro** | above Chanavey, Val di Rhêmes | 660 m | +313 m | 3, one suspension bridge |
+| Via Ferrata "La Voie du Paradis" | Valsavarenche, inside the park | 609 m | +269 m | 3, two bridges |
+
+The third was not asked for; it is operated by the Comune di Valsavarenche and it
+was simply there once the query existed.
+
+**They are built with a TRAIL's record shape** (`tools/build-ferrata.mjs`), which
+is the whole trick: src/trails.js merges the two lists and every downstream thing -
+the EEA line style with its cable ticks, the label that follows the nearest point,
+the densification, the seating on the drawn ground - works on them with no second
+code path. The label reads "Via Ferrata di Casimiro · ferrata 3": a ferrata has no
+trail number, and what belongs in that slot is how hard the cable is.
+
+Two jobs the roads did not need. **Joining**: OSM splits a route wherever a tag
+changes, so Bethaz Bovard arrives as three ways and the Voie du Paradis as six -
+drawn separately they would also be LABELLED separately, three times over the same
+face - so the pieces are grouped by name with the "- Primo troncone" and "1/2"
+suffixes stripped. **Difficulty**: EEA is set here rather than looked for, because
+that is what a via ferrata is and OSM has no CAI field.
+
+A 50 m floor drops two fragments of 7 m and 22 m - stubs of routes OSM has barely
+mapped, one of them carrying a note that it is an alpine climb rather than a
+ferrata. Logged when it happens rather than filtered silently.
+
+
 ## The traces were floating, and the cause was not the seating (2026-08-18, later still)
 
 *"Le due tracce, rossa e gialla non sono vicine fra loro e galleggiano sul terreno,
