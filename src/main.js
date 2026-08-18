@@ -6,6 +6,7 @@ import { SNOW_LEVEL } from './snow.js';
 import { loadTrails } from './trails.js';
 import { loadPOI, poiInfoHTML } from './poi.js';
 import { loadWater } from './water.js';
+import { loadRoads } from './roads.js';
 import { loadForest, createCoverageSampler } from './forest.js';
 import { loadBasemap, BASEMAP_MIX, BASEMAP_SCALE, BASEMAP_GAIN, BASEMAP } from './basemap.js';
 import { createVegetation } from './vegetation.js';
@@ -347,8 +348,10 @@ Promise.all([terrainPromise, forestPromise]).then(async ([terrain, forest]) => {
   scene.add(birds.object);
 });
 
+let trailsLayer = null;
 const trailsPromise = loadTrails().then((result) => {
   scene.add(result.group);
+  trailsLayer = result;
   // CC BY 4.0 requires this attribution wherever the data (or a render of
   // it) is shown - docs/ARCHITECTURE.md §9, tools/trails-source/README.md.
   creditLines.trails =
@@ -646,6 +649,17 @@ function registerSeatable(entry) {
     }
   }
 }
+// The forest roads ride along with the other OSM layers: same licence line,
+// same re-seating, and like the trails they are geometry with no update loop.
+loadRoads().then(({ group, manifest, alignToGround }) => {
+  scene.add(group);
+  registerSeatable({ name: 'roads', alignToGround });
+  creditLines.osm =
+    `${manifest.source.attribution} ` +
+    `<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">${manifest.source.license}</a>`;
+  renderCredits();
+});
+
 loadWater().then(({ group, manifest, update, alignToGround }) => {
   scene.add(group);
   waterUpdate = update;
@@ -1272,6 +1286,10 @@ renderer.setAnimationLoop(() => {
     }
 
     poiIndex?.updateMarkers(camera);
+    // Which trail am I on: the label follows the nearest point of each nearby
+    // trace, so it belongs on the same 4 Hz tick as the POI markers rather than
+    // in the render loop (src/trails.js).
+    trailsLayer?.updateLabels(camera);
   }
 
   if (flying) {

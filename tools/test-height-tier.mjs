@@ -384,7 +384,7 @@ if (loaded) {
     const p = window.__pngp;
     const h = p.getGroundHeight();
     const out = [];
-    for (const groupName of ['water', 'trails']) {
+    for (const groupName of ['water', 'trails', 'roads']) {
       const g = p.scene.getObjectByName(groupName);
       if (!g) continue;
       for (const child of g.children) {

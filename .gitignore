@@ -9,6 +9,10 @@ tools/dev/logs/
 
 tools/forest-draft.json
 tools/hydrology-draft.json
+# 3.2 MB of raw OSM tracks over the region's bbox, two thirds of which the build
+# drops. Same treatment as the hydrology draft next to it: derived, reproducible
+# with tools/fetch-roads.mjs, and only the built roads.json is worth history.
+tools/roads-draft.json
 tools/landcover-osm-draft.json
 tools/landcover-unshipped/
 tools/ndvi-draft.bin
