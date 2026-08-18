@@ -88,6 +88,7 @@ the output stops being reproducible the history no longer has a copy to fall bac
 | `trails.json` | yes | `build-trails.mjs` | `~/pngp-trails-work/pngp_sentieri.geojson` (`trails-source/README.md`) |
 | `poi.json` | yes | `build-poi.mjs` | `osm-poi-draft.json` (tracked) + `heightfield.json` |
 | `water.json` | yes | `build-hydrology.mjs` | `hydrology-draft.json` (**untracked**) + `osm-poi-draft.json` |
+| — includes the streams | | | fetched over the *region's* bbox, not the DEM's — see below |
 | `roads.json` | yes | `build-roads.mjs` | `roads-draft.json` (**untracked**) |
 | `forest.json` + `forest.<hash>.png` | yes | `build-forest.mjs` | `forest-draft.json` (untracked) |
 | `landcover.json` + `landcover.<hash>.png` | yes | `build-landcover.mjs` | `ndvi-draft.bin/.json` (untracked) |
@@ -99,6 +100,14 @@ the Rhêmes and Valgrisenche comuni since 2026-08-18 — not the park alone — 
 in a valley we draw but the park excludes still ships. The park polygon
 (`park-boundary.geojson`) is still its own thing and still decides only one question:
 where the 5 m terrain tier covers.
+
+Three layers are fetched over the **region's** bounding box rather than the DEM's,
+because over the whole bbox they are an order of magnitude larger and the build would
+throw the difference away anyway: the forest roads (1,820 tracks against ~10,000),
+the streams (3,285 against 8,369) and the village names (620 place nodes against
+~5,500 toponyms). The consequence is worth remembering: **growing the region needs a
+re-fetch, not just a rebuild.** Every Overpass call goes through `lib/overpass.mjs`,
+which retries — the public endpoint refused three separate queries on 2026-08-18.
 
 `fetch-*.mjs` and `build-*.mjs` come in pairs and the split is deliberate: the
 `fetch` half talks to the network and bakes elevation into a draft, the `build` half

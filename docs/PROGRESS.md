@@ -2,6 +2,154 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## Their second look, and the five things it asked for (2026-08-18, later)
+
+They walked the new region in a real browser and came back with five things. All
+five are built; the numbers below are measured, and one of them is a question
+back to them.
+
+### 1. The waterfall, rebuilt - "Non è bellissima, penso si possa migliorare, anche usando più poligoni"
+
+Three separate faults, and only the third was about polygons.
+
+**It ignored the water.** The march ran in ONE direction, fixed at the brink by
+steepest descent, so the Goletta fall came down BESIDE its own torrent rather
+than on it. The streams arriving in the same session fixed this properly: the
+march now follows the mapped watercourse whenever one runs within 30 m, and falls
+back to the terrain only where none does. Goletta went from 137 m of drop over a
+232 m straight run to **114 m over a 133 m path - grade 0.86 instead of 0.61**,
+because it is now following the gully instead of cutting across it.
+
+**It stopped where the loop gave up.** Both Goletta and Entrelor hit the 50-step
+cap, i.e. they ended at 200 m of march, not where the water lands. There is now a
+real landing test - the ground under the fall has stopped falling away, measured
+over a 12.5 m window rather than a single 2.5 m step, because one step on a 10 m
+grid is mostly interpolation noise - plus a 240 m run backstop.
+
+**And that landing test immediately produced a 1 m waterfall.** Tsanteleina's
+brink is rounded off by a DEM that cannot see a lip at 10-20 m per pixel, so the
+first steps read as "already landed". Hence a grace period: no landing test until
+the fall has run 20 m and dropped 8 m. It measures **29 m** with it.
+
+The geometry: the sheet was a two-vertex-wide strip lying flat on the hillside.
+It is now **8 quads across**, bowed away from the slope in proportion to the local
+grade (up to 4 m in the middle, nothing at the edges - a curtain hangs furthest
+from the rock in the middle). That bow is deliberately putting back what the DEM
+smoothed away, without pretending to know where the real cliff face is. The shader
+gained a per-vertex `aFlow` attribute carrying distance-from-brink in METRES, so
+streaks are 6 m long on a 13 m fall and on a 141 m one alike - the old one divided
+every fall into six bands whatever its length - plus foam at the foot and thinner
+alpha between the strands and at the edges.
+
+### 2. The roads, twice as thick - and why that was not a parameter
+
+"fai la strada spessa il doppio". WebGL ignores `LineBasicMaterial.linewidth`
+outright (ANGLE clamps it to 1), so this is a different mechanism, not a number:
+the roads are now `LineSegments2` (three's addons fat lines), each segment
+extruded into a screen-space quad, **2 px at every distance**. Pixels rather than
+metres on purpose - a real 5 m road drawn to scale is sub-pixel from across the
+valley, which is most of where you want to see where the roads go.
+
+**The trap this walked into, and the test that now guards it.** Fat lines cannot
+use our aerial perspective the normal way: `atmosphere.js`'s `fog_vertex` chunk
+reads `transformed`, which every Mesh and every stock three line shader defines
+and LineMaterial does not (it builds quads from `instanceStart`/`instanceEnd`). So
+fog is turned off on the material and the three lines are injected by hand against
+LineMaterial's own attributes. If three ever renames those `#include <fog_*>`
+anchors the replacement silently misses, and the roads keep drawing - unhazed, at
+full brightness, thirty kilometres away, while every other line recedes. Nothing
+throws. `tools/test-fatline-fog.mjs` (new, Node, instant) checks the patch against
+three's real ShaderLib source.
+
+### 3. The torrents, and the fall at the outflow
+
+"non si vedono i torrenti in uscita dai due laghi" - correct, and the cause was
+the v1 scope cut: `waterway=stream` was never fetched. The Dora di Goletta, which
+drains Lago di Golette straight past the waterfall they had just asked about, is a
+stream.
+
+Now fetched over the region's bbox (3,285 ways, against 8,369 in the DEM bbox) and
+filtered to the region: **1,506 streams, 1,226 km**. Two measured decisions kept
+that affordable: a 150 m minimum length, which drops 577 stub ways for 50 km of the
+1,226; and Ramer-Douglas-Peucker simplification at 3 m - one ribbon width, so the
+worst a dropped vertex can do is shift the line inside its own footprint - which
+takes **57,936 vertices to 28,179**. water.json ends at 458 KB gzipped against
+185 KB before.
+
+They are drawn 3 m wide with 1.5 m of clearance (a river is 8 m and 3 m): a torrent
+runs in a gully the terrain grid rounds off, so a river's clearance would leave it
+floating over its own bed. They are also AUDIBLE, as rivers at 0.45 strength -
+which is the difference between standing beside the Dora di Rhemes and beside a
+two-metre gully.
+
+The fall at the Tsanteleina outflow is node 1281730839, 2,541.7 m, **exactly on
+stream 112844050** (0 m - the torrent draining the lake 156 m above it). Unnamed
+in OSM again, so "Cascata di Tsanteleina" is our name, like Goletta.
+
+A quiet correction came with the re-fetch: the lake water.json calls
+`Lago Di Sant'Elena` is OSM way 112844090, which OSM now names **Lago
+Tsanteleina**. The POI label the user read was already right (poi.json was
+rebuilt today); the hydrology draft was six days stale.
+
+### 4. The village names, and three trailheads
+
+"aggiungi i punti di partenza sentieri, Usellieres, Valgrisenche, Planaval. Sto
+pensando che, in generale, i nomi dei paesi all'interno delle valli siano di
+aiuto."
+
+Both halves, and they are different mechanisms. The three named places joined the
+curated allowlist (`tools/trailheads.json`, 22 -> 25) - and **Planaval is exactly
+why that file still exists**: it stands at the mouth of the Valgrisenche but
+belongs to the comune of Arvier, so no region built from whole comuni will ever
+contain it.
+
+The general answer is a new POI category: `place=city|town|village|hamlet` inside
+the region - **153 of them**, 6 villages and the rest hamlets, in pale sand so they
+are not confused with the green trailheads. This is the `place=*` filter the
+trailhead file's own header rejected in July, and what makes it admissible now is
+the region: 620 place nodes in its bbox, 235 inside it, against ~5,500 toponyms
+over the DEM bbox. `isolated_dwelling` (69) stays out - a single farm building is
+not a place you walk through.
+
+### 5. Alta Via 2 - and Alta Via 3 does not exist
+
+"segnalare i sentieri che fanno parte dell'Alta Via 2 e 3 con il tipico simbolo
+del triangolo con il numero dentro. Visibile da molto più lontano rispetto ai
+numeri dei sentieri. Ingrossando leggermente la linea."
+
+It needed no new data: the VDA dataset already says so in `nuovo_segn` -
+"AV2 - 21", "13 - AV2 - TVC", "VA - AV2". Parsed as a number rather than matched
+against a list, so any Alta Via the region ever reaches works with no code change.
+
+**But the number 3 is not in the source.** Measured over all 1,130 features: 37
+carry AV1, 49 carry AV2, none carry AV3 - and AV1 runs along the far side of the
+Aosta valley, so none of its 37 enters our region either. 13 of our 116 trails are
+AV2, 116 km with the numbered trails and the TAPPA stages overlapping. **A question
+for them: is "3" the Alta Via Canavesana on the Piemonte side (OSM relation
+1076948, `ref=AVC`), or something else?**
+
+What ships: a soft yellow casing 3 px wide drawn UNDER the red trail line and 0.3 m
+lower, so the CAI dash pattern stays legible on top - a thicker RED line would have
+hidden the difficulty the pattern exists to show - plus the waymark itself, a yellow
+triangle with the number in it, one every 2 km of route, thinned to no closer than
+400 m because the source's features overlap, visible to **6 km** against the trail
+labels' 400 m. Yellow because that is the colour of the real waymark, and using it
+for both ties the line to the triangle.
+
+### Measured, and what is still not
+
+Seating, probed on the drawn surface (the property `tools/test-height-tier.mjs`
+checks): streams 1.50 m, rivers 3.00 m, roads 1.50 m, Alta Via casing 1.20 m, all
+with **zero spread** over ~3,000 sampled vertices each. Payload, gzipped: **+278 KB**
+this round (273 of it streams), on top of the region's +267 KB, so today is **+545 KB
+on a 24.2 MB first load, +2.2%**. The fast suite passes.
+
+Still not measured, and it is the same limit as always: **frame rate**. Headless is
+SwiftShader at ~1 fps. The new load on the GPU is one more merged ribbon mesh
+(1,506 streams), two instanced fat-line layers, and up to a few dozen more DOM
+labels - all cheap in principle, none of it measured on real hardware.
+
+
 ## The park stopped being the boundary (2026-08-18)
 
 The session opened with the question the last one left, and the answers changed the

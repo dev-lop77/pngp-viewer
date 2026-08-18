@@ -300,15 +300,30 @@ tools/
                              **Revised 2026-08-18**: that filter is now the REGION
                              (tools/lib/region.mjs), not the park - 1130 -> 116, and the
                              Thumel->Rifugio Benevolo road's footpath twin is one of the 43
-                             that came back.
+                             that came back. Also reads an `altaVia` number out of the
+                             source's own `nuovo_segn` ("AV2 - 21", "13 - AV2 - TVC"), which
+                             is all the Alta Via waymarks in src/trails.js need - no new
+                             dataset. Measured over the whole source: 37 features carry AV1,
+                             49 carry AV2, NONE carry AV3, and AV1 does not enter the region,
+                             so 13 of the 116 shipped trails are Alta Via 2 and nothing is
+                             Alta Via 1 or 3.
   fetch-osm.mjs           Written 2026-07-28. Queries Overpass for the PNGP bbox (WGS84,
                              derived from our EPSG:23032 bbox via proj4 - verified against
                              the known Mont Blanc control point, §3) for peaks, alpine huts,
                              passes, waterfalls, and lakes; converts to local scene
                              coordinates and samples our own heightfield for elevation, same
                              as build-trails.mjs. Drops unnamed elements (can't show a POI
-                             with no label). Writes tools/osm-poi-draft.json - a DRAFT
-                             (3,746 raw -> 2,421 named). Hydrology isn't fetched yet -
+                             with no label) - EXCEPT unnamed waterfalls since 2026-08-18,
+                             which build-hydrology.mjs names itself. Writes
+                             tools/osm-poi-draft.json - a DRAFT (3,746 raw -> 2,421 named).
+                             **Also the villages since 2026-08-18**:
+                             place=city|town|village|hamlet, over the REGION's bbox rather
+                             than the DEM's (620 nodes against ~5,500 toponyms), at the
+                             user's request - "i nomi dei paesi all'interno delle valli siano
+                             di aiuto". This is the place=* filter trailheads.json's header
+                             rejected in July; what makes it admissible is having a region to
+                             measure against. isolated_dwelling stays out - a single farm
+                             building is not a place you walk through. Hydrology isn't fetched yet -
                              separate Overpass query, needed for phase 3 (water) only.
   fetch-park-boundary.mjs Written 2026-07-28. One-off fetch of the real Gran Paradiso NP
                              boundary from OSM via Nominatim (which assembles the
@@ -348,6 +363,15 @@ tools/
                              a name list. That disagreement, not the data, is why the user
                              could see Rifugio Benevolo but neither the trail to it nor the
                              lake above it.
+  lib/overpass.mjs        Written 2026-08-18. One retrying Overpass POST, shared by
+                             fetch-osm/fetch-hydrology/fetch-roads. Written after the public
+                             endpoint refused three different queries in one afternoon (a 429
+                             for asking for lakes+rivers+glaciers+3,285 stream geometries at
+                             once, twice a 504 for queries that had just worked): waits
+                             30/60/90 s, then throws with the status rather than returning a
+                             half-empty draft. `out` is the caller's choice and getting it
+                             wrong is silent - `out geom` gives a way no `center`, so
+                             fetch-osm.mjs would skip every hut mapped as a building.
   trailheads.json         Data, not a script (2026-08-03). Hand-curated allowlist of the 22
                              valley bases / trailheads (Le Pont, Eaux Rousses, Valnontey,
                              Cogne, Le Thumel, ...), read by fetch-osm.mjs (which queries
@@ -358,7 +382,12 @@ tools/
                              usage ("Le Pont", "Le Thumel", "L'Eau-Rousse" for Eaux Rousses),
                              and a DIFFERENT hamlet genuinely called "Pont" exists in Val di
                              Rhêmes. fetch-osm.mjs warns if any id is deleted or renamed
-                             upstream, so an allowlist can't rot silently.
+                             upstream, so an allowlist can't rot silently. **25 rows since
+                             2026-08-18**: Valgrisenche, Les Usellières and Planaval, at the
+                             user's request. Planaval is why the file survives the region
+                             change - it stands at the mouth of the Valgrisenche but belongs
+                             to the comune of Arvier, so no region built from whole comuni
+                             will ever contain it.
   build-poi.mjs           Written 2026-07-28. Filters tools/osm-poi-draft.json down to
                              tools/park-boundary.geojson (point-in-polygon via @turf) ->
                              public/data/poi.json - 2,595 -> 426 (205 peaks, 116 passes, 44
@@ -395,7 +424,12 @@ tools/
                              at 40/63/84 m and the nearest one it excludes is 1,542 m away.
                              Unnamed waterfalls, which the draft now carries on purpose for
                              build-hydrology.mjs, are dropped here - a POI is a name on a
-                             marker post.
+                             marker post. The same day it gained the `village` category (153
+                             villages and hamlets inside the region, of 235 place nodes) and
+                             a name+400 m dedupe against the curated trailheads, so a hamlet
+                             carrying a second OSM node cannot be labelled twice. 674 POIs
+                             now: 252 peaks, 153 villages, 138 passes, 59 lakes, 45 huts, 25
+                             trailheads, 2 waterfalls.
   verify.mjs              Written 2026-07-30 (was "optional/nice-to-have," promoted after it
                              caught two real, otherwise-invisible bugs during phase 3 - a
                              custom ShaderMaterial silently failing depth-testing against a
@@ -417,9 +451,12 @@ tools/
                              that justified the LOD work (was 29.2 m mean, now 0.38 m).
   fetch-hydrology.mjs     Written 2026-07-30 (phase 3). Same shape as fetch-osm.mjs: queries
                              Overpass for lakes (natural=water/lake, full polygon geometry via
-                             `out geom;`, not just center), rivers (waterway=river only —
-                             waterway=stream returns ~8,300 ways in this bbox, out of scope for
-                             v1, §7), and glaciers (natural=glacier ways only, not the 60
+                             `out geom;`, not just center), rivers (waterway=river), STREAMS
+                             (waterway=stream, added 2026-08-18 over the REGION's bbox - 3,285
+                             ways against 8,369 in the DEM bbox - after the user pointed out
+                             that the torrents draining the two lakes at the head of the Val
+                             di Rhêmes were missing; they were the other half of the v1 scope
+                             cut in §7), and glaciers (natural=glacier ways only, not the 60
                              multipolygon relations also present — same "prefer the simple case"
                              choice already made for the park boundary). Elevation sampled from
                              our own heightfield per point, same rule as every other layer.
@@ -450,7 +487,28 @@ tools/
                              on purpose now rather than by accident: a fall here is a rendered
                              ribbon, and OSM's waterfall nodes in this region are half unnamed
                              and sometimes duplicated on the same spot (this one is - node
-                             9836453182 is its twin, and is simply not listed).
+                             9836453182 is its twin, and is simply not listed). A FIFTH
+                             followed the same afternoon, the same way: node 1281730839 at the
+                             outflow of Lago Tsanteleina, which lies exactly (0 m) on stream
+                             112844050, the torrent draining the lake 156 m above it -
+                             "Cascata di Tsanteleina", again our name.
+                             **STREAMS, 2026-08-18**: 1,506 of the 3,285 fetched, 1,226 km,
+                             kept whole inside the region with two measured cuts - a 150 m
+                             minimum length (drops 577 stub ways for 50 km of the 1,226) and
+                             Ramer-Douglas-Peucker at 3 m, one ribbon width, which takes
+                             57,936 vertices to 28,179 and halves the layer.
+                             **THE FALLS THEMSELVES were rebuilt the same day**, on the user's
+                             verdict of the first one they saw ("non è bellissima"): the march
+                             now FOLLOWS THE MAPPED TORRENT wherever one runs within 30 m
+                             (steepest descent is only the fallback, and it had been walking
+                             the Goletta fall down beside its own stream rather than on it),
+                             re-derives its direction every 2.5 m step instead of holding the
+                             one it started with, and stops when the ground under it stops
+                             falling away - measured over a 12.5 m window, and not armed until
+                             the fall has run 20 m and dropped 8 m, because a DEM at 10-20 m
+                             per pixel rounds the lip away and the un-graced test measured a
+                             1 m waterfall at Tsanteleina. Goletta: 137 m over a 232 m straight
+                             run before, 114 m over a 133 m path (grade 0.86) after.
   fetch-roads.mjs         Written 2026-08-18. The forest roads: OSM highway=track over the
                              REGION's bounding box (not the DEM bbox - tracks are dense where
                              people live, and Overpass refused the whole-bbox query outright),
@@ -1242,7 +1300,7 @@ user's stated priorities; can reshuffle as we learn more.
 | 0 — Setup | This doc, repo scaffold (Vite + Three.js), DEM calibration resolved, `process-heightmap.mjs` producing the calibrated `heightfield.bin` + manifest |
 | 1 — MVP terrain | GPU-displaced terrain mesh, fly/orbit camera, static sun + simple sky/fog. First real deploy (GitHub Pages or self-managed Apache, §9) to validate the static-hosting pipeline end to end |
 | 2 — Points of interest | Curated POI dataset (peaks, rifugi, lakes, valleys), map markers + info panel, fly-to-POI navigation. **Numbered/graded trails from the VDA dataset (§3) also land here** — moved up from the old OSM-only phase-6 scope, decided 2026-07-28 |
-| 3 — Water & animation | **Done, 2026-07-30.** Rivers (main watercourses only, not minor streams — logged scope cut), lakes (≥20m across), waterfalls (hand-curated allowlist incl. Cascate di Lillaz) with shader animation + mist, glaciers as a distinct draped surface. See §4's fetch-hydrology.mjs/build-hydrology.mjs entries and docs/PROGRESS.md for the sizing/decisions behind the scope |
+| 3 — Water & animation | **Done, 2026-07-30; widened 2026-08-18.** Rivers, lakes (≥20m across), waterfalls (hand-curated allowlist incl. Cascate di Lillaz) with shader animation + mist, glaciers as a distinct draped surface. The "minor streams" scope cut was **reversed on 2026-08-18** at the user's prompting — the torrents draining the two lakes at the head of the Val di Rhêmes were visibly missing: 1,506 streams (1,226 km) now ship inside the region, they are audible, and the waterfall ribbons follow them instead of guessing a line down the terrain. See §4's fetch-hydrology.mjs/build-hydrology.mjs entries and docs/PROGRESS.md for the sizing/decisions behind the scope |
 | 4 — Environment | **Done, 2026-07-31.** Time-of-day slider driving sun position/sky/fog/exposure; weather states (clear → clouds → rain → snow). See §8's lighting.js/atmosphere.js/weather.js entries and docs/PROGRESS.md |
 | 5 — Navigation aids | **Done, 2026-07-31.** Compass HUD, live position readout (lat/lon, elevation, nearest place name). See §8's nav.js entry and docs/PROGRESS.md. **Follow-up the same day**: testing this in a real browser led the user to ask for a bigger change - walk/fly navigation (WASD + pointer-lock mouselook) replacing OrbitControls as the default, since a ground-level "elevation" readout only makes sense once you're actually standing at ground level. See §8's controls.js/poi.js entries |
 | 6 — Life & atmosphere (stretch) | **Done, 2026-08-05.** Wildlife (Alpine ibex, chamois, marmots — the park's founding species — plus foxes and squirrels, added 2026-08-04 at the user's request), procedural ambient audio, huts/hydrology from OSM, treeline vegetation. **Started 2026-08-03, opened with the vegetation at the user's choice** (deferring the imagery question in §12): §5's altitude bands now colour the terrain, and trees are placed from a real OSM canopy mask — see §8's forest.js/vegetation.js and §4's fetch-forest.mjs/build-forest.mjs. Huts landed earlier, with the trailhead allowlist. Closed by the audio on 2026-08-05 — see §8's audio.js |
@@ -1302,14 +1360,32 @@ pngp-viewer/
 │                              when the terrain does not stand in front of it ("visibile da
 │                              vicino con una etichetta vicina", user 2026-08-18). A fixed
 │                              label would sit behind a shoulder half the time; a label every
-│                              N metres would be hundreds of DOM nodes saying one thing
+│                              N metres would be hundreds of DOM nodes saying one thing.
+│                              THE ALTA VIA, added 2026-08-18: trails whose `altaVia` field is
+│                              set (from the source's own segnavia, see §4's build-trails.mjs)
+│                              get a soft yellow 3 px casing UNDER the red line and 0.3 m lower,
+│                              so the CAI dash pattern stays readable on top - a thicker red
+│                              line would have hidden the difficulty it exists to show - plus
+│                              the real waymark, a yellow triangle with the route number, one
+│                              every 2 km, thinned to no closer than 400 m (the source's
+│                              numbered trails and TAPPA stages overlap), visible to 6 km
+│                              against the labels' 400 m: "visibile da molto più lontano
+│                              rispetto ai numeri dei sentieri" 
 │   ├── roads.js            loads public/data/roads.json - the forest roads (OSM
-│                              highway=track), all 478 in ONE merged LineSegments draw call,
-│                              a single unbroken white line. White because the trails own red
-│                              and spend their line STYLE on CAI difficulty, so the two
-│                              vocabularies never collide (user's call: "va bene se viene
-│                              disegnata come linea continua bianca")
-│   ├── labels.js           the terrain-occlusion test both label layers share: is the drawn
+│                              highway=track), all 478 in ONE merged draw call, a single
+│                              unbroken white line. White because the trails own red and spend
+│                              their line STYLE on CAI difficulty, so the two vocabularies
+│                              never collide (user's call: "va bene se viene disegnata come
+│                              linea continua bianca"). TWICE AS THICK since 2026-08-18 ("fai
+│                              la strada spessa il doppio"), which is a different mechanism
+│                              rather than a number: WebGL ignores LineBasicMaterial.linewidth,
+│                              so this is a LineSegments2 (addons fat lines) at 2 px - pixels
+│                              and not metres, because a 5 m road to scale is sub-pixel from
+│                              across the valley. Its screen-space width means main.js has to
+│                              hand it the canvas size on resize, and its fog comes from
+│                              atmosphere.js's attachAtmoFatLine (see tools/test-fatline-fog.mjs
+│                              for the silent failure that guards)
+│   ├── labels.js           the terrain-occlusion test all three label layers share: is the drawn
 │                              surface between the camera and this name? DOM labels are not
 │                              depth-tested, so without it a name shows through a mountain.
 │                              Lived in poi.js until the trail labels needed exactly the same
@@ -1337,7 +1413,15 @@ pngp-viewer/
 │                              global fog chunks for every built-in material
 │                              (attachAtmo()) and included by hand in water.js's custom
 │                              shaders (ATMO_FOG_PARS/atmoApply()) - ported from the
-│                              reference, see §7
+│                              reference, see §7. THIRD path added 2026-08-18,
+│                              attachAtmoFatLine(): three's addons LineMaterial (roads.js,
+│                              the Alta Via casing) cannot use the chunk path at all,
+│                              because our fog_vertex chunk reads `transformed` and a fat
+│                              line builds its quads from instanceStart/instanceEnd. Fog is
+│                              switched off on the material and the three lines injected by
+│                              hand against its own attributes - guarded by
+│                              tools/test-fatline-fog.mjs, since a missed string replacement
+│                              draws unhazed lines instead of throwing
 │   ├── weather.js          Done, 2026-07-31. clear/clouds/storm(rain)/snow, an FBM cloud
 │                              deck plane sized to our real bbox + one GPU-driven
 │                              particle system that's rain or snow depending on mode: see §7.
@@ -1348,7 +1432,20 @@ pngp-viewer/
 │                              only. One GLSL snippet for terrain.js + vegetation.js and a
 │                              JS twin for audio.js's footsteps, so the eye and the ear
 │                              cannot disagree - see §5's "Lying snow"
-│   ├── water.js            rivers, lakes, waterfalls
+│   ├── water.js            rivers, streams, lakes, waterfalls, glaciers. STREAMS since
+│                              2026-08-18: 1,506 of them in one merged ribbon mesh, 3 m wide
+│                              with 1.5 m of clearance against a river's 8 m and 3 m - a
+│                              torrent runs in a gully the terrain grid rounds off, so a
+│                              river's clearance would leave it floating over its own bed.
+│                              THE FALLS were rebuilt the same day, on the user's "non è
+│                              bellissima": the two-vertex strip lying flat on the hillside is
+│                              now a sheet 8 quads across, bowed off the slope in proportion to
+│                              the local grade (up to 4 m in the middle, nothing at the edges,
+│                              like a curtain) - which puts back the shape the DEM smoothed
+│                              away without inventing a cliff face - and the shader scrolls its
+│                              streaks along a new `aFlow` attribute measured in METRES, so a
+│                              13 m fall and a 141 m one get the same size of streak instead of
+│                              the same number of them
 │   ├── poi.js              loads public/data/poi.json, one merged pickable `LineSegments`
 │                              draw call per category (§10) - a thin vertical line from the
 │                              ground to each label, not a marker dot - plus one CSS2DObject
