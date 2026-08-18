@@ -1385,6 +1385,17 @@ pngp-viewer/
 │                              hand it the canvas size on resize, and its fog comes from
 │                              atmosphere.js's attachAtmoFatLine (see tools/test-fatline-fog.mjs
 │                              for the silent failure that guards)
+│   ├── polyline.js         cutting a polyline into pieces short enough to follow the
+│                              ground (2026-08-18). Every line layer seats its VERTICES on
+│                              the drawn surface, but between two of them the line is
+│                              straight and the ground is not: measured near Rifugio
+│                              Benevolo, the trail data's own 29 m spacing left the surface
+│                              by up to 3.3 m in the air and 5.9 m below, and the streams'
+│                              41 m spacing by 10.4 m and 17.8 m. Trails, the Alta Via
+│                              casing and the roads are cut to 8 m, the water ribbons to 10 m
+│                              - at LOAD, not in the data, because the extra points are
+│                              interpolations of what the files already say and would have
+│                              multiplied trails.json several times over
 │   ├── labels.js           the terrain-occlusion test all three label layers share: is the drawn
 │                              surface between the camera and this name? DOM labels are not
 │                              depth-tested, so without it a name shows through a mountain.

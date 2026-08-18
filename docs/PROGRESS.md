@@ -2,6 +2,65 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## The traces were floating, and the cause was not the seating (2026-08-18, later still)
+
+*"Le due tracce, rossa e gialla non sono vicine fra loro e galleggiano sul terreno,
+molto nella versione High Res."* Two separate defects, and my earlier verification
+had missed both because it asked the wrong question.
+
+### The measurement that had been proving nothing
+
+The seating probe I ran this morning compared each vertex against
+`sampleRenderedHeight` - **the same function that had just placed it**. It reported a
+constant 1.50 m with zero spread, which is true and worthless: it can only ever
+confirm that the assignment ran. What the user sees is the LINE, and a line is not
+its vertices.
+
+Measured properly - the chord between consecutive vertices against the drawn
+surface, near Rifugio Benevolo - the trail dataset's own 29 m vertex spacing leaves
+the ground by **up to 3.3 m in the air and 5.9 m below it (p90 0.7 m, p99 2.1 m)**,
+before the 1.5 m clearance is added on top. The streams were far worse: 41 m between
+vertices, **up to 10.4 m in the air and 17.8 m below (p99 5.0 m)** - a torrent runs
+in exactly the gully a straight line cuts across.
+
+That is why it showed most on the high-resolution terrain: at 5 m the surface keeps
+the gully the 20.5 m grid smoothed away, and the line still spans it.
+
+### The fix, and what it measures now
+
+**More vertices, added at load rather than in the data** (`src/polyline.js`):
+public/data/trails.json would have grown from 957 KB to several megabytes for points
+that carry no information - they are interpolations of what the file already says.
+Trails, the Alta Via casing and the roads are cut to 8 m segments, the water ribbons
+to 10 m. Vertices across the three layers: 579,000, and a full re-seat of all of them
+costs 216 ms in headless SwiftShader (it runs at startup and on a tier change, which
+already downloads 25 MB).
+
+With the chord following the ground, the clearance could go back to what it was meant
+to be - enough to keep the line out of the surface, not enough to read as a separate
+object. Trails and roads **1.5 -> 0.5 m**, streams **1.5 -> 0.8 m**. Measured on the
+buffers the GPU draws, near the camera:
+
+| | before | after |
+|---|---|---|
+| trail line over drawn ground | chord alone ±3.3/-5.9 m, plus 1.5 m | p50 **0.50 m**, p99 0.71, max 1.01, never below |
+| road | same chord problem | p50 **0.50 m**, p99 0.65, max 1.32, never below |
+| stream ribbon | chord alone +10.4/-17.8 m, plus 1.5 m | p50 **0.82 m**, p99 1.61, max 2.28, 1.24 m into the bank at worst |
+
+### And the red and the yellow were nine pixels apart on purpose
+
+The casing sat 0.3 m BELOW the trail line, which I had done deliberately so the red
+would always win the depth test. At eye height 30 m from a trail, 0.3 m of vertical
+separation is 0.57 degrees - **about nine pixels of daylight** between two lines that
+are supposed to be one line. They are now at exactly the same height, and the casing
+simply does not write depth, so the red still draws over it.
+
+**A tool gap this exposed**: there was no way to screenshot the High Res terrain at
+all, because the quality settings are deliberately kept out of the shareable hash
+(src/viewstate.js), so no URL can select one. `tools/dev/shoot.mjs` now takes
+`--terrain=0|1|2` and waits for the tier's crossfade rather than a fixed time.
+
+
 ## Their second look, and the five things it asked for (2026-08-18, later)
 
 They walked the new region in a real browser and came back with five things. All

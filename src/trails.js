@@ -5,6 +5,7 @@ import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { attachAtmo, attachAtmoFatLine } from './atmosphere.js';
 import { isHiddenByTerrain } from './labels.js';
+import { densify } from './polyline.js';
 
 // CAI difficulty scale (docs/ARCHITECTURE.md §3) shown via line STYLE, not
 // color - matches real hiking-map convention (a single trail color, with
@@ -21,7 +22,22 @@ const DEFAULT_STYLE = 'solid'; // difficulty null/unrecognized (~7 of 1130 trail
 // (2026-08-03). The other half of that fix is alignToGround() below - the
 // build-time elevations in trails.json are true heightfield values, which is
 // not quite the surface actually drawn.
-const HEIGHT_OFFSET_M = 1.5;
+//
+// 1.5 -> 0.5 m on 2026-08-18, when the user reported the traces floating again
+// and "molto nella versione High Res". 1.5 m is chest height on a path you are
+// standing on, and it was only that high to paper over the real cause: the
+// straight chord between vertices 29 m apart, which leaves the drawn ground by
+// metres on its own (see src/polyline.js). With the chord fixed, the lift can be
+// what it was always meant to be - enough to keep the line out of the surface,
+// not enough to read as a separate object.
+const HEIGHT_OFFSET_M = 0.5;
+// No segment longer than this reaches the GPU. Measured against the alternative
+// rather than picked: at the dataset's own 29 m spacing the chord leaves the
+// drawn surface by up to 3.3 m (p99 2.1 m); the deviation falls with the square
+// of the segment, so 8 m brings that to centimetres, and it multiplies the
+// trails' vertex count by about 3.5 - some 80,000 points across 648 km, which is
+// nothing on the GPU and a few milliseconds at load.
+const MAX_SEGMENT_M = 8;
 const FERRATA_TICK_SPACING_M = 40;
 const FERRATA_TICK_HALF_SIZE_M = 7;
 
@@ -68,10 +84,14 @@ const LABEL_OFFSET_PER_M = 0.02;
 // thing in the same colour.
 const ALTA_VIA_COLOR = 0xf2c200;
 const ALTA_VIA_WIDTH_PX = 3;
-// Slightly BELOW the trail line's own offset so the red always wins the depth
-// test where they overlap, whatever the viewing angle - a casing that flickers
-// through the line it is meant to sit under would be worse than no casing.
-const ALTA_VIA_HEIGHT_OFFSET_M = 1.2;
+// EXACTLY the trail line's own height, since 2026-08-18. It was 0.3 m lower, on
+// the theory that the red would then always win the depth test - and that 0.3 m
+// is what the user saw as "le due tracce, rossa e gialla non sono vicine fra
+// loro": standing 30 m away at eye height, 0.3 m of vertical separation is 0.57
+// degrees, which is nine pixels of daylight between two lines that are supposed
+// to be one. The casing simply does not write depth instead, so the red draws
+// over it without needing to be above it.
+const ALTA_VIA_HEIGHT_OFFSET_M = HEIGHT_OFFSET_M;
 // One waymark every 2 km of route, which on the 116 km of Alta Via 2 inside the
 // region comes to a few dozen - enough that one is in sight along a valley,
 // few enough that a ridge crest does not turn into a row of triangles. The
@@ -236,9 +256,14 @@ export async function loadTrails(dataUrl = `${import.meta.env.BASE_URL}data`) {
 
   for (const trail of data.trails) {
     const style = STYLE_BY_DIFFICULTY[trail.difficulty] ?? DEFAULT_STYLE;
-    for (const line of trail.lines) {
+    for (const source of trail.lines) {
+      // Cut to MAX_SEGMENT_M first: everything below seats vertices on the drawn
+      // ground, and a vertex is the only place a line can follow it.
+      const line = densify(source, MAX_SEGMENT_M);
       pushLine(positionsByStyle[style], line);
-      if (style === 'ferrata') pushFerrataTicks(ferrataTicks, line);
+      // The ferrata ticks keep the ORIGINAL line: they are spaced along it in
+      // metres already, and densifying only adds points for them to skip.
+      if (style === 'ferrata') pushFerrataTicks(ferrataTicks, source);
       if (trail.altaVia) {
         for (let i = 1; i < line.length; i++) {
           const [x0, y0, z0] = line[i - 1];
@@ -271,6 +296,11 @@ export async function loadTrails(dataUrl = `${import.meta.env.BASE_URL}data`) {
         linewidth: ALTA_VIA_WIDTH_PX,
         transparent: true,
         opacity: 0.85,
+        // Tested against the terrain like everything else, but never written:
+        // the casing and the red trail line now sit at the SAME height, and the
+        // red is drawn second, so the one that must win is the one that comes
+        // last rather than the one that is higher.
+        depthWrite: false,
         resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
       }),
     );

@@ -3,6 +3,7 @@ import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { attachAtmoFatLine } from './atmosphere.js';
+import { densify } from './polyline.js';
 
 // The forest roads (OSM highway=track, public/data/roads.json), asked for by
 // the user on 2026-08-18 with the Thumel -> Rifugio Benevolo road as the case
@@ -33,10 +34,11 @@ const ROAD_COLOR = 0xffffff;
 // draw at.
 const ROAD_WIDTH_PX = 2;
 
-// Same clearance as trails.js, for the same reason: just enough to keep the
-// line off the surface it lies on, with alignToGround() below doing the real
-// work of putting it on the surface the terrain actually draws.
-const HEIGHT_OFFSET_M = 1.5;
+// Same clearance as trails.js, for the same reason and with the same history:
+// 1.5 m until the user reported the traces floating on 2026-08-18, then 0.5 m
+// once the chord between vertices stopped being the real cause (src/polyline.js).
+const HEIGHT_OFFSET_M = 0.5;
+const MAX_SEGMENT_M = 8; // see trails.js - a line can only follow the ground at its vertices
 
 // All 478 roads merge into ONE draw call - §10's instancing principle, exactly
 // as trails.js does for its ~116 trails. There is no per-road styling to split
@@ -46,9 +48,10 @@ export async function loadRoads(dataUrl = `${import.meta.env.BASE_URL}data`) {
 
   const points = [];
   for (const road of data.roads) {
-    for (let i = 1; i < road.line.length; i++) {
-      const [x0, y0, z0] = road.line[i - 1];
-      const [x1, y1, z1] = road.line[i];
+    const line = densify(road.line, MAX_SEGMENT_M);
+    for (let i = 1; i < line.length; i++) {
+      const [x0, y0, z0] = line[i - 1];
+      const [x1, y1, z1] = line[i];
       points.push(x0, y0 + HEIGHT_OFFSET_M, z0, x1, y1 + HEIGHT_OFFSET_M, z1);
     }
   }

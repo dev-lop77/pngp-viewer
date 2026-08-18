@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ATMO, ATMO_FOG_PARS, attachAtmo } from './atmosphere.js';
+import { densify } from './polyline.js';
 
 // Lightweight custom shaders, not three.js's Water addon (real
 // render-to-texture reflection) - with up to ~200 lakes potentially
@@ -29,7 +30,15 @@ const RIVER_HEIGHT_OFFSET_M = 3; // avoid z-fighting with terrain, like trails.j
 // lifting it 3 m like a valley river would leave it visibly floating over its
 // own bed on the steep ground where most of these are.
 const STREAM_WIDTH_M = 3;
-const STREAM_HEIGHT_OFFSET_M = 1.5;
+// 1.5 -> 0.8 m on 2026-08-18, once the ribbon stopped flying over the dips
+// between its vertices (FLOW_MAX_SEGMENT_M below): with the chord following the
+// ground, the clearance is all that is left between the water and its bed, and
+// 1.5 m of it reads as a torrent hovering. Measured after the change, on the
+// ribbon the GPU actually draws: 0.82 m over the drawn surface at the median,
+// 1.61 m at p99, 2.28 m at worst, and where it cuts into the bank instead it
+// goes 1.24 m in - which is the right way round for water, since a stream
+// disappearing slightly into its bed reads as the bed.
+const STREAM_HEIGHT_OFFSET_M = 0.8;
 
 // THE FALL ITSELF, rebuilt 2026-08-18: "Non è bellissima, penso si possa
 // migliorare, anche usando più poligoni."
@@ -320,6 +329,14 @@ function appendRibbon(line, widthAt, heightOffsetM, positions, uvs, indices, ver
   vertOffsetRef.value += n * 2;
 }
 
+// Between two vertices a ribbon is flat, and a torrent's vertices are 41 m apart
+// on average - so the water flew over every dip between them. Measured near
+// Rifugio Benevolo before this was added: the chord left the drawn ground by up
+// to 10.4 m in the air and 17.8 m under it (p99 5.0 m). Same defect the trails
+// had, worse, because a stream runs in exactly the gully a straight line cuts
+// across. See src/polyline.js.
+const FLOW_MAX_SEGMENT_M = 10;
+
 // One merged ribbon mesh for a whole set of flowing lines - the 21 rivers in one
 // draw call, the 1,506 streams in another. Split by width rather than merged
 // into a single mesh so each keeps its own ribbon width, and so alignToGround()
@@ -330,7 +347,7 @@ function buildFlowMesh(features, { widthM, heightOffsetM, name }) {
   const indices = [];
   const vertOffset = { value: 0 };
   for (const feature of features ?? []) {
-    appendRibbon(feature.line, () => widthM, heightOffsetM, positions, uvs, indices, vertOffset);
+    appendRibbon(densify(feature.line, FLOW_MAX_SEGMENT_M), () => widthM, heightOffsetM, positions, uvs, indices, vertOffset);
   }
   if (!positions.length) return null;
 

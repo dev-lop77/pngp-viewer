@@ -136,6 +136,34 @@ if (cover !== undefined) {
   console.log(`Ground cover: ${cover}`);
 }
 
+// --terrain=0|1|2 drives the Terrain control (Standard / Medium 10 m / High 5 m).
+// Added 2026-08-18: the user reported the trails floating "molto nella versione
+// High Res", and there was no way to shoot that tier at all - the quality settings
+// are deliberately NOT in the shareable hash (src/viewstate.js), so a URL cannot
+// select one. Waits for the tier's crossfade to finish rather than for a fixed
+// time, since the level is 7 or 25 MB and headless renders at about 1 fps.
+const terrain = flags.get('terrain');
+if (terrain !== undefined) {
+  await page.evaluate((v) => {
+    const sel = document.getElementById('env-terrain');
+    sel.value = String(v);
+    sel.dispatchEvent(new Event('change'));
+  }, terrain);
+  await page
+    .waitForFunction(
+      (want) => {
+        const mix = window.__pngp.terrain.heightTier?.mix ?? 0;
+        return Number(want) === 0 ? mix === 0 : mix >= 1;
+      },
+      terrain,
+      { timeout: 300000 },
+    )
+    .catch(() => console.warn(`  ! terrain ${terrain} never settled - shooting anyway`));
+  await page.waitForTimeout(6000);
+  const level = await page.evaluate(() => window.__pngp.terrain.heightTierLevel?.() ?? null);
+  console.log(`Terrain: ${terrain} (tier level ${level})`);
+}
+
 const models = flags.get('models');
 if (models !== undefined) {
   await page.evaluate((v) => {
