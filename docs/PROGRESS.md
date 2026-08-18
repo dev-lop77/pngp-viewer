@@ -2,87 +2,111 @@
 
 Read this first at the start of each session. Update it before ending one.
 
-## NEXT SESSION: ASK WHERE TO START. DO NOT PICK.
+## The park stopped being the boundary (2026-08-18)
 
-Their instruction closing 2026-08-17: *"Salva il punto in cui siamo arrivati e chiedimi
-da dove iniziare all'inizio della prossima sessione di lavoro."*
+The session opened with the question the last one left, and the answers changed the
+shape of the data rather than adding to it. Their words, and what each one settled:
 
-So the first move is a question, not work. Four refinements were ANALYSED and NOTHING was
-implemented - no code was written for any of them, and the working tree is clean at the
-published state. They also declined a "which do I start with" menu mid-analysis because
-they wanted to clarify the premises first, so put the open questions below in front of
-them rather than a priority list.
+1. **"L'alta Val di Rhemes non è dentro al parco ma è ben rappresentata dal nostro
+   profilo altimetrico. Gradirei che contenesse anche tutti i sentieri possibili. Come
+   chiedevo, se si potesse addirittura estendere alla Valgrisanche (so che non è nel
+   parco)."** So the suspicion from 2026-08-17 is settled and the OSM polygon is not
+   wrong: the upper Val di Rhêmes really is outside the park. The viewer shows the
+   VALLEYS IT DRAWS, not the park.
+2. **"Il sentiero 13 sarebbe su di un'area già rappresentata nell'attuale prodotto."**
+3. The waterfall, given as a link to their own viewpoint: `#at=45.52285,7.08510,2355
+   &look=299,-8`, **"data dalla Dora di Goletta"**.
+4. **"Visibile da vicino con una etichetta vicina con numero e nome solo se
+   disponibile."**
+5. **"va bene se viene disegnata come linea continua bianca."**
 
-### The four they raised, with what the data says
+### The region, and why it cost so much less than feared
 
-**1. Forest roads, e.g. Thumel to Rifugio Benevolo.** And a correction of mine that
-matters: *"Il sentiero, oltre la strada, che collega Thumel al Rifugio esiste ed e il
-numero 13."* They were right. `segnavia 13`, "Thumel - Rifugio Benevolo", 3,742 m, IS in
-`~/pngp-trails-work/pngp_sentieri.geojson` - **0 of its 108 points fall inside the park
-polygon**, closest approach **516 m** outside, so the clip drops it. My earlier claim that
-no such trail existed came from filtering the SHIPPED trails by start/end name, which only
-proves what survived the clip. Do not diagnose absence from a derived file again.
+Measured against the sources already on the disk before proposing anything:
 
-The road itself is available: OSM has **42 `highway=track` ways** in that box, all
-unnamed, mostly `surface=ground`, plus 7 unclassified and 5 service.
+| | park (before) | + Rhêmes + Valgrisenche | whole terrain |
+|---|---|---|---|
+| trails | 73 | **116** | 1,130 |
+| lakes / rivers / glaciers | 255 | **339** | 1,559 |
+| POI | 405 | **518** | 2,458 |
+| forest roads | – | **478** | not measured |
 
-**2. The waterfall and Lago Goletta - two different causes.**
-- `Lago Goletta III` is in the OSM hydrology draft, **58 m across** (the minimum is 20),
-  and **0 of 18 points inside the boundary**. Their guess was right: it is excluded for
-  being outside the park.
-- The waterfall is not a boundary problem. That valley has **5 waterfall nodes** in OSM,
-  of which only `Cascata Entrelor` is NAMED (and already ships). The other four are
-  **unnamed**, and `WATERFALL_ALLOWLIST` in `build-hydrology.mjs` matches by name and
-  osmId, so an unnamed node was never a candidate. Two of them sit **342 m** and **491 m**
-  from the trail, so one is very likely the one they mean - but which is a guess until
-  they name it.
-- Also checked and NOT the cause here: `fetch-osm.mjs` asks only for
-  `node["waterway"="waterfall"]`, so a waterfall mapped as a way would be invisible.
-  There are none mapped that way in this valley.
+The user picked the middle column. Opening to everything the terrain covers - which is
+most of Valle d'Aosta, the bbox runs from Mont Blanc to Champorcher - would have been
++8.5 MB and 2,458 labels; the two valleys are **+835 KB raw, +267 KB gzipped**, i.e.
+**about +1.1% of the 24.2 MB first load**, forest roads included. Per file, gzipped:
+trails 186 -> 276 KB, water 138 -> 185 KB, POI 15 -> 18 KB, roads 127 KB new.
 
-**THE COMMON CAUSE, and it explains exactly what they see and do not see: the inclusion
-rules disagree with each other.** Huts get `HUT_BUFFER_M = 750`; trails and lakes get a
-strict inside-only test; waterfalls get a hand-curated allowlist. That is why the refuge
-appears while the trail to it and the lake above it do not.
+**Comuni, not a buffer.** A buffer would have to reach ~1.3 km to pick up Rifugio
+Benevolo, would still cut the Valgrisenche in half, and would grab an arbitrary rind
+everywhere else. A comune boundary follows the watershed the valley actually is. The
+region is `tools/region.geojson` (park relation 919270 + Rhêmes-Notre-Dame 45153 +
+Rhêmes-Saint-Georges 45454 + Valgrisenche 45452, ids pinned, names checked on fetch),
+and the parts are deliberately NOT unioned - "inside any part" is exactly the rule.
 
-**A SUSPICION TO SETTLE BEFORE LOOSENING ANY TOLERANCE.** A refuge at 2,286 m in the
-upper Val di Rhemes measuring 516 m to 1.3 km OUTSIDE the park is odd. The polygon is OSM
-relation 919270 via Nominatim (7,857 vertices, `tools/park-boundary.geojson`). Either the
-upper Rhemes really is excluded, or that polygon is imprecise there - and if it is the
-polygon, half of points 1 and 2 are bad data rather than rules to relax. Check against the
-Ente Parco's own perimeter first.
+**One rule, one implementation.** `tools/lib/region.mjs` now answers point-in-region and
+distance-to-region for trails, POI, water and roads alike. That is the direct fix for
+the 2026-08-17 diagnosis: three copies of the same idea had drifted into three different
+rules, which is why a refuge showed while the trail to it and the lake above it did not.
+The park polygon is still fetched and still used - for exactly one question, where the
+5 m terrain tier covers.
 
-**3. Extending to Valgrisenche costs less than it sounds.** The terrain **already covers
-it** - no new DEM - and the data is **already downloaded**:
+Two rules survive on purpose, and both were re-checked rather than inherited:
+- **The 750 m hut buffer**, now measured from the region. It still admits three huts
+  (40, 63, 84 m) and the nearest one it still excludes is 1,542 m away, so it goes on
+  landing in a real gap instead of cutting a continuum.
+- **The waterfall allowlist.** A fall here is not a dot on a map, it is a ribbon marched
+  down the terrain, so each one is looked at by hand. What changed is that this is now a
+  deliberate exception with a reason, not an accident.
 
-| | in hand | shipped |
-|---|---|---|
-| trails (source) | 1,130 | 73 |
-| POI draft | 2,595 | 426 |
-| lakes | 1,517 | 198 |
-| glaciers | 216 | 47 |
-| rivers | 125 | 10 |
+### The waterfall was two separate bugs, and neither was the boundary alone
 
-So the cost is the inclusion rule and the payload, not acquisition. Opening to the whole
-bbox multiplies the vector files about 6x (1.1 MB -> ~6 MB on a 24.2 MB first load).
-Valgrisenche alone is far less and has not been measured yet.
+From the viewpoint they sent, the fall is **OSM node 4397259567, 252 m away at bearing
+282°**, with the `Dora di Goletta` running within 120 m of it - so it is the Goletta
+fall below the lake, above Rifugio Benevolo. It shipped as **Cascata di Goletta**, a name
+of ours, because:
 
-**4. Trail number/name along the trace - the cheapest of the four.** `trails.json`
-already carries `segnavia` (e.g. `"12 - 13A - 11B"`), `name`, `difficulty`, `lengthM`,
-`elevGainM`. Nothing in any pipeline has to change; it is purely rendering.
+- it is **unnamed in OSM**, and `fetch-osm.mjs` dropped unnamed elements before the
+  hydrology build ever saw them ("can't show a POI with no label" - true for a POI, not
+  for a ribbon). Unnamed waterfalls are now kept in the draft on purpose, and
+  `build-poi.mjs` drops them again so nothing gains a blank label;
+- and it is outside the park, which the region fixed.
 
-### The clarifications they have NOT answered - ask these
+OSM also carries a duplicate node (9836453182) on the same coordinates; it is simply not
+listed. The ribbon measures a 136.8 m drop.
 
-1. **Is the upper Val di Rhemes actually in the park?** They know the ground; if it is,
-   the OSM polygon is wrong and loosening tolerances would treat the symptom.
-2. **Park, or region?** Trail 13, Lago Goletta and Valgrisenche are all OUTSIDE the
-   boundary. The real question may not be how much tolerance to grant but whether the
-   viewer shows the park or the area around it.
-3. **Which waterfall, and what is it called?** Four unnamed candidates; naming it
-   identifies it instead of guessing by proximity.
-4. **How should a trail be labelled?** Always visible or only near, on the trace or on a
-   detached label, number only or the long name too.
-5. **Should a forest road look different from a footpath**, or just be another trace?
+### What the user can now see that they could not
+
+- **Segnavia 13, Thumel - Rifugio Benevolo**, 3,742 m, +418 m: present, verified in the
+  built `trails.json`, not inferred.
+- **Lago Goletta III** (2,587.8 m water level) and the fall below it.
+- **478 forest roads, 200 km**, as one unbroken white line - `src/roads.js`, one merged
+  draw call. White because the trails own red and spend their line STYLE on CAI
+  difficulty; the two vocabularies never collide. The road they named as the example is
+  OSM way 112844128, which passes 155 m from Le Thumel and 10 m from the refuge.
+- **The trail number, from close up.** One CSS2D label per trail that MOVES to the point
+  of its own trace nearest the camera, shown within 400 m and hidden when the terrain
+  stands in front of it. A fixed label would sit behind a shoulder half the time; a label
+  every N metres would be hundreds of DOM nodes saying one thing. 400 m and not the POI
+  layer's 1,500 m because a trail number is read off the ground you are standing on - at
+  1,500 m every trail in the valley would answer at once. The occlusion test moved to
+  `src/labels.js` so both label layers share it instead of growing a second copy.
+
+### Verified, and how
+
+Screenshots at the user's own viewpoint and above the Thumel-Benevolo valley show the
+white road climbing to the refuge, the red traces, the ribbon, and the label reading
+`13 · Thumel - Rifugio Benevolo`. Counts were checked in the built files, not in the
+sources: 116 trails, 248 lakes, 21 rivers, 70 glaciers, 518 POI, 478 roads.
+
+**Not verified here, and it is the usual limit**: headless is SwiftShader at ~1 fps, so
+none of this says anything about frame rate with the new layers on, and nothing is
+published yet. A real-browser look at the fall from their own link is theirs to make.
+
+**A tool bug found on the way**: `tools/dev/shoot.mjs` split `--url=...` on every `=`,
+so `--url=http://host/#at=45.5,7.1,2355` silently became `http://host/#at` - and the
+viewer just opened at its default place, which looks like a working screenshot of the
+wrong thing. Fixed to split on the first `=` only.
 
 
 ## The ground photo at 10 m, and a size diagnosis I got wrong (2026-08-17, late)

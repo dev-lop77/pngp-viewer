@@ -88,9 +88,17 @@ the output stops being reproducible the history no longer has a copy to fall bac
 | `trails.json` | yes | `build-trails.mjs` | `~/pngp-trails-work/pngp_sentieri.geojson` (`trails-source/README.md`) |
 | `poi.json` | yes | `build-poi.mjs` | `osm-poi-draft.json` (tracked) + `heightfield.json` |
 | `water.json` | yes | `build-hydrology.mjs` | `hydrology-draft.json` (**untracked**) + `osm-poi-draft.json` |
+| `roads.json` | yes | `build-roads.mjs` | `roads-draft.json` (**untracked**) |
 | `forest.json` + `forest.<hash>.png` | yes | `build-forest.mjs` | `forest-draft.json` (untracked) |
 | `landcover.json` + `landcover.<hash>.png` | yes | `build-landcover.mjs` | `ndvi-draft.bin/.json` (untracked) |
 | `basemap.json` + `basemap.<hash>.webp` | yes | `basemap-source/build-basemap.py` | Sentinel-2 L2A scenes |
+
+Everything in that table except the terrain is cut to the same shape: `region.geojson`
+(tracked, from `fetch-region.mjs`), read through `lib/region.mjs`. It is the park plus
+the Rhêmes and Valgrisenche comuni since 2026-08-18 — not the park alone — so a feature
+in a valley we draw but the park excludes still ships. The park polygon
+(`park-boundary.geojson`) is still its own thing and still decides only one question:
+where the 5 m terrain tier covers.
 
 `fetch-*.mjs` and `build-*.mjs` come in pairs and the split is deliberate: the
 `fetch` half talks to the network and bakes elevation into a draft, the `build` half

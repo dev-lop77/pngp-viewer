@@ -297,6 +297,10 @@ tools/
                              inside the real park boundary. 1130 -> 73 (the VDA dataset is
                              region-wide; only ~7% of it was actually inside the park -
                              resolves the open question this raised, see docs/PROGRESS.md).
+                             **Revised 2026-08-18**: that filter is now the REGION
+                             (tools/lib/region.mjs), not the park - 1130 -> 116, and the
+                             Thumel->Rifugio Benevolo road's footpath twin is one of the 43
+                             that came back.
   fetch-osm.mjs           Written 2026-07-28. Queries Overpass for the PNGP bbox (WGS84,
                              derived from our EPSG:23032 bbox via proj4 - verified against
                              the known Mont Blanc control point, §3) for peaks, alpine huts,
@@ -313,6 +317,37 @@ tools/
                              Saves tools/park-boundary.geojson (single Polygon, 7,857
                              points, no holes) - static, no network call needed by the
                              regular pipeline. Resolves docs/ARCHITECTURE_SUGGESTIONS.md #6.
+  fetch-region.mjs        Written 2026-08-18. The park polygon PLUS the valleys our terrain
+                             draws that the park excludes - Rhêmes-Notre-Dame,
+                             Rhêmes-Saint-Georges, Valgrisenche - fetched by pinned OSM
+                             relation id through the same Nominatim path as
+                             fetch-park-boundary.mjs, into tools/region.geojson (a
+                             FeatureCollection; the parts overlap and are deliberately NOT
+                             unioned, since "inside any" is the rule). Does not replace
+                             fetch-park-boundary.mjs: the park polygon still decides where
+                             the 5 m terrain tier covers. WHY it exists: every vector layer
+                             was clipped to the park, and the user kept finding real things
+                             missing - segnavia 13 Thumel->Rifugio Benevolo (0 of 108 points
+                             inside, closest approach 516 m), Lago Goletta, the fall on the
+                             Dora di Goletta. The upper Val di Rhêmes is not in the park, but
+                             we draw it in full, and a trail that stops at an invisible line
+                             mid-valley reads as a bug. Comuni rather than a buffer: a buffer
+                             would need ~1.3 km to reach Benevolo, would still halve the
+                             Valgrisenche, and would grab an arbitrary rind everywhere else.
+                             Measured cost: trails 73 -> 116, lakes/rivers/glaciers 255 ->
+                             339, POI 405 -> 518, plus 478 forest roads - about +0.8 MB on a
+                             24.2 MB first load.
+  lib/region.mjs          Written 2026-08-18. The one inclusion rule, shared by
+                             build-trails/build-poi/build-hydrology/build-roads: point-in-
+                             region and distance-to-region in local scene metres, with a
+                             per-part bbox reject in front of the polygon test (the park
+                             alone is 7,857 vertices and the builds ask 300,000+ times).
+                             Extracted because the three older builds each carried their own
+                             copy of the same ring conversion and had quietly drifted apart -
+                             trails and lakes strictly inside, huts 750 m outside, waterfalls
+                             a name list. That disagreement, not the data, is why the user
+                             could see Rifugio Benevolo but neither the trail to it nor the
+                             lake above it.
   trailheads.json         Data, not a script (2026-08-03). Hand-curated allowlist of the 22
                              valley bases / trailheads (Le Pont, Eaux Rousses, Valnontey,
                              Cogne, Le Thumel, ...), read by fetch-osm.mjs (which queries
@@ -353,7 +388,14 @@ tools/
                              description originally proposed the reverse relationship).
                              Verified the boundary/filter itself against two known control
                              points: the Gran Paradiso peak lands inside, Mont Blanc's
-                             summit lands outside.
+                             summit lands outside. **Revised 2026-08-18**: the polygon is the
+                             REGION (tools/lib/region.mjs) -> 518 POIs, and the 750 m hut
+                             buffer now measures from it. The buffer survives because it
+                             still does work and still lands in a gap: it admits three huts
+                             at 40/63/84 m and the nearest one it excludes is 1,542 m away.
+                             Unnamed waterfalls, which the draft now carries on purpose for
+                             build-hydrology.mjs, are dropped here - a POI is a name on a
+                             marker post.
   verify.mjs              Written 2026-07-30 (was "optional/nice-to-have," promoted after it
                              caught two real, otherwise-invisible bugs during phase 3 - a
                              custom ShaderMaterial silently failing depth-testing against a
@@ -395,7 +437,38 @@ tools/
                              precomputes each waterfall's brink-to-base marching ribbon
                              (terrain-driven visual approximation, not a hydrological
                              simulation) so src/water.js never needs to query terrain.js at
-                             runtime, same decoupling as trails.js/poi.js.
+                             runtime, same decoupling as trails.js/poi.js. **Revised
+                             2026-08-18**: filters to the REGION (tools/lib/region.mjs) ->
+                             248 lakes, 21 rivers, 70 glaciers, and Lago Goletta - which the
+                             user asked after by name - is in. The allowlist gains the
+                             unnamed OSM node 4397259567 as "Cascata di Goletta": the user
+                             stood at 45.52285, 7.08510 looking WNW and asked why the fall in
+                             front of them was missing; it is 252 m away on that bearing with
+                             the Dora di Goletta within 120 m. Two separate causes had hidden
+                             it - outside the park, and unnamed, so fetch-osm.mjs dropped it
+                             before this file ever saw it. The allowlist stays hand-curated
+                             on purpose now rather than by accident: a fall here is a rendered
+                             ribbon, and OSM's waterfall nodes in this region are half unnamed
+                             and sometimes duplicated on the same spot (this one is - node
+                             9836453182 is its twin, and is simply not listed).
+  fetch-roads.mjs         Written 2026-08-18. The forest roads: OSM highway=track over the
+                             REGION's bounding box (not the DEM bbox - tracks are dense where
+                             people live, and Overpass refused the whole-bbox query outright),
+                             elevation sampled per point like every other layer, into
+                             tools/roads-draft.json (untracked, 3.2 MB, 1,820 ways). Scope cut
+                             on purpose: no path/footway, which is what the VDA trail dataset
+                             already draws far better, and no paved unclassified/service
+                             roads, which are streets rather than something you set out to
+                             walk.
+  build-roads.mjs         Written 2026-08-18. Region filter (kept whole, never clipped) plus
+                             a 50 m minimum length -> public/data/roads.json: 478 roads,
+                             200 km, 385 KB. The length floor is measured, not picked - the
+                             draft's median track is 102 m and the 568 under 50 m hold 12.5 km
+                             between them, i.e. a third of the ways carrying a sixteenth of
+                             the distance, mostly field entrances and driveway spurs. Asked
+                             for by the user with the Thumel -> Rifugio Benevolo road as the
+                             example (OSM way 112844128, which passes 155 m from Le Thumel and
+                             10 m from the refuge).
   fetch-forest.mjs        Written 2026-08-03 (phase 6). `natural=wood` + `landuse=forest`,
                              ways and relations, `out geom` - the outlines, not centres.
                              ~4,160 polygons / 523k vertices / 30 MB, so the draft it caches
@@ -1223,7 +1296,24 @@ pngp-viewer/
 │                              draw call per line STYLE (§10) - difficulty is shown via
 │                              line pattern (solid/dashed/dotted/ferrata-ticks), not
 │                              color, matching real hiking-map convention (user request,
-│                              2026-07-28)
+│                              2026-07-28). Since 2026-08-18 it also carries the trail
+│                              NUMBER: one CSS2D label per trail that MOVES to the point of
+│                              its own trace nearest the camera, shown within 400 m and only
+│                              when the terrain does not stand in front of it ("visibile da
+│                              vicino con una etichetta vicina", user 2026-08-18). A fixed
+│                              label would sit behind a shoulder half the time; a label every
+│                              N metres would be hundreds of DOM nodes saying one thing
+│   ├── roads.js            loads public/data/roads.json - the forest roads (OSM
+│                              highway=track), all 478 in ONE merged LineSegments draw call,
+│                              a single unbroken white line. White because the trails own red
+│                              and spend their line STYLE on CAI difficulty, so the two
+│                              vocabularies never collide (user's call: "va bene se viene
+│                              disegnata come linea continua bianca")
+│   ├── labels.js           the terrain-occlusion test both label layers share: is the drawn
+│                              surface between the camera and this name? DOM labels are not
+│                              depth-tested, so without it a name shows through a mountain.
+│                              Lived in poi.js until the trail labels needed exactly the same
+│                              test and the same measured 10 m margin (2026-08-18)
 │   ├── lighting.js         Done, 2026-07-31 (phase 4). 5 time-of-day presets (dawn/day/
 │                              golden/dusk/night), continuously blended by a slider
 │                              (fraction 0..1 across the cycle, wraps night->dawn) rather
