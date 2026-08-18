@@ -59,7 +59,67 @@ const WF_LIFT_PER_GRADE_M = 5; // a 0.8 grade lifts the middle by the full 4 m
 // metres so a 12 m fall and a 140 m one get the same size of streak rather than
 // the same NUMBER of them.
 const WF_STREAK_M = 6;
-const GLACIER_HEIGHT_OFFSET_M = 2;
+// How far the ice is lifted off the rock, to keep it out of a z-fight with the
+// terrain it lies on.
+//
+// IT MUST BE LESS THAN THE WALKER'S EYE HEIGHT, and for a long time it was not.
+// At 2 m against src/controls.js's EYE_HEIGHT_M of 1.7, standing anywhere on a
+// glacier put the walker's head 29 cm UNDER the sheet - measured, by casting a
+// ray straight up from the eye - and since the material is DoubleSide, what
+// filled the upper two thirds of the screen was the underside of the ice. The
+// user reported it as "il nevaio non posizionato correttamente a terra", which
+// is exactly what it was: 2 m above the ground it is meant to be lying on.
+//
+// IT ALSO HAS TO OUTRUN THE SAG. The sheet's VERTICES are seated on the ground,
+// but a triangle's interior is flat, so it dips below the rock between them
+// wherever the ground is convex - and where it dips, the rock pokes through the
+// ice. Measured over the 563,567 triangles the refinement produces: the median
+// sag is 0, the worst 5% is 0.30 m, the worst 1% is 0.80 m, and one triangle
+// reaches 9.32 m. So no offset can cover all of it, and the choice is a curve:
+//
+//   offset   ice poking under the rock
+//   0.2 m    8.21%
+//   0.5 m    2.29%
+//   1.0 m    0.64%
+//   1.5 m    0.24%
+//
+// Those percentages are the sag distribution's own prediction; re-measured after
+// the change the real figure at 1.0 m is 1.25%, so take the table as the shape of
+// the curve rather than as four exact answers. Either way 1.0 m takes most of it
+// and still leaves 0.71 m of eye above the ice - measured by casting up and down
+// from the camera, not inferred. What survives is a little over 1% of the surface
+// showing rock through it, which is what a real glacier does anyway.
+//
+// It is bounded on both sides by two numbers that must not be forgotten:
+// EYE_HEIGHT_M above it, the sag below it. The way out of the squeeze is to stop
+// drawing a glacier as a sheet that has to chase the ground, and draw it as a
+// terrain mask the way src/forest.js does - no geometry, no sag, and nothing to
+// walk under. That is a bigger change and has not been made.
+const GLACIER_HEIGHT_OFFSET_M = 1.0;
+// The longest triangle edge a glacier surface may have, in metres.
+//
+// WHY IT NEEDS ONE AT ALL. A glacier arrives as an outline and nothing else, and
+// ear-clipping an outline puts vertices only on that outline - so a polygon
+// 3.3 km across can come out of the triangulator as a handful of triangles
+// kilometres wide. alignToGround() then seats every vertex perfectly on the
+// terrain, which is exactly the trap: the CORNERS are on the ground and the flat
+// sheet between them is not. Measured on 2026-08-18, the longest edge in the
+// shipped set was 2,422 m, and 74 of the 80 glaciers span more than 100 m of
+// vertical inside one polygon - Ghiacciaio di Gliairetta spans 1,122 m with 122
+// outline points. Standing on one, the sheet fills two thirds of the screen and
+// hides the mountains behind it, which is what the user reported: "il nevaio non
+// posizionato correttamente a terra".
+//
+// It had always been that way. What changed is that half of these glaciers are
+// across the French frontier, where the terrain was nodata until the same day
+// and got drawn flat at the mosaic's minimum - and a flat sheet over flat ground
+// looks like nothing at all.
+//
+// 25 m, just over the heightfield's own 20.5 m cell, so a triangle spans about
+// one cell and the surface has the same shape the ground does. Coarser sags
+// between its corners, and a sag deeper than GLACIER_HEIGHT_OFFSET_M above puts
+// the ice under the rock in patches.
+const GLACIER_MAX_EDGE_M = 25;
 const GLACIER_COLOR = 0xe8f3fb;
 
 const NOISE_GLSL = `
@@ -253,6 +313,77 @@ function buildLakesMesh(lakes) {
   return mesh;
 }
 
+// Splits every triangle edge longer than maxEdge, repeatedly, until none is.
+//
+// CRACK-FREE, and that is the whole difficulty. Two triangles sharing an edge
+// must split it at the same point or the surface tears along it, so the decision
+// to split cannot be per-triangle: an edge is marked purely on its own length,
+// which both its triangles compute identically, and the midpoint is created once
+// and looked up by the pair of vertex indices. A triangle is then rebuilt from
+// how many of its three edges are marked - one, two or three - and the three
+// cases are the standard red-green refinement.
+//
+// Adaptive rather than uniform: subdividing everything to the level the worst
+// edge needs would take a 2.4 km triangle through seven halvings and multiply
+// the whole set by 4^7, when only that one region needs it.
+function refineToMaxEdge(verts, tris, maxEdge) {
+  const maxSq = maxEdge * maxEdge;
+  const lenSq = (a, b) => (verts[a].x - verts[b].x) ** 2 + (verts[a].z - verts[b].z) ** 2;
+
+  // A bound, not an expectation: the loop shrinks every long edge by half each
+  // pass, so it terminates on its own. This is here so that a degenerate ring
+  // cannot spin forever inside a page load.
+  for (let pass = 0; pass < 12; pass++) {
+    const mid = new Map();
+    const midpoint = (a, b) => {
+      const key = a < b ? `${a},${b}` : `${b},${a}`;
+      let m = mid.get(key);
+      if (m === undefined) {
+        m = verts.length;
+        verts.push({
+          x: (verts[a].x + verts[b].x) / 2,
+          y: (verts[a].y + verts[b].y) / 2,
+          z: (verts[a].z + verts[b].z) / 2,
+        });
+        mid.set(key, m);
+      }
+      return m;
+    };
+
+    const next = [];
+    let split = 0;
+    for (const [a, b, c] of tris) {
+      // Edge i is the one OPPOSITE vertex i, which is what makes the three cases
+      // below symmetric.
+      const long = [lenSq(b, c) > maxSq, lenSq(c, a) > maxSq, lenSq(a, b) > maxSq];
+      const n = long.filter(Boolean).length;
+      if (n === 0) { next.push([a, b, c]); continue; }
+      split++;
+      if (n === 3) {
+        const ab = midpoint(a, b); const bc = midpoint(b, c); const ca = midpoint(c, a);
+        next.push([a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]);
+      } else if (n === 1) {
+        // Split the long edge and join its midpoint to the opposite vertex.
+        const [p, q, r] = long[0] ? [a, b, c] : long[1] ? [b, c, a] : [c, a, b];
+        const m = midpoint(q, r);
+        next.push([p, q, m], [p, m, r]);
+      } else {
+        // Two long edges: split both, and cut the quad that is left along its
+        // shorter diagonal so the result does not become a sliver.
+        const [p, q, r] = !long[0] ? [a, b, c] : !long[1] ? [b, c, a] : [c, a, b];
+        const m1 = midpoint(p, r); // opposite q - long
+        const m2 = midpoint(p, q); // opposite r - long
+        next.push([p, m2, m1]);
+        if (lenSq(m2, r) < lenSq(m1, q)) next.push([m2, q, r], [m2, r, m1]);
+        else next.push([m2, q, m1], [m1, q, r]);
+      }
+    }
+    tris = next;
+    if (!split) break;
+  }
+  return tris;
+}
+
 // Merges all glacier footprints into one draw call, draped at their own
 // per-vertex terrain height (offset up slightly to avoid z-fighting) -
 // static, no animation, distinct icy material from the terrain itself.
@@ -270,12 +401,16 @@ function buildGlaciersMesh(glaciers) {
       continue;
     }
     // tri.pts index order matches glacier.ring (minus the closing dup) 1:1
-    for (let i = 0; i < tri.pts.length; i++) {
-      const y = glacier.ring[i][1];
-      positions.push(tri.pts[i].x, y + GLACIER_HEIGHT_OFFSET_M, tri.pts[i].y);
-    }
-    for (const [a, b, c] of tri.tris) indices.push(offset + a, offset + b, offset + c);
-    offset += tri.pts.length;
+    const verts = tri.pts.map((p, i) => ({ x: p.x, y: glacier.ring[i][1], z: p.y }));
+    // The outline is all the triangulator can give us, so the interior is added
+    // here - see GLACIER_MAX_EDGE_M. Midpoints interpolate the ring's own heights,
+    // which alignToGround() then replaces with the drawn ground; interpolating
+    // anyway keeps the mesh sane for the one frame before that runs, and for any
+    // caller that never runs it.
+    const refined = refineToMaxEdge(verts, tri.tris, GLACIER_MAX_EDGE_M);
+    for (const v of verts) positions.push(v.x, v.y + GLACIER_HEIGHT_OFFSET_M, v.z);
+    for (const [a, b, c] of refined) indices.push(offset + a, offset + b, offset + c);
+    offset += verts.length;
   }
   if (skipped) console.warn(`water.js: skipped ${skipped}/${glaciers.length} glacier polygon(s) that failed to triangulate.`);
   if (!positions.length) return null;
