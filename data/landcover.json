@@ -4,17 +4,17 @@
   "crs": "EPSG:23032",
   "bboxCrsUnits": {
     "xmin": 329116,
-    "ymin": 5036775,
+    "ymin": 5027000,
     "xmax": 413000,
     "ymax": 5085000
   },
   "dimensions": {
     "width": 2048,
-    "height": 1178
+    "height": 1416
   },
   "resolutionMPerPx": {
     "x": 40.958984,
-    "y": 40.955414
+    "y": 40.960452
   },
   "downscaleFromHeightfield": 2,
   "rowOrientation": "row 0 = north edge (ymax); row N-1 = south edge (ymin)",
@@ -27,14 +27,14 @@
   },
   "mask": {
     "file": {
-      "name": "landcover.6ef0ff78.png",
-      "bytes": 619548,
-      "sha256Prefix": "6ef0ff78"
+      "name": "landcover.da00ac86.png",
+      "bytes": 751207,
+      "sha256Prefix": "da00ac86"
     },
     "meaning": "fraction of the pixel carrying open vegetation - not tree canopy, not cliff",
-    "coveredPixels": 1036203,
-    "partialPixels": 756518,
-    "meanCover": 0.4501
+    "coveredPixels": 1304543,
+    "partialPixels": 892293,
+    "meanCover": 0.4671
   },
   "derivation": {
     "measured": "how much vegetation, from Sentinel-2 NDVI per pixel",
@@ -64,28 +64,28 @@
         "id": "S2A_T32TLR_20250808T103728_L2A",
         "datetime": "2025-08-08T10:38:33.570000Z",
         "scene": "base 2025-08-08",
-        "pixelsContributed": 8427701
+        "pixelsContributed": 10080928
       },
       {
         "id": "S2A_T32TMR_20250808T103728_L2A",
         "datetime": "2025-08-08T10:38:28.993000Z",
         "scene": "base 2025-08-08",
-        "pixelsContributed": 315246
+        "pixelsContributed": 388743
       },
       {
         "id": "S2A_T32TLR_20250709T103044_L2A",
         "datetime": "2025-07-09T10:38:37.530000Z",
         "scene": "patch 2025-07-09",
-        "pixelsContributed": 200435
+        "pixelsContributed": 341516
       },
       {
         "id": "S2A_T32TMR_20250709T103044_L2A",
         "datetime": "2025-07-09T10:38:32.972000Z",
         "scene": "patch 2025-07-09",
-        "pixelsContributed": 27002
+        "pixelsContributed": 26992
       }
     ]
   },
   "generatedBy": "tools/build-landcover.mjs",
-  "generatedAt": "2026-08-12T12:10:00.687Z"
+  "generatedAt": "2026-08-18T12:43:26.917Z"
 }

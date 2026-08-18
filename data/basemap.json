@@ -4,7 +4,7 @@
   "crs": "EPSG:23032",
   "bboxCrsUnits": {
     "xmin": 329116,
-    "ymin": 5036775,
+    "ymin": 5027000,
     "xmax": 413000,
     "ymax": 5085000
   },
@@ -12,31 +12,31 @@
     {
       "resolutionMPerPx": {
         "x": 20.4794921875,
-        "y": 20.477707006369428
+        "y": 20.480225988700564
       },
       "dimensions": {
         "width": 4096,
-        "height": 2355
+        "height": 2832
       },
       "file": {
-        "name": "basemap.2f64b29d.webp",
-        "bytes": 1829766,
-        "sha256Prefix": "2f64b29d"
+        "name": "basemap.a439647f.webp",
+        "bytes": 2175826,
+        "sha256Prefix": "a439647f"
       }
     },
     {
       "resolutionMPerPx": {
         "x": 10.23974609375,
-        "y": 10.238853503184714
+        "y": 10.240112994350282
       },
       "dimensions": {
         "width": 8192,
-        "height": 4710
+        "height": 5664
       },
       "file": {
-        "name": "basemap.d77907b5.webp",
-        "bytes": 6244280,
-        "sha256Prefix": "d77907b5"
+        "name": "basemap.b532a6b9.webp",
+        "bytes": 7416528,
+        "sha256Prefix": "b532a6b9"
       }
     }
   ],
@@ -75,22 +75,22 @@
       {
         "id": "S2A_T32TLR_20250808T103728_L2A",
         "datetime": "2025-08-08T10:38:33.570000Z",
-        "pixelsContributed": 9090498
+        "pixelsContributed": 43399158
       },
       {
         "id": "S2A_T32TMR_20250808T103728_L2A",
         "datetime": "2025-08-08T10:38:28.993000Z",
-        "pixelsContributed": 336686
+        "pixelsContributed": 1641650
       },
       {
         "id": "S2A_T32TLR_20250709T103044_L2A",
         "datetime": "2025-07-09T10:38:37.530000Z",
-        "pixelsContributed": 192247
+        "pixelsContributed": 1258769
       },
       {
         "id": "S2A_T32TMR_20250709T103044_L2A",
         "datetime": "2025-07-09T10:38:32.972000Z",
-        "pixelsContributed": 26626
+        "pixelsContributed": 99853
       }
     ]
   },
