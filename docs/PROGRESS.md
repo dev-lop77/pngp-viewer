@@ -2,6 +2,52 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## PUBLISHED (2026-08-18)
+
+Live at https://dev-lop77.github.io/pngp-viewer/ - the user said "puoi pubblicare"
+after the last of the day's twelve commits, and `tools/dev/deploy.sh` pushed the
+built site. What changed on gh-pages: `data/ferrata.json` and `data/roads.json` are
+new, `data/trails.json`, `data/water.json` and `data/poi.json` are rewritten, plus
+the bundle.
+
+**Verified against the live site, not against the build:**
+- Pages reported `built`, and each data file was fetched over HTTP at its new size
+  (ferrata 6,454 B, roads 385,245 B, water 1,326,347 B, trails 956,831 B, poi
+  116,199 B). The first check ran while Pages was still building and served the OLD
+  water.json and trails.json - worth remembering, because "the deploy pushed" and
+  "the CDN serves it" are half a minute apart and the second one is the one that
+  matters.
+- `node tools/verify.mjs <site>`: WebGL2 context, no console or page errors.
+- A screenshot of the live URL at the Goletta viewpoint shows the streams and the
+  fall (`tools/dev/logs/live-goletta.png`). Note `window.__pngp` does not exist in a
+  production build, so `shoot.mjs --at` cannot drive the published site - a shared
+  link can, which is what the hash format is for.
+
+**First load, measured on the live site** by summing content-length over the initial
+load including the default Medium tier: **25.97 MB**. The breakdown, which is worth
+keeping because it says where any future budget goes:
+
+| | MB on the wire |
+|---|---|
+| heightfield.bin | 9.83 |
+| heighttier 10 m (the default) | 7.10 |
+| basemap 10.24 m/px | 6.24 |
+| canopy + landcover masks | 1.63 |
+| water.json | 0.46 |
+| trails.json | 0.28 |
+| bundle | 0.25 |
+| roads.json | 0.13 |
+| poi.json + ferrata.json + manifests | 0.04 |
+
+Today's data work accounts for **+0.51 MB of that** (streams 0.28, the region's extra
+trails 0.09, roads 0.13, POI 0.01, ferrata 0.003) - about 2% of the load, for a
+region a third larger, 1,226 km of torrents, 200 km of forest road and three via
+ferratas.
+
+**Still unmeasured, as it has been all day**: frame rate on real hardware. Headless
+is SwiftShader at ~1 fps.
+
+
 ## The two via ferratas they knew were missing (2026-08-18, last before publishing)
 
 *"Ci dovrebbero essere almeno due vie ferrate, una in Valgrisenche, partenza vicino
