@@ -11,6 +11,7 @@ import { loadForest, createCoverageSampler } from './forest.js';
 import { loadBasemap, BASEMAP_MIX, BASEMAP_SCALE, BASEMAP_GAIN, BASEMAP } from './basemap.js';
 import { createVegetation } from './vegetation.js';
 import { loadLandcover, createLandcoverSampler, LANDCOVER_MASK } from './landcover.js';
+import { loadOuterRing, createFadeSampler } from './outerring.js';
 import {
   createGroundcover, GROUNDCOVER_DENSITY, GROUNDCOVER_TIME, GROUNDCOVER_WIND,
 } from './groundcover.js';
@@ -255,6 +256,26 @@ loadBasemap(undefined, { maxTextureSize: renderer.capabilities.maxTextureSize })
 const landcoverPromise = loadLandcover().catch((err) => {
   console.warn('Landcover mask unavailable - continuing without grass or shrubs:', err.message);
   return null;
+});
+
+// The outer-ring field, bound the same way for the fourth time (src/outerring.js
+// holds the sampler that src/terrain.js compiled against). Its failure mode is
+// the one worth naming: without it the ground stops fading, so the map ends on
+// the straight lines it ended on before 2026-08-18 - unattractive, but it draws
+// and it is walkable everywhere. The confinement below therefore also does
+// nothing, which is the right way round: a walker allowed too far sees coarse
+// ground, while a walker stopped by a boundary computed from a field that never
+// arrived would be stopped in the middle of the park.
+const outerRingPromise = loadOuterRing().catch((err) => {
+  console.warn('Outer-ring field unavailable - no edge fade, no boundary:', err.message);
+  return null;
+});
+
+// The boundary itself. Attached here rather than inside the loader because
+// controls.js owns movement and this file owns what movement is allowed to know -
+// the same division as getGroundHeight above.
+outerRingPromise.then((ring) => {
+  if (ring) controls.getFade = createFadeSampler(ring);
 });
 
 let wildlife = null; // animals carry state between frames, so they need the loop

@@ -9,6 +9,9 @@ import { attachAtmo } from './atmosphere.js';
 import { FOREST_MASK } from './forest.js';
 import { SNOW_LEVEL, snowGlsl, snowColorGlsl } from './snow.js';
 import { BASEMAP, BASEMAP_MIX, BASEMAP_SCALE, basemapGlsl } from './basemap.js';
+import {
+  OUTER_RING, OUTER_RING_FADE_M, OUTER_RING_MAX_M, EDGE_FADE_M, outerRingGlsl,
+} from './outerring.js';
 
 // Quadtree-LOD terrain (docs/ARCHITECTURE.md §12's tile/LOD item, pulled
 // forward from phase 7 on 2026-08-03). It replaced a single 256x147 mesh
@@ -265,6 +268,7 @@ ${heightTierGlsl()}
     uniform sampler2D uForestMask;
 ${snowGlsl()}
 ${basemapGlsl()}
+${outerRingGlsl({ worldWidth, worldDepth })}
 
     float terrainHash( vec2 p ) {
       return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453123 );
@@ -354,6 +358,13 @@ ${bandMix}
     shader.uniforms.uHeightTier = HEIGHT_TIER;
     shader.uniforms.uHeightTierRect = HEIGHT_TIER_RECT;
     shader.uniforms.uHeightTierMix = HEIGHT_TIER_MIX;
+    // The outer-ring field, bound the same way once more. Its holder starts as a
+    // 1x1 "everything is local", so a viewer that never downloads it draws the
+    // map with no fade rather than with a fade in the wrong place.
+    shader.uniforms.uOuterRing = OUTER_RING;
+    shader.uniforms.uOuterRingFadeM = OUTER_RING_FADE_M;
+    shader.uniforms.uOuterRingMaxM = OUTER_RING_MAX_M;
+    shader.uniforms.uEdgeFadeM = EDGE_FADE_M;
 
     let vs = shader.vertexShader;
     vs = patch(vs, '#include <displacementmap_pars_vertex>', `#include <displacementmap_pars_vertex>\n${HELPERS}`);
@@ -382,6 +393,23 @@ ${bandMix}
     fs = patch(fs, '#include <common>', `#include <common>\n${ALBEDO}`);
     // Multiplied, not assigned, so material.color stays a working global tint.
     fs = patch(fs, '#include <map_fragment>', '#include <map_fragment>\n  diffuseColor.rgb *= terrainAlbedo();');
+    // The ground dissolving into the air, and it goes AFTER the fog rather than
+    // into the albedo. Albedo is what the sun multiplies: fading it there would
+    // dim the ground towards black at night and leave the shape of the terrain
+    // legible against the sky at noon, which is the opposite of dissolving. Here
+    // the colour has already been lit, tonemapped and hazed, so mixing towards
+    // the same fogColor that atmoApply just used is exactly "more distance" -
+    // the aerial perspective this project already models, pushed to its limit at
+    // the two places the data runs out.
+    //
+    // Guarded on USE_FOG because that is what declares fogColor (src/atmosphere.js
+    // patches fog_pars_fragment, which is inside the ifdef). The include marker
+    // itself is in the source whether or not fog is on, so the guard is not
+    // optional - without it a fog-less material would fail to compile.
+    fs = patch(fs, '#include <fog_fragment>', `#include <fog_fragment>
+      #ifdef USE_FOG
+        gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, outerRingFade( vTerrainXZ ) );
+      #endif`);
     shader.fragmentShader = fs;
   };
   attachAtmo(material); // phase 4: aerial-perspective fog (docs/ARCHITECTURE.md §7)

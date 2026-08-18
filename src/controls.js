@@ -124,6 +124,14 @@ const MOVE_KEYS = new Set([
 ]);
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
+// How dissolved the ground is allowed to get under your feet. The fade reaches 1
+// where the terrain is entirely haze, so stopping there would let you stand in
+// mid-air looking at nothing; stopping at 0 would put the wall on the exact cell
+// where the good data ends, which is a hard line again - the thing this whole
+// change exists to remove. Half way out, the ground you are standing on is still
+// visibly ground and the country ahead is visibly going.
+const BOUNDARY_FADE = 0.5;
+
 export { EYE_HEIGHT_M };
 
 export class WalkFlyControls {
@@ -133,6 +141,13 @@ export class WalkFlyControls {
     this.mode = 'walk'; // 'walk' | 'fly'
     this._enabled = true;
     this.getGroundHeight = null; // (x, z) => elevation meters, set once terrain loads
+    // (x, z) => 0..1, how dissolved the ground is here - src/outerring.js's own
+    // fade, the same function the terrain shader draws with. Null until the
+    // field lands, and null means no boundary at all: a walker who gets too far
+    // out sees coarse ground, which is survivable, while a walker stopped by a
+    // boundary derived from a field that never arrived would be stopped in the
+    // middle of the park, which is not.
+    this.getFade = null;
     // How fast the ground is going past, in m/s, measured from what update()
     // itself moved this frame. Deliberately NOT derivable from the camera
     // position by whoever wants it: the camera is also placed outright - by the
@@ -333,6 +348,37 @@ export class WalkFlyControls {
       this.plc.moveRight(dx * move);
       const ground = this.getGroundHeight?.(this.camera.position.x, this.camera.position.z);
       if (ground != null) this.camera.position.y = ground + EYE_HEIGHT_M;
+    }
+
+    // The edge of the world, and it is deliberately a slide rather than a stop.
+    // Blocking the whole step would make the boundary sticky: walking into it at
+    // any angle other than head-on would halt you completely, which reads as a
+    // bug rather than as a limit. Retrying each axis on its own lets you run
+    // along the frontier, which is what a ridge invites you to do anyway. Two
+    // extra lookups on the frames where it matters, none on the frames where it
+    // does not - the first test passes everywhere in the park.
+    //
+    // Applies in fly mode too. The fade is the same out there, and a fly-through
+    // that ends inside dissolving ground would show exactly what the fade is
+    // meant to hide.
+    if (this.getFade && this.getFade(this.camera.position.x, this.camera.position.z) > BOUNDARY_FADE) {
+      const toX = this.camera.position.x;
+      const toZ = this.camera.position.z;
+      if (this.getFade(toX, fromZ) <= BOUNDARY_FADE) {
+        this.camera.position.z = fromZ;
+      } else if (this.getFade(fromX, toZ) <= BOUNDARY_FADE) {
+        this.camera.position.x = fromX;
+      } else {
+        this.camera.position.x = fromX;
+        this.camera.position.z = fromZ;
+      }
+      // Walk mode set y from the ground under the rejected position, so it has
+      // to be re-read at the position actually kept - otherwise refusing a step
+      // towards a lower valley leaves you standing at that valley's height.
+      if (this.mode === 'walk') {
+        const ground = this.getGroundHeight?.(this.camera.position.x, this.camera.position.z);
+        if (ground != null) this.camera.position.y = ground + EYE_HEIGHT_M;
+      }
     }
 
     // Read back off the camera rather than taken from `move`, so anything that
