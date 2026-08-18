@@ -18,9 +18,9 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import proj4 from 'proj4';
 import { setLocalOrigin, worldToLocal } from '../src/geo.js';
 import { sampleHeightfield, isNearNoData, decodeHeightfield } from '../src/heightfield.js';
+import { overpass } from './lib/overpass.mjs';
 
 const OUT_FILE = 'tools/osm-poi-draft.json';
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
 
 proj4.defs('EPSG:23032', '+proj=utm +zone=32 +ellps=intl +towgs84=-87,-98,-121,0,0,0,0 +units=m +no_defs');
 
@@ -63,15 +63,56 @@ const HUT_QL = [
   `["amenity"="shelter"]["shelter_type"="basic_hut"]`,
 ].flatMap((tags) => [`node${tags}`, `way${tags}`]);
 
+// THE VILLAGES, added 2026-08-18: "in generale, i nomi dei paesi all'interno
+// delle valli siano di aiuto" - the user, after walking the Valgrisenche and
+// finding it unlabelled. This is the `place=*` filter the trailhead allowlist's
+// own header rejected, and it is admissible now for one reason: the region
+// (tools/region.geojson) is what it is measured against instead of the whole DEM
+// bbox. Measured: 620 place nodes in the region's bbox, 235 of them inside the
+// region itself - 6 villages, 160 hamlets and 69 isolated dwellings.
+//
+// village + hamlet + town + city, NOT isolated_dwelling: a single farm building
+// or an alpine hut group is not a place you walk through, and 69 of them would
+// be 69 more names competing with the peaks and the passes for the same screen.
+// `locality` stays out for the same reason it always was - 381 mostly meaningless
+// toponyms.
+const PLACE_QL = `node["place"~"^(city|town|village|hamlet)$"]`;
+
 const CATEGORY_QUERIES = [
-  { category: 'peak', ql: `node["natural"="peak"]` },
-  ...HUT_QL.map((ql) => ({ category: 'hut', ql })),
-  { category: 'pass', ql: `node["mountain_pass"="yes"]` },
-  { category: 'pass', ql: `node["natural"="saddle"]` },
-  { category: 'waterfall', ql: `node["waterway"="waterfall"]` },
-  { category: 'lake', ql: `way["natural"="water"]` },
-  { category: 'lake', ql: `way["natural"="lake"]` },
+  { category: 'peak', ql: `node["natural"="peak"]`, bbox: 'dem' },
+  ...HUT_QL.map((ql) => ({ category: 'hut', ql, bbox: 'dem' })),
+  { category: 'pass', ql: `node["mountain_pass"="yes"]`, bbox: 'dem' },
+  { category: 'pass', ql: `node["natural"="saddle"]`, bbox: 'dem' },
+  { category: 'waterfall', ql: `node["waterway"="waterfall"]`, bbox: 'dem' },
+  { category: 'lake', ql: `way["natural"="water"]`, bbox: 'dem' },
+  { category: 'lake', ql: `way["natural"="lake"]`, bbox: 'dem' },
+  // The region's bbox, like the forest roads and the streams: over the DEM bbox
+  // this same query returns ~5,500 toponyms from valleys we do not draw.
+  { category: 'village', ql: PLACE_QL, bbox: 'region' },
 ];
+
+// Region bbox, from the polygons' own lon/lat - no projection needed for a box.
+const region = JSON.parse(readFileSync('tools/region.geojson', 'utf8'));
+let rSouth = Infinity;
+let rNorth = -Infinity;
+let rWest = Infinity;
+let rEast = -Infinity;
+for (const feature of region.features) {
+  const g = feature.geometry;
+  for (const ring of g.type === 'Polygon' ? g.coordinates : g.coordinates.flat()) {
+    for (const [lon, lat] of ring) {
+      if (lat < rSouth) rSouth = lat;
+      if (lat > rNorth) rNorth = lat;
+      if (lon < rWest) rWest = lon;
+      if (lon > rEast) rEast = lon;
+    }
+  }
+}
+const BBOXES = {
+  dem: `${south},${west},${north},${east}`,
+  region: `${rSouth},${rWest},${rNorth},${rEast}`,
+};
+console.log(`Places only over the region bbox ${BBOXES.region}.`);
 
 // Valley bases / trailheads come from an explicit id allowlist rather than a
 // tag query - see tools/trailheads.json for why a `place=*` filter or a
@@ -80,26 +121,21 @@ const CATEGORY_QUERIES = [
 const trailheads = JSON.parse(readFileSync('tools/trailheads.json', 'utf8')).trailheads;
 const trailheadById = new Map(trailheads.map((t) => [t.id, t]));
 
-const query =
-  `[out:json][timeout:90];\n(\n` +
-  CATEGORY_QUERIES.map((c) => `  ${c.ql}(${south},${west},${north},${east});`).join('\n') +
-  `\n  node(id:${trailheads.map((t) => t.id.slice(1)).join(',')});` +
-  `\n);\nout center;`;
-
-const response = await fetch(OVERPASS_URL, {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/x-www-form-urlencoded',
-    Accept: 'application/json',
-    'User-Agent': 'pngp-viewer/0.1 (tools/fetch-osm.mjs, POI draft extraction)',
+const elements = await overpass(
+  [
+    ...CATEGORY_QUERIES.map((c) => `${c.ql}(${BBOXES[c.bbox]});`),
+    `node(id:${trailheads.map((t) => t.id.slice(1)).join(',')});`,
+  ],
+  {
+    what: 'POI draft',
+    timeoutS: 180,
+    // `center`, not `geom`: a hut mapped as a building way and a lake mapped as
+    // an area each want one representative point, which is what this file's
+    // lat/lon handling below expects.
+    out: 'center',
+    userAgent: 'pngp-viewer/0.1 (tools/fetch-osm.mjs, POI draft extraction)',
   },
-  body: `data=${encodeURIComponent(query)}`,
-});
-if (!response.ok) {
-  throw new Error(`Overpass request failed: ${response.status} ${await response.text()}`);
-}
-const { elements } = await response.json();
-console.log(`Overpass returned ${elements.length} elements.`);
+);
 
 function categoryFor(el) {
   const t = el.tags ?? {};
@@ -112,6 +148,7 @@ function categoryFor(el) {
   if (t.mountain_pass === 'yes' || t.natural === 'saddle') return 'pass';
   if (t.waterway === 'waterfall') return 'waterfall';
   if (t.natural === 'water' || t.natural === 'lake') return 'lake';
+  if (t.place === 'city' || t.place === 'town' || t.place === 'village' || t.place === 'hamlet') return 'village';
   return 'unknown';
 }
 
@@ -133,6 +170,9 @@ for (const el of elements) {
     // Kept so build-poi.mjs can tell a staffed rifugio from a bivacco, and so
     // a future re-read can see which of the three hut tags matched.
     hutKind: el.tags?.tourism ?? (el.tags?.shelter_type ? `shelter:${el.tags.shelter_type}` : null),
+    // village vs hamlet: the same category on screen, but the info panel should
+    // not call a five-house hamlet a village.
+    placeKind: el.tags?.place ?? null,
     // Raw OSM name on purpose. The allowlist's displayName/valley are applied
     // by build-poi.mjs, not here: this draft is the unedited fetch, and keeping
     // curation out of it means relabelling a place doesn't cost an Overpass

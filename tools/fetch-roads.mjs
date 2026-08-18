@@ -26,10 +26,10 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import proj4 from 'proj4';
 import { setLocalOrigin, worldToLocal } from '../src/geo.js';
 import { sampleHeightfield, isNearNoData, decodeHeightfield } from '../src/heightfield.js';
+import { overpass } from './lib/overpass.mjs';
 
 const REGION_FILE = 'tools/region.geojson';
 const OUT_FILE = 'tools/roads-draft.json';
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
 
 proj4.defs('EPSG:23032', '+proj=utm +zone=32 +ellps=intl +towgs84=-87,-98,-121,0,0,0,0 +units=m +no_defs');
 
@@ -60,22 +60,11 @@ for (const feature of region.features) {
 
 console.log(`Querying Overpass for region bbox ${south.toFixed(4)},${west.toFixed(4)},${north.toFixed(4)},${east.toFixed(4)}...`);
 
-const query = `[out:json][timeout:180];\n(\n  way["highway"="track"](${south},${west},${north},${east});\n);\nout geom;`;
-
-const response = await fetch(OVERPASS_URL, {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/x-www-form-urlencoded',
-    Accept: 'application/json',
-    'User-Agent': 'pngp-viewer/0.1 (tools/fetch-roads.mjs, forest road draft extraction)',
-  },
-  body: `data=${encodeURIComponent(query)}`,
+const elements = await overpass(`way["highway"="track"](${south},${west},${north},${east});`, {
+  what: 'forest tracks',
+  timeoutS: 180,
+  userAgent: 'pngp-viewer/0.1 (tools/fetch-roads.mjs, forest road draft extraction)',
 });
-if (!response.ok) {
-  throw new Error(`Overpass request failed: ${response.status} ${await response.text()}`);
-}
-const { elements } = await response.json();
-console.log(`Overpass returned ${elements.length} elements.`);
 
 function convertLine(geometry) {
   let hasNoData = false;
