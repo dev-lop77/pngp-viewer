@@ -139,6 +139,22 @@ triangle with the number in it, one every 2 km of route, thinned to no closer th
 labels' 400 m. Yellow because that is the colour of the real waymark, and using it
 for both ties the line to the triangle.
 
+**Corrected on their third look**, and both notes were about the badge rather than
+the route: *"i vertici del triangolo vanno arrotondati. Puoi avvicinarlo alla linea
+dell'alta via così camminandoci vicino si vede e non galleggia troppo in aria."*
+
+- The corners are rounded now, which meant dropping the CSS `clip-path`: a clip
+  CUTS, so it can only ever produce sharp vertices. The badge is an inline SVG
+  whose triangle is **stroked in its own colour with a round line join** - the
+  stroke grows the shape by half its width on every side and rounds every corner,
+  for one attribute. The path is inset by that half-width so the result still fits
+  its 24x22 box.
+- And it sits ON the trace instead of over it. The float was 3 m at the nearest
+  and up to 40 m, which read as a balloon above the path rather than a waymark
+  beside it. Now 1.5 m as you walk past, 2.9 m at 400 m, and the cap - lowered
+  from 40 m to 18 m - only at 3 km, where it is 0.6% of the distance and does
+  nothing but keep the triangle clear of the ground in front of it.
+
 ### Measured, and what is still not
 
 Seating, probed on the drawn surface (the property `tools/test-height-tier.mjs`

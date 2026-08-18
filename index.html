@@ -322,19 +322,31 @@
          border trick because the number has to sit INSIDE the triangle; the
          drop-shadow stands in for the outline clip-path forbids. */
       .av-badge {
-        width: 22px;
-        height: 19px;
-        clip-path: polygon(50% 0, 100% 100%, 0 100%);
-        background: #f2c200;
-        color: #101010;
-        font: 700 9px/1 -apple-system, system-ui, sans-serif;
-        display: flex;
-        align-items: flex-end;
-        justify-content: center;
-        padding-bottom: 2px;
-        box-sizing: border-box;
+        width: 24px;
+        height: 22px;
+        /* The rounded corners the user asked for come from the SVG's own stroke
+           (src/trails.js): a clip-path cuts, so it can only ever give sharp
+           vertices, while stroking the triangle in its own colour with a round
+           line join grows it slightly and rounds every corner. */
         filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.75));
         pointer-events: none;
+      }
+      .av-badge svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+      .av-badge path {
+        fill: #f2c200;
+        stroke: #f2c200;
+        stroke-width: 4.5;
+        stroke-linejoin: round;
+      }
+      .av-badge text {
+        fill: #101010;
+        font: 700 9px/1 -apple-system, system-ui, sans-serif;
+        text-anchor: middle;
       }
       #controls-hint {
         position: fixed;

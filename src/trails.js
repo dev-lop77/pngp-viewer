@@ -83,9 +83,16 @@ const AV_BADGE_MIN_GAP_M = 400;
 // 6 km, i.e. "molto più lontano" than the 400 m trail labels - the length of a
 // valley rather than the ground under your feet.
 const AV_BADGE_MAX_DIST_M = 6000;
-const AV_BADGE_MAX_OFFSET_M = 40;
-const AV_BADGE_MIN_OFFSET_M = 3;
-const AV_BADGE_OFFSET_PER_M = 0.01;
+// Sitting close to the trace, on the user's second note: "Puoi avvicinarlo alla
+// linea dell'alta via così camminandoci vicino si vede e non galleggia troppo in
+// aria." It used to lift 3 m at the nearest and up to 40 m, which read as a
+// balloon over the path rather than a waymark beside it. Now it starts at eye
+// height and climbs slowly - 1.5 m as you walk past, 2.9 m at 400 m, the 18 m cap
+// only at 3 km, where 18 m is 0.6% of the distance and does nothing but keep the
+// triangle clear of the ground in front of it.
+const AV_BADGE_MAX_OFFSET_M = 18;
+const AV_BADGE_MIN_OFFSET_M = 1.5;
+const AV_BADGE_OFFSET_PER_M = 0.006;
 
 function pushSegment(bucket, x0, y0, z0, x1, y1, z1) {
   bucket.push(x0, y0 + HEIGHT_OFFSET_M, z0, x1, y1 + HEIGHT_OFFSET_M, z1);
@@ -140,6 +147,28 @@ function buildLineSegments(positions, material, name) {
   }
   segments.name = name;
   return segments;
+}
+
+// The waymark itself, as an SVG rather than a CSS clip-path: the user asked for
+// its corners to be rounded ("i vertici del triangolo vanno arrotondati") and
+// clip-path cannot round anything - it cuts. Stroking the same triangle in its own
+// colour with a round line join does, and costs one attribute.
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function altaViaTriangle(number) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 22');
+  svg.setAttribute('aria-hidden', 'true');
+  // Inset by half the stroke width on every side, so the stroked shape lands
+  // inside the viewBox instead of being clipped at the corners.
+  const path = document.createElementNS(SVG_NS, 'path');
+  path.setAttribute('d', 'M12 3 L21.5 19 L2.5 19 Z');
+  svg.append(path);
+  const text = document.createElementNS(SVG_NS, 'text');
+  text.setAttribute('x', '12');
+  text.setAttribute('y', '17.4'); // low in the triangle, where it is widest
+  text.textContent = String(number);
+  svg.append(text);
+  return svg;
 }
 
 function labelTextFor(trail) {
@@ -283,8 +312,8 @@ export async function loadTrails(dataUrl = `${import.meta.env.BASE_URL}data`) {
         if (badges.some((b) => Math.hypot(b.x - x, b.z - z) < AV_BADGE_MIN_GAP_M)) continue;
         const el = document.createElement('div');
         el.className = 'av-badge';
-        el.textContent = String(trail.altaVia);
         el.title = `Alta Via ${trail.altaVia}`;
+        el.append(altaViaTriangle(trail.altaVia));
         const object = new CSS2DObject(el);
         object.center.set(0.5, 1);
         object.visible = false;
