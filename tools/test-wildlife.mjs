@@ -40,6 +40,8 @@
 
 import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
+import { readQuantisedMask } from './lib/mask-raster.mjs';
+import { decodeHeightfield, sampleHeightfield } from '../src/heightfield.js';
 
 const url = process.argv[2] ?? 'http://localhost:5173';
 
@@ -52,15 +54,54 @@ const SITES = [
     .filter((p) => p.elevationM > 2200 && p.elevationM < 2750)
     .slice(0, 8)
     .map((p) => ({ name: p.name, x: p.local.x, z: p.local.z })),
-  // Squirrels need solid canopy below 2,200 m, which no high col has. These four
-  // are pixels of value 255 in the shipped forest mask at 1,000-1,900 m, each
-  // inside the real park boundary and >5 km apart, found by scanning
-  // public/data/forest.*.png against the heightfield rather than guessed.
-  { name: 'dense wood 1036 m', x: -8530, z: 2990 },
-  { name: 'dense wood 1826 m', x: -14121, z: 4997 },
-  { name: 'dense wood 1895 m', x: -4229, z: 5570 },
-  { name: 'dense wood 1732 m', x: 358, z: 7863 },
+  // Squirrels need solid canopy below 2,200 m, which no high col has. These are
+  // scanned out of the shipped forest mask at run time rather than written down.
+  //
+  // They WERE written down, as four local coordinates found by the same scan and
+  // pasted in - and the comment eight lines above, about a hand-typed coordinate
+  // being one more thing to keep true if the local frame ever moved, turned out to
+  // be about them. On 2026-08-18 the frame moved: the bbox grew southward and the
+  // local origin went with it, 4,887.5 m in Z. The four constants kept pointing at
+  // ground 4.9 km from any wood, and the test reported "no squirrel anywhere" -
+  // which reads as a broken viewer rather than as a stale constant.
+  ...findDenseWoods(4),
 ];
+
+// Pixels of full canopy below the squirrel's ceiling, spread out so four sites are
+// four different woods rather than four corners of one. Derived from the same two
+// shipped files the viewer itself loads, so it cannot disagree with them.
+function findDenseWoods(want) {
+  const forestManifest = JSON.parse(readFileSync(new URL('../public/data/forest.json', import.meta.url), 'utf8'));
+  const { values, width, height } = readQuantisedMask(new URL(`../public/data/${forestManifest.file.name}`, import.meta.url).pathname);
+  const hfManifest = JSON.parse(readFileSync(new URL('../public/data/heightfield.json', import.meta.url), 'utf8'));
+  const heights = decodeHeightfield(
+    readFileSync(new URL(`../public/data/${hfManifest.file.name}`, import.meta.url)), hfManifest,
+  );
+  const { xmin, ymin, xmax, ymax } = hfManifest.bboxCrsUnits;
+  const worldWidth = xmax - xmin;
+  const worldDepth = ymax - ymin;
+
+  const found = [];
+  const APART_M = 5000;
+  // A coarse stride: any full-canopy pixel will do, and stepping 20 keeps this
+  // under a second over an 11.6 Mpx mask.
+  for (let row = 0; row < height && found.length < want; row += 20) {
+    for (let col = 0; col < width && found.length < want; col += 20) {
+      if (values[row * width + col] < 255) continue;
+      const x = ((col + 0.5) / width) * worldWidth - worldWidth / 2;
+      const z = worldDepth / 2 - ((row + 0.5) / height) * worldDepth;
+      const elev = sampleHeightfield(heights, hfManifest, x, z);
+      if (!(elev > 600 && elev < 2200)) continue;
+      if (found.some((f) => Math.hypot(f.x - x, f.z - z) < APART_M)) continue;
+      found.push({ name: `dense wood ${Math.round(elev)} m`, x: Math.round(x), z: Math.round(z) });
+    }
+  }
+  if (found.length < want) {
+    throw new Error(`only ${found.length} dense-wood sites of ${want} found in ${forestManifest.file.name} - `
+      + 'the canopy mask or the heightfield is not what this expects');
+  }
+  return found;
+}
 
 const HABITAT = {
   ibex: { elevMin: 2000, elevMax: 3400, slopeMin: 18, slopeMax: 58, canopyMax: 0.18 },
@@ -92,6 +133,11 @@ const result = await page.evaluate(async ({ sites, dt }) => {
   renderer.setAnimationLoop(null);
 
   const THREE = await import('/node_modules/three/build/three.module.js');
+  // Each species' own orientation baseline, from the module under test rather
+  // than from a copy here that could drift from it - the same arrangement
+  // src/terrain.js has with tools/test-terrain-albedo.mjs.
+  const { MODEL_SPECIES } = await import('/src/wildlife.js');
+  const ORIENT_BASE_M = Object.fromEntries(MODEL_SPECIES.map((s) => [s.name, s.orientBaseM]));
   const matrix = new THREE.Matrix4();
   const pos = new THREE.Vector3();
   const meshes = scene.getObjectByName('wildlife').children;
@@ -123,16 +169,38 @@ const result = await page.evaluate(async ({ sites, dt }) => {
   visit({ x: site.x + 4000, z: site.z + 4000 }, 5);
   const after = visit(site, 30).map((a) => `${a.species}@${a.x.toFixed(2)},${a.z.toFixed(2)}`);
 
-  // 5: swing must change over a few frames for something that is walking, and
-  // the ground height each animal was placed at must match the sampler.
-  const swingTrack = [];
+  // 5: swing must change for something that is walking, and the ground height
+  // each animal was placed at must match the sampler.
+  //
+  // THE WINDOW HAS TO OUTLAST A GRAZE, and for a long time it did not. It was 12
+  // frames at dt = 1/60, i.e. 0.2 s, against graze timers of 3.5 to 9 s - so the
+  // test only passed when it happened to catch an animal already mid-stride, and
+  // "no animal ever changed its leg swing" meant "none of the forty was walking
+  // during one fifth of a second". It went red on 2026-08-18 for exactly that
+  // reason, after new terrain reshuffled where the herds stand, and the gait was
+  // never broken. 600 frames is 10 s, past the longest graze in SPECIES.
+  //
+  // It stops at the first change rather than recording every frame: a pass is
+  // then quick and cheap, and a failure reports how long it really watched.
+  const SWING_FRAMES = 600;
+  let swingChangedAt = -1;
+  let swingFramesWatched = 0;
+  let swingAnimals = 0;
   const busiest = sites.reduce((best, s) => (visit(s, 20).length > (best.n ?? 0)
     ? { site: s, n: wildlife.snapshot().length } : best), {});
   if (busiest.site) {
     camera.position.set(busiest.site.x, 0, busiest.site.z);
-    for (let f = 0; f < 12; f++) {
+    let previous = wildlife.snapshot().map((a) => a.swing);
+    swingAnimals = previous.length;
+    for (let f = 0; f < SWING_FRAMES; f++) {
       wildlife.update(dt, camera);
-      swingTrack.push(wildlife.snapshot().map((a) => a.swing));
+      const now = wildlife.snapshot().map((a) => a.swing);
+      swingFramesWatched = f + 1;
+      if (now.length === previous.length && now.some((s, j) => s !== previous[j])) {
+        swingChangedAt = f + 1;
+        break;
+      }
+      previous = now;
     }
   }
 
@@ -193,7 +261,19 @@ const result = await page.evaluate(async ({ sites, dt }) => {
         // space. Normalised because the matrix also carries the animal's scale.
         const bodyUp = new THREE.Vector3(matrix.elements[4], matrix.elements[5], matrix.elements[6]).normalize();
         const h = window.__pngp.controls.getGroundHeight;
-        const b = 0.5; // any baseline inside one 20.5 m facet gives the same gradient
+        // THE SAME BASELINE THE MODULE ORIENTED WITH, taken from its own SPECIES
+        // table rather than picked here. This used to read `const b = 0.5`, with
+        // a note that any baseline inside one 20.5 m facet gives the same
+        // gradient - which is true only away from a facet EDGE. src/wildlife.js
+        // measures over about the animal's own length (1.5 m for an ibex) for
+        // exactly that reason: one standing across a cell boundary should average
+        // the two facets instead of snapping between them. So a 0.5 m probe and a
+        // 1.5 m body disagree by design wherever an edge falls between them, and
+        // on 30 degree ground that disagreement reached 14.4 degrees on
+        // 2026-08-18 - after new terrain moved the cell boundaries under a herd
+        // that had not moved. Nothing was misaligned: the worst foot in that same
+        // run was 4 cm off the ground.
+        const b = ORIENT_BASE_M[mesh.name.replace('wildlife-', '')] ?? 0.5;
         const normal = new THREE.Vector3(
           -(h(pos.x + b, pos.z) - h(pos.x - b, pos.z)) / (2 * b),
           1,
@@ -314,7 +394,10 @@ const result = await page.evaluate(async ({ sites, dt }) => {
     bailout,
     capacities: meshes.map((m) => ({ species: m.name, count: m.count, capacity: m.instanceMatrix.count })),
     determinism: { before, after },
-    swingTrack,
+    swingChangedAt,
+    swingFramesWatched,
+    swingAnimals,
+    swingSeconds: swingFramesWatched * dt,
     approach,
     hiding,
     groundCheck: drawn.slice(0, 40).map((d) => ({
@@ -395,9 +478,11 @@ if (!same) {
 }
 
 // 5. Legs moving, and nothing over capacity.
-const moved = result.swingTrack.length > 1
-  && result.swingTrack.some((frame, i) => i > 0 && frame.some((s, j) => s !== result.swingTrack[i - 1][j]));
-console.log(`swing changes across ${result.swingTrack.length} frames: ${moved}`);
+const moved = result.swingChangedAt > 0;
+console.log(`\nleg swing, watching ${result.swingAnimals} animals at the busiest site:`);
+console.log(moved
+  ? `  first change after ${result.swingChangedAt} frames (${(result.swingChangedAt / 60).toFixed(2)} s)`
+  : `  none in ${result.swingFramesWatched} frames (${result.swingSeconds.toFixed(1)} s) - longer than any graze timer`);
 if (!moved) {
   console.log('\nFAIL: no animal ever changed its leg swing - the gait is not being driven.');
   failures++;
