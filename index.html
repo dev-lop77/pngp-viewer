@@ -299,6 +299,55 @@
            primary way to select a POI (docs/PROGRESS.md). */
         pointer-events: auto;
       }
+      /* The trail number/name shown when you are near a trace (src/trails.js).
+         Deliberately quieter than a POI label and NOT clickable: it answers
+         "which trail is this" while you walk, and a click target under the
+         cursor there would compete with the POI names for the same click. The
+         accent matches the trail lines themselves. */
+      .trail-label {
+        padding: 1px 5px;
+        background: rgba(10, 14, 20, 0.55);
+        border-left: 3px solid #b3261e;
+        border-radius: 3px;
+        color: #f2e6e4;
+        font: 10px/1.3 -apple-system, system-ui, sans-serif;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+        white-space: nowrap;
+        pointer-events: none;
+      }
+      /* The Alta Via waymark: the real thing painted on the rocks - a yellow
+         triangle with the route number in it (src/trails.js). Fixed pixel size
+         on purpose, since the whole point is being readable from across a
+         valley, where a scaled one would be a speck. clip-path rather than the
+         border trick because the number has to sit INSIDE the triangle; the
+         drop-shadow stands in for the outline clip-path forbids. */
+      .av-badge {
+        width: 24px;
+        height: 22px;
+        /* The rounded corners the user asked for come from the SVG's own stroke
+           (src/trails.js): a clip-path cuts, so it can only ever give sharp
+           vertices, while stroking the triangle in its own colour with a round
+           line join grows it slightly and rounds every corner. */
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.75));
+        pointer-events: none;
+      }
+      .av-badge svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+      .av-badge path {
+        fill: #f2c200;
+        stroke: #f2c200;
+        stroke-width: 4.5;
+        stroke-linejoin: round;
+      }
+      .av-badge text {
+        fill: #101010;
+        font: 700 9px/1 -apple-system, system-ui, sans-serif;
+        text-anchor: middle;
+      }
       #controls-hint {
         position: fixed;
         bottom: 8px;
@@ -320,7 +369,7 @@
         text-align: center;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-BqkSymMt.js"></script>
+    <script type="module" crossorigin src="./assets/index-DhEQH_zC.js"></script>
   </head>
   <body>
     <div id="credits-box">
