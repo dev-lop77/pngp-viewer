@@ -651,7 +651,10 @@ function registerSeatable(entry) {
 }
 // The forest roads ride along with the other OSM layers: same licence line,
 // same re-seating, and like the trails they are geometry with no update loop.
-loadRoads().then(({ group, manifest, alignToGround }) => {
+let roadsLayer = null;
+loadRoads().then((result) => {
+  const { group, manifest, alignToGround } = result;
+  roadsLayer = result; // for the resize handler: a fat line's width is in screen pixels
   scene.add(group);
   registerSeatable({ name: 'roads', alignToGround });
   creditLines.osm =
@@ -864,6 +867,10 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   labelRenderer.setSize(window.innerWidth, window.innerHeight);
+  // The fat lines (roads, and the Alta Via casing) measure their width in screen
+  // pixels, so they need the new canvas size or they scale with the window.
+  roadsLayer?.setResolution(window.innerWidth, window.innerHeight);
+  trailsLayer?.setResolution(window.innerWidth, window.innerHeight);
 });
 
 const envTime = document.getElementById('env-time');

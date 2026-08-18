@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import { attachAtmo } from './atmosphere.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { attachAtmoFatLine } from './atmosphere.js';
 
 // The forest roads (OSM highway=track, public/data/roads.json), asked for by
 // the user on 2026-08-18 with the Thumel -> Rifugio Benevolo road as the case
@@ -16,6 +19,20 @@ import { attachAtmo } from './atmosphere.js';
 // finer distinction is ever wanted; nothing reads them yet.
 const ROAD_COLOR = 0xffffff;
 
+// TWICE AS THICK, on the user's second look: "fai la strada spessa il doppio".
+// Which is why this is a LineSegments2 (three's addons fat lines) and not the
+// plain LineSegments it was for its first hour of life - WebGL ignores
+// LineBasicMaterial.linewidth entirely (ANGLE clamps it to 1), so a thicker
+// line is not a parameter, it is a different mechanism: each segment becomes a
+// screen-space-extruded quad.
+//
+// PIXELS, not metres, and deliberately: a real 5 m road drawn to scale is
+// sub-pixel from across the valley, where it would flicker and then vanish -
+// and seeing where the roads go from a distance is most of why they are here.
+// So the width is 2 px at every distance, exactly twice the 1 px the trails
+// draw at.
+const ROAD_WIDTH_PX = 2;
+
 // Same clearance as trails.js, for the same reason: just enough to keep the
 // line off the surface it lies on, with alignToGround() below doing the real
 // work of putting it on the surface the terrain actually draws.
@@ -27,21 +44,31 @@ const HEIGHT_OFFSET_M = 1.5;
 export async function loadRoads(dataUrl = `${import.meta.env.BASE_URL}data`) {
   const data = await fetch(`${dataUrl}/roads.json`).then((r) => r.json());
 
-  const positions = [];
+  const points = [];
   for (const road of data.roads) {
     for (let i = 1; i < road.line.length; i++) {
       const [x0, y0, z0] = road.line[i - 1];
       const [x1, y1, z1] = road.line[i];
-      positions.push(x0, y0 + HEIGHT_OFFSET_M, z0, x1, y1 + HEIGHT_OFFSET_M, z1);
+      points.push(x0, y0 + HEIGHT_OFFSET_M, z0, x1, y1 + HEIGHT_OFFSET_M, z1);
     }
   }
+  // Kept as our own Float32Array: LineSegmentsGeometry wraps this exact buffer,
+  // so alignToGround() below can re-seat the road by writing into it instead of
+  // rebuilding the interleaved attributes.
+  const positions = new Float32Array(points);
 
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  const segments = new THREE.LineSegments(
-    geometry,
-    attachAtmo(new THREE.LineBasicMaterial({ color: ROAD_COLOR })),
+  const geometry = new LineSegmentsGeometry();
+  geometry.setPositions(positions);
+  const material = attachAtmoFatLine(
+    new LineMaterial({
+      color: ROAD_COLOR,
+      linewidth: ROAD_WIDTH_PX,
+      // A screen-space width has to know the screen: main.js keeps this in step
+      // with the canvas through setResolution() below.
+      resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
+    }),
   );
+  const segments = new LineSegments2(geometry, material);
   segments.name = 'roads-track';
 
   const group = new THREE.Group();
@@ -53,14 +80,19 @@ export async function loadRoads(dataUrl = `${import.meta.env.BASE_URL}data`) {
   // true heightfield elevations, which is not the surface drawn wherever the
   // tile grid is coarser than the 20.5 m data or the height tier is on.
   function alignToGround(heightAt) {
-    const attr = geometry.getAttribute('position');
-    const a = attr.array;
-    for (let i = 0; i < a.length; i += 3) {
-      a[i + 1] = heightAt(a[i], a[i + 2]) + HEIGHT_OFFSET_M;
+    for (let i = 0; i < positions.length; i += 3) {
+      positions[i + 1] = heightAt(positions[i], positions[i + 2]) + HEIGHT_OFFSET_M;
     }
-    attr.needsUpdate = true;
-    geometry.computeBoundingSphere(); // moved vertices would otherwise cull against a stale bound
+    // The interleaved buffer is a view onto `positions`, so flagging it is
+    // enough - and the bounding sphere has to be redone or the moved geometry
+    // culls against a stale bound.
+    geometry.attributes.instanceStart.data.needsUpdate = true;
+    geometry.computeBoundingSphere();
   }
 
-  return { group, manifest: data, alignToGround };
+  function setResolution(width, height) {
+    material.resolution.set(width, height);
+  }
+
+  return { group, manifest: data, alignToGround, setResolution };
 }
