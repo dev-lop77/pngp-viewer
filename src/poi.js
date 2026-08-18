@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { attachAtmo } from './atmosphere.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { isHiddenByTerrain } from './labels.js';
 
 const CATEGORY_STYLE = {
   peak: { color: 0xffffff },
@@ -52,23 +53,8 @@ const LABEL_MIN_OFFSET_M = 1.5; // roughly eye height - the name lands where you
 const LABEL_OFFSET_PER_M = 0.02;
 const LABEL_MAX_DIST_M = 1500; // beyond this, hidden - decluttering at ground level (§10)
 
-// Labels are DOM (CSS2DObject), so unlike the WebGL marker lines they are not
-// depth-tested and would otherwise show straight through a mountain - the user
-// confirmed that reads as annoying (docs/PROGRESS.md 2026-08-03). Fixed by
-// walking the line of sight and asking whether the drawn terrain rises above
-// it, which is only possible because sampleRenderedHeightfield() reconstructs
-// that surface analytically - a Raycaster can't do this here (it sees the
-// undisplaced CPU plane, docs/PROGRESS.md) and a depth-buffer readback would
-// stall the pipeline every frame.
-// Sized to the drawn surface's own worst-case error, not picked by eye: with
-// the LOD terrain it deviates from the true heightfield by a measured max of
-// 7.73 m (mean 0.38 m - tools/test-rendered-height.mjs), so 10 m is just past
-// where a deviation can be geometry error rather than a real ridge. This was
-// briefly 30 m, when the old 328 m mesh was 29.2 m off on average and drew
-// summits 130 m low; the LOD work removed the need for that slack.
-const OCCLUSION_MARGIN_M = 10;
-const OCCLUSION_STEP_M = 40; // ~1/8 of a 328 m terrain quad - fine enough to catch a ridge crest
-const OCCLUSION_MAX_STEPS = 40;
+// Labels are DOM (CSS2DObject) and therefore not depth-tested: whether the
+// terrain hides one is decided by src/labels.js, shared with the trail labels.
 // Sink each marker line's base slightly below the ground so it reads as
 // planted in the surface - a line ending exactly at the drawn height can
 // still show a hairline gap depending on the viewing angle.
@@ -153,26 +139,6 @@ export async function loadPOI(dataUrl = `${import.meta.env.BASE_URL}data`, { onS
     updateMarkers(null); // seat geometry now; the per-tick pass then tracks camera distance
   }
 
-  // Is the drawn terrain between the camera and this label? Only the XZ path
-  // is stepped - the sight line's own height is interpolated linearly, which
-  // is exact for a straight ray.
-  function isHiddenByTerrain(camera, target) {
-    if (!groundHeightAt) return false;
-    const { x: cx, y: cy, z: cz } = camera.position;
-    const dx = target.x - cx;
-    const dy = target.y - cy;
-    const dz = target.z - cz;
-    const steps = Math.min(OCCLUSION_MAX_STEPS, Math.max(4, Math.round(Math.hypot(dx, dz) / OCCLUSION_STEP_M)));
-    // Skips t=0 and t=1: at the camera end the ground is right under our feet
-    // and at the label end it sits above the ground by construction, so both
-    // ends would only ever produce false positives.
-    for (let i = 1; i < steps; i++) {
-      const t = i / steps;
-      if (groundHeightAt(cx + dx * t, cz + dz * t) > cy + dy * t + OCCLUSION_MARGIN_M) return true;
-    }
-    return false;
-  }
-
   // One pass per HUD tick over every marker: how high its label floats, where
   // its line's top vertex goes, and whether the label is shown at all - all
   // three follow from the same camera distance.
@@ -200,7 +166,7 @@ export async function loadPOI(dataUrl = `${import.meta.env.BASE_URL}data`, { onS
       writeMarker(attr.array, index, poi.local.x, poi.local.z, groundY, offset);
       object.position.set(poi.local.x, groundY + offset, poi.local.z);
       object.visible = camera
-        ? dist <= LABEL_MAX_DIST_M && !isHiddenByTerrain(camera, object.position)
+        ? dist <= LABEL_MAX_DIST_M && !isHiddenByTerrain(groundHeightAt, camera, object.position)
         : false;
     }
     for (const geometry of geometries) {

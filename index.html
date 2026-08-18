@@ -299,6 +299,22 @@
            primary way to select a POI (docs/PROGRESS.md). */
         pointer-events: auto;
       }
+      /* The trail number/name shown when you are near a trace (src/trails.js).
+         Deliberately quieter than a POI label and NOT clickable: it answers
+         "which trail is this" while you walk, and a click target under the
+         cursor there would compete with the POI names for the same click. The
+         accent matches the trail lines themselves. */
+      .trail-label {
+        padding: 1px 5px;
+        background: rgba(10, 14, 20, 0.55);
+        border-left: 3px solid #b3261e;
+        border-radius: 3px;
+        color: #f2e6e4;
+        font: 10px/1.3 -apple-system, system-ui, sans-serif;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+        white-space: nowrap;
+        pointer-events: none;
+      }
       #controls-hint {
         position: fixed;
         bottom: 8px;
