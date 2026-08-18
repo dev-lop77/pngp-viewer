@@ -182,8 +182,11 @@ const manifest = {
   },
   file: { name: fileName, bytes: buffer.byteLength, sha256Prefix: sha256 },
   // meta.sources (docs/ARCHITECTURE.md §3, "Closing the Piemonte gap"):
-  // a 3-source priority mosaic (VDA/Piemonte WCS/TINITALY), not a single
-  // dataset - written by tools/dtm-source/merge-heightmaps.sh. Falls back
+  // a 4-source priority mosaic (VDA/Piemonte WCS/TINITALY/Copernicus GLO-30),
+  // not a single dataset - written by tools/dtm-source/merge-heightmaps.sh.
+  // Copied through WHOLE rather than field by field, which is what lets a source
+  // carry obligations this file has never heard of (licenseUrl, liabilityNotice)
+  // all the way to the credits panel. Falls back
   // to the old single-source shape if meta predates that (shouldn't
   // happen on a fresh extraction, but avoids a hard crash on stale data).
   source: {

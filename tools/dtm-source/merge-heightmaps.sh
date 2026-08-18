@@ -49,6 +49,7 @@ TINITALY_ATTRIBUTION_FILE="$HOME/pngp-dtm-work/tinitaly/ATTRIBUTION.txt"
 # frontier crest ended in a 2,600 m cliff down to a flat 238.5 m floor.
 COPERNICUS_VRT="$HOME/pngp-dtm-work/copernicus/copernicus.vrt"
 COPERNICUS_ATTRIBUTION_FILE="$HOME/pngp-dtm-work/copernicus/ATTRIBUTION.txt"
+COPERNICUS_LIABILITY_FILE="$HOME/pngp-dtm-work/copernicus/LIABILITY.txt"
 OUT_DIR="$HOME/pngp-dtm-work/merged"
 
 # The target bbox lives in one place now - see the file for why.
@@ -203,6 +204,10 @@ WIDTH=$(echo "$SIZE_INFO" | sed -E 's/Size is ([0-9]+), ([0-9]+)/\1/')
 HEIGHT=$(echo "$SIZE_INFO" | sed -E 's/Size is ([0-9]+), ([0-9]+)/\2/')
 
 TINITALY_ATTRIBUTION=$(cat "$TINITALY_ATTRIBUTION_FILE" 2>/dev/null || echo "TINITALY, INGV - CC BY 4.0")
+# No fallback for these two: the Copernicus licence prescribes their wording,
+# so a guessed default would be a licence breach that looks like a credit.
+COPERNICUS_ATTRIBUTION=$(cat "$COPERNICUS_ATTRIBUTION_FILE")
+COPERNICUS_LIABILITY=$(cat "$COPERNICUS_LIABILITY_FILE")
 
 META_OUT="$OUT_DIR/pngp_heightmap_meta.json"
 cat > "$META_OUT" <<EOF
@@ -241,6 +246,19 @@ cat > "$META_OUT" <<EOF
       "fetchedVia": "tools/dtm-source/fetch-tinitaly.sh",
       "license": "CC BY 4.0",
       "attribution": "$TINITALY_ATTRIBUTION"
+    },
+    {
+      "name": "Copernicus DEM GLO-30 (COP-DEM-GLO-30-F)",
+      "priority": 4,
+      "coverage": "The French and Swiss margin across the frontier, where no Italian source reaches - never overwrites an Italian pixel. 30 m, and a DSM rather than a DTM.",
+      "fetchedVia": "tools/dtm-source/fetch-copernicus-dem.sh",
+      "license": "Licence for Copernicus DEM instance COP-DEM-GLO-30-F Global 30m Full, Free & Open - NOT CC BY 4.0, do not group it with the three above",
+      "licenseUrl": "https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Data/DEM/resources/license/License-COPDEM-30.pdf",
+      "licenseVerifiedVia": "Licence read in full on 2026-08-18. Article 4 grants reproduction, distribution, communication to the General Public, and adaptation/modification, worldwide and without limitation in time; Article 5 makes it free of charge. Instance confirmed via https://registry.opendata.aws/copernicus-dem/ (bucket copernicus-dem-30m holds GLO-30 Public, mirrored by Sinergise) and https://dataspace.copernicus.eu/explore-data/data-collections/copernicus-contributing-missions/collections-description/COP-DEM",
+      "attribution": "$COPERNICUS_ATTRIBUTION",
+      "attributionNote": "Verbatim from Article 6(b), the form prescribed for ADAPTED or modified data - which this mosaic is. Not paraphrasable, and not interchangeable with the 6(a) form for unmodified data.",
+      "liabilityNotice": "$COPERNICUS_LIABILITY",
+      "liabilityNote": "Verbatim from Article 6(c). A second, separate obligation: it must accompany any distribution or communication to the General Public, and it is not an attribution, which is exactly why it is easy to drop."
     }
   ]
 }
@@ -248,6 +266,6 @@ EOF
 
 echo
 echo "Done. Outputs in $OUT_DIR:"
-echo "  - merged.tif               Float32 GeoTIFF, real meters, all 3 sources - keep as the master copy"
+echo "  - merged.tif               Float32 GeoTIFF, real meters, all 4 sources - keep as the master copy"
 echo "  - pngp_heightmap.png       16-bit grayscale - copy into the repo's DEM/ folder"
 echo "  - pngp_heightmap_meta.json calibration sidecar incl. sources[] - copy alongside the PNG"

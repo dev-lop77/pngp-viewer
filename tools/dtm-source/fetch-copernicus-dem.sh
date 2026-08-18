@@ -26,11 +26,32 @@
 # Access: the AWS Open Data mirror, plain unauthenticated HTTPS, one COG per
 # 1x1 degree tile. No account, no credentials, no S3 client.
 #
-# LICENCE - NOT YET VERIFIED TO THIS PROJECT'S STANDARD. The other three
-# sources each had their licence read and recorded (docs/ARCHITECTURE.md §3,
-# the VDA one down to the verbatim wording it prescribes). Copernicus DEM is
-# published free of charge for any use with attribution, but the exact
-# instance/edition terms should be read before this ships publicly.
+# LICENCE - READ AND VERIFIED 2026-08-18, and it permits everything this project
+# does. The instance is COP-DEM-GLO-30-F, "Global 30m Full, Free & Open": the AWS
+# Open Data bucket below is the GLO-30 Public mirror run by Sinergise, and GLO-30
+# Public is that instance. Licence text:
+# https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Data/DEM/resources/license/License-COPDEM-30.pdf
+#
+# Article 4 grants, non-exclusively, worldwide and without limitation in time:
+# (a) reproduction, (b) distribution, (c) communication to the General Public,
+# (d) adaptation, modification and combination with other data. Article 5 makes
+# it free of charge. There is no non-commercial clause and no share-alike, so it
+# is more permissive than the ODbL this project already ships under - but it is
+# NOT CC BY 4.0, and must not be credited as though it were.
+#
+# THREE OBLIGATIONS, and the wording of the first two is prescribed, so it is
+# reproduced verbatim below and must not be paraphrased:
+#   Art. 6(b) - this project's use is ADAPTED (warped, mosaicked, resampled,
+#               quantised), so the "produced using" form is the one that applies,
+#               not the plain notice in 6(a).
+#   Art. 6(c) - a liability disclaimer that has to travel with any distribution or
+#               communication to the General Public. It is easy to miss because it
+#               is not an attribution, and it is just as compulsory.
+#   Art. 6(d) - nothing may suggest the Provider or the Copernicus programme
+#               endorses this project.
+#
+# Article 9 keeps the IPR with Airbus Defence and Space; this licence conveys use
+# rights only, and grants no right to their trademarks or logos.
 #
 # Usage: bash fetch-copernicus-dem.sh
 
@@ -40,14 +61,20 @@ set -euo pipefail
 OUT_DIR="$HOME/pngp-dtm-work/copernicus"
 BUCKET_URL="https://copernicus-dem-30m.s3.eu-central-1.amazonaws.com"
 
-ATTRIBUTION="Copernicus DEM GLO-30. Produced using Copernicus WorldDEM-30 (c) DLR e.V. 2010-2014 and (c) Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved."
+# Verbatim from Article 6(b) - the form for adapted or modified data. Do not
+# reword, do not drop the copyright symbols, do not "tidy" the date ranges.
+ATTRIBUTION="produced using Copernicus WorldDEM-30 \u00a9 DLR e.V. 2010-2014 and \u00a9 Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved"
+# Verbatim from Article 6(c). A separate obligation from the attribution, and it
+# has to reach the same audience.
+LIABILITY="The organisations in charge of the Copernicus programme by law or by delegation do not incur any liability for any use of the Copernicus WorldDEM-30"
 # --------------------
 
 # The target bbox lives in one place now - see the file for why.
 source "$(dirname "${BASH_SOURCE[0]}")/bbox.sh"
 
 mkdir -p "$OUT_DIR"
-echo "$ATTRIBUTION" > "$OUT_DIR/ATTRIBUTION.txt"
+printf '%b\n' "$ATTRIBUTION" > "$OUT_DIR/ATTRIBUTION.txt"
+printf '%s\n' "$LIABILITY" > "$OUT_DIR/LIABILITY.txt"
 
 # Which 1-degree tiles the bbox touches. The tile grid is in WGS84 while the
 # bbox is EPSG:23032, so this transforms the four corners rather than assuming
@@ -109,5 +136,8 @@ gdalinfo "$VRT_OUT" | grep -E "Size is|Upper Left|Lower Right|Pixel Size"
 
 echo
 echo "Done: $VRT_OUT"
-echo "Attribution recorded in $OUT_DIR/ATTRIBUTION.txt - it must reach the"
-echo "site's credits panel, like the other three sources."
+echo "Attribution recorded in $OUT_DIR/ATTRIBUTION.txt and the Article 6(c)"
+echo "liability notice in $OUT_DIR/LIABILITY.txt. BOTH must reach the site's"
+echo "credits panel - the second one is not an attribution and is just as"
+echo "compulsory. merge-heightmaps.sh carries them into the heightmap sidecar,"
+echo "which is where src/main.js builds the credits from."

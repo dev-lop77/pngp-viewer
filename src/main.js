@@ -146,7 +146,7 @@ window.addEventListener('keydown', (event) => {
 const creditLines = {};
 // Fixed order rather than Object.values(): the keys are filled in by whichever
 // fetch finishes first, so the overlay used to reshuffle between loads.
-const CREDIT_ORDER = ['dem', 'basemap', 'trails', 'osm', 'modified'];
+const CREDIT_ORDER = ['dem', 'demLiability', 'basemap', 'trails', 'osm', 'modified'];
 function renderCredits() {
   document.getElementById('credits').innerHTML = CREDIT_ORDER.filter((k) => creditLines[k])
     .map((k) => creditLines[k])
@@ -198,9 +198,33 @@ const terrainPromise = loadTerrain().then((result) => {
     // TINITALY's requested citation already ends in "- CC BY 4.0"; strip that so
     // the single licence link below doesn't read as "CC BY 4.0 CC BY 4.0".
     const cite = (s) => s.attribution.replace(/\s*[-–]\s*CC BY 4\.0\.?$/i, '');
-    creditLines.dem =
-      `${attributed.map(cite).join(' ')} ` +
-      `<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>`;
+    // NOT ALL FOUR SOURCES ARE CC BY 4.0, and until 2026-08-18 this line said they
+    // were: it joined every attribution into one string and put a single CC BY 4.0
+    // link after it. That was true while the mosaic had three Italian sources and
+    // false the moment Copernicus WorldDEM-30 joined, which carries its own licence.
+    // Mis-stating someone's licence in a credits panel is worse than omitting them.
+    const isCcBy = (s) => /^CC BY 4\.0$/i.test(s.license ?? '');
+    const parts = [];
+    const ccby = attributed.filter(isCcBy);
+    if (ccby.length) {
+      parts.push(`${ccby.map(cite).join(' ')} `
+        + `<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>`);
+    }
+    for (const s of attributed.filter((x) => !isCcBy(x))) {
+      parts.push(s.licenseUrl
+        ? `${cite(s)} (<a href="${s.licenseUrl}" target="_blank" rel="noopener">licence</a>)`
+        : cite(s));
+    }
+    creditLines.dem = parts.join('<br>');
+
+    // A source can oblige us to say something that is NOT an attribution, and the
+    // Copernicus DEM licence does: Article 6(c) requires a liability disclaimer to
+    // travel with any communication to the general public. It is easy to lose
+    // precisely because it reads like boilerplate rather than like a credit, so it
+    // is carried in the manifest as its own field and rendered as its own line.
+    const liabilities = manifest.source.sources.map((s) => s.liabilityNotice).filter(Boolean);
+    if (liabilities.length) creditLines.demLiability = liabilities.join(' ');
+
     renderCredits();
   }
 
