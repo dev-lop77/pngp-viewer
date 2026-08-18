@@ -18,7 +18,7 @@
 //                  the context has no preserveDrawingBuffer, so a drawImage()
 //                  readback after the frame is presented returns an empty buffer
 //                  and reports 0.000 for everything without complaining
-//                  (docs/PROGRESS.md 2026-08-11). The screenshot also carries ACES
+//                  (docs/PROGRESS-ARCHIVE.md 2026-08-11). The screenshot also carries ACES
 //                  and toneMappingExposure, which for the sky is most of what
 //                  decides the colour - a linear render target would be measuring
 //                  a different sky than the one anybody sees.
@@ -28,7 +28,7 @@
 // in the frame differing. And the suite asserts that the pin MOVED THE SKY, not
 // merely that it set a field: the basemap suite passed for free once by pinning a
 // second module instance that Vite had handed it, with "photo" and "procedural"
-// identical to the byte (docs/PROGRESS.md 2026-08-11). A test that pins a shared
+// identical to the byte (docs/PROGRESS-ARCHIVE.md 2026-08-11). A test that pins a shared
 // holder must prove the pin did something.
 //
 // Usage: tools/dev/start-dev.sh && node tools/test-sky.mjs

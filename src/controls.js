@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
-// Walk/fly navigation (phase 5 follow-up, docs/PROGRESS.md 2026-07-31):
+// Walk/fly navigation (phase 5 follow-up, docs/PROGRESS-ARCHIVE.md 2026-07-31):
 // replaces OrbitControls as the primary way to move through the scene, per
 // the user's explicit request after testing phase 5 - default is walking
 // at human eye-height, ground-clamped via the terrain's own sampleHeight();
@@ -309,7 +309,7 @@ export class WalkFlyControls {
     // Deliberately NOT gated on this.locked: keyboard movement works with or
     // without pointer lock, only mouse-look needs the lock. Requiring it
     // meant pressing Esc to click a POI label also froze movement, which the
-    // user reported as broken navigation (docs/PROGRESS.md 2026-08-03) - and
+    // user reported as broken navigation (docs/PROGRESS-ARCHIVE.md 2026-08-03) - and
     // with the screen-centre reticle removed, releasing the lock to click a
     // label or the search box is now the normal way to select a POI.
     if (!this.enabled) return;

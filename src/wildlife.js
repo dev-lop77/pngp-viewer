@@ -281,7 +281,7 @@ function part(geometry, color, { swing = 0, pivotY = 0 } = {}) {
   // ONE sRGB->linear conversion: three's ColorManagement does it inside the
   // Color constructor, and colour ATTRIBUTES are read as working space already.
   // Never also call convertSRGBToLinear() - that double gamma is a documented
-  // trap in this project (docs/PROGRESS.md 2026-08-03).
+  // trap in this project (docs/PROGRESS-ARCHIVE.md 2026-08-03).
   const c = new THREE.Color(color);
   for (let i = 0; i < n; i++) {
     colors[i * 3] = c.r;

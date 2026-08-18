@@ -117,7 +117,7 @@ export function sampleHeightfield(heights, manifest, x, z) {
 // 1.7 m eye height. Using the bilinear value to place the camera therefore
 // put it *under* the drawn surface in concave spots (see-through terrain when
 // looking around) and left POI marker lines hanging in mid-air on convex
-// ones - both reported from a real-browser test, docs/PROGRESS.md 2026-08-03.
+// ones - both reported from a real-browser test, docs/PROGRESS-ARCHIVE.md 2026-08-03.
 //
 // This reproduces the drawn geometry exactly rather than approximating it:
 // the mesh's corner heights come from this same heightfield, and the vertex

@@ -1,5 +1,9 @@
 # PNGP Viewer — Architecture
 
+> **Before editing rendering, colour or build code, read §13 — Landmines.** It is
+> at the end because the twelve sections before it are numbered and cross-referenced
+> from ~57 places in `src/` and `tools/`, not because it is the least important.
+
 ## 1. Vision
 
 A navigable 3D web viewer for the Gran Paradiso National Park (Parco Nazionale
@@ -2041,8 +2045,83 @@ before assuming anything below is still unresolved.
    widened + 750 m boundary buffer, 4 → 38. Trailheads: a hand-curated
    22-row allowlist in `tools/trailheads.json`, keyed on OSM **id** rather than
    name, since no buffer separates the wanted valley bases from ~100–190
-   alpine-pasture toponyms. What remains is not a policy question but a data
-   one: **Ceresole Reale, Noasca, Locana, Rosone and Talosio sit 0.87–4.9 km
-   south of the DEM bbox**, so there is no terrain under them. Adding those
-   needs a new heightmap extraction (§3) — a decision about the bbox, not about
-   POI filtering.
+   alpine-pasture toponyms. The data question that remained — ~~Ceresole Reale,
+   Noasca, Locana, Rosone and Talosio sit 0.87–4.9 km south of the DEM bbox, so
+   there is no terrain under them~~ — was **RESOLVED 2026-08-18**: the bbox moved
+   south (§3, "The park was 18% off the map"), which was indeed a decision about
+   the bbox rather than about POI filtering, and it turned out to be worth 18% of
+   the national park rather than five villages.
+
+
+## 13. Landmines
+
+Each of these has cost real time at least once, and most of them cost it twice.
+They are collected here because they were scattered through `docs/PROGRESS.md`,
+which is a chronology - the wrong shape for something you need *before* you make
+the mistake. This is an index: the detail stays where it happened, and the
+pointers say where.
+
+**Shader and colour**
+
+1. **`onBeforeCompile` receives UNRESOLVED `#include` directives.** Patch the
+   directive, never the inlined chunk body — three resolves includes later, inside
+   `WebGLProgram`. A replacement that matches nothing fails **silently**: that is
+   how the RG8 height-decoding bug survived five phases while the terrain looked
+   plausible. Every shader edit goes through a `patch()` helper that throws on an
+   unmatched marker (`src/terrain.js`, `vegetation.js`, `wildlife.js`). Never add
+   a `.replace()` that skips it.
+2. **Albedo is not appearance.** three's Lambert BRDF divides by π, so a
+   natural-looking hex renders very nearly black under this rig. The washed-out
+   swatches in the code are **correct** and must not be "fixed" by darkening —
+   solve them backwards with `tools/dev/solve-albedo.mjs` (§5).
+3. **`new THREE.Color(hex)` already converts sRGB → linear.** Calling
+   `convertSRGBToLinear()` on top applies a second gamma: `0x6d` became 0.020
+   instead of 0.153. Colour *attributes* (`src/wildlife.js`) are read as working
+   space, so the constructor is the one and only conversion there too.
+4. **A material that is not a Mesh may not have what a chunk needs.** The
+   aerial-perspective fog reads `transformed`, which every Mesh vertex shader
+   defines and `LineMaterial` does not — fat lines get the same maths injected by
+   hand against `instanceStart`/`instanceEnd` instead (`src/atmosphere.js`).
+
+**Elevation data**
+
+5. **Nodata is not nothing — it gets DRAWN.** An undeclared `0` sentinel was read
+   as ~292 m for five phases, and after that a genuine nodata margin was drawn at
+   the mosaic's minimum, so a frontier crest ended in a 2,600 m cliff onto a flat
+   floor. Any new source must have its nodata declared and normalised (§3).
+6. **`gdalinfo -stats` may hand you someone else's numbers.** GDAL caches
+   statistics in a `<file>.aux.xml` sidecar keyed on the FILE NAME, so a rebuilt
+   raster of the same name is served the previous run's figures with no warning.
+   Delete the sidecar before measuring (§3).
+7. **`gdal_calc` propagates input nodata unless told not to.** Without
+   `--hideNoData`, any cell that is nodata in *any* input is written as nodata and
+   the expression is never consulted — which produced a mask that was empty
+   everywhere, and empty is a plausible-looking answer for a mask (§3).
+8. **A source raster has its own bbox, which is not the project's.** Georeferencing
+   a bare image by asserting corners is where a silent 9.8 km misregistration comes
+   from (§3).
+
+**Verification**
+
+9. **Never verify a placement with the function that did the placing.** It can only
+   prove the assignment ran. Measure what the user sees — the chord between
+   vertices against the drawn surface, or a ray cast from the camera. Written down
+   on 2026-08-18 and broken again the same day, so it is here too.
+10. **A readback is not evidence unless you know when it is sampled.** An
+    `AudioParam`'s `.value` ignores scheduled events until they are processed and
+    read `0.00` for a graph that rendered audibly — the same failure shape as the
+    silent shader patch.
+11. **Headless is SwiftShader.** Trust it for geometry, placement, layout and
+    console errors; never for brightness, frame rate or input feel. It has misled
+    on those repeatedly, and the user has been right about all three every time.
+12. **A test runner's log may be a summary.** `tools/dev/run-tests.sh` keeps only
+    the tail of each test, so a suite can show one failure where the test itself
+    reported four.
+
+**Process**
+
+13. **Never edit a shell script while bash is executing it.** Bash re-reads by byte
+    offset; inserting lines lands it mid-token, and the error names a line that is
+    innocent.
+14. **Never leave the working tree on an old build while the user can open the
+    viewer.** Vite HMR will serve it, and they will report the defect as unfixed.

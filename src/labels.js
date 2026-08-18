@@ -2,7 +2,7 @@
 //
 // DOM labels (CSS2DObject) are not depth-tested, so without this a name shows
 // straight through a mountain - which the user confirmed reads as annoying
-// (docs/PROGRESS.md 2026-08-03). Walking the line of sight and asking whether
+// (docs/PROGRESS-ARCHIVE.md 2026-08-03). Walking the line of sight and asking whether
 // the drawn surface rises above it is only possible because terrain.js'
 // sampleRenderedHeight() reconstructs that surface analytically: a Raycaster
 // sees the undisplaced CPU plane, and a depth-buffer readback would stall the

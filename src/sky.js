@@ -101,7 +101,7 @@ export const SKY_ALTITUDE_STRENGTH = { value: 1 };
 // Lets a probe or a test pin the altitude independently of where the camera
 // actually is, so two altitudes can be compared from ONE camera in ONE session -
 // the only honest A/B here, since two runs differ in animals, birds and gust
-// (docs/PROGRESS.md 2026-08-10). Published on window.__pngp.sky as this very
+// (docs/PROGRESS-ARCHIVE.md 2026-08-10). Published on window.__pngp.sky as this very
 // object: anything pinning it must pin THIS holder, never one it imported for
 // itself, or Vite's HMR hands it a second module instance and the pin does
 // nothing while reading back the value it just wrote (docs/PROGRESS.md

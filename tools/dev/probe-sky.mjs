@@ -9,14 +9,14 @@
 //    the camera up, so nothing else in the frame differs between two readings.
 //    Flying would change the terrain in shot, the fog path length and the tile
 //    set at the same time, and then the numbers would be about all of those
-//    (docs/PROGRESS.md 2026-08-10, "a separate render is not the same scene";
+//    (docs/PROGRESS-ARCHIVE.md 2026-08-10, "a separate render is not the same scene";
 //    2026-08-11, the Vite module-instance trap that makes a test-side import of
 //    the holder read back its own writes).
 //
 // 2. Measure the SCREENSHOT, not a canvas readback. The context has no
 //    preserveDrawingBuffer, so drawImage() after the frame is presented reads an
 //    empty buffer and reports 0.000 for everything without complaining
-//    (docs/PROGRESS.md 2026-08-11). The screenshot goes through the compositor,
+//    (docs/PROGRESS-ARCHIVE.md 2026-08-11). The screenshot goes through the compositor,
 //    which is what the user's eye gets - and for the sky that also means the
 //    reading includes ACES and toneMappingExposure, which is most of what
 //    decides the colour. A linear render target would measure a different sky.

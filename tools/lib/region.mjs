@@ -9,7 +9,7 @@
 // and lakes tested strictly inside, huts allowed 750 m outside, waterfalls used
 // a hand-written name list. That disagreement - not the data - is why the user
 // could see Rifugio Benevolo but neither the trail that reaches it nor the lake
-// above it (docs/PROGRESS.md 2026-08-17).
+// above it (docs/PROGRESS-ARCHIVE.md 2026-08-17).
 //
 // Everything here works in LOCAL SCENE METRES, like the data the builds handle,
 // so "how far outside" is a real distance rather than degrees. Call

@@ -38,7 +38,7 @@ const result = await page.evaluate(async ({ dt }) => {
 
   // Fixed dt, not real frames: headless runs on SwiftShader at 1-2 fps, where
   // the whole pending movement lands in one frame and the smoothing would be
-  // measuring the software renderer (docs/PROGRESS.md 2026-08-03).
+  // measuring the software renderer (docs/PROGRESS-ARCHIVE.md 2026-08-03).
   renderer.setAnimationLoop(null);
 
   const THREE = await import('/node_modules/three/build/three.module.js');

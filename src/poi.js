@@ -47,7 +47,7 @@ function categoryLabel(poi) {
 
 // A human-scale walker used to stand right next to a real 180-220m sphere
 // marker (fine seen from a 26km-high overview, but enormous at walking
-// scale - once walking is the default, see docs/PROGRESS.md 2026-07-31).
+// scale - once walking is the default, see docs/PROGRESS-ARCHIVE.md 2026-07-31).
 // First fix (shrinking to a small dot) revealed a second problem: the dot
 // itself visibly floated above/sank below the real ground (elevationM,
 // computed at data-build time, doesn't perfectly match what the coarse
@@ -79,7 +79,7 @@ const BASE_SINK_M = 2;
 // POI, after the screen-centre reticle+raycast path was removed - it aimed
 // at the marker line's foot rather than the name you were reading, which
 // the user found unintuitive and redundant once releasing pointer lock
-// stopped freezing movement (docs/PROGRESS.md 2026-08-03).
+// stopped freezing movement (docs/PROGRESS-ARCHIVE.md 2026-08-03).
 export async function loadPOI(dataUrl = `${import.meta.env.BASE_URL}data`, { onSelect } = {}) {
   const data = await fetch(`${dataUrl}/poi.json`).then((r) => r.json());
 

@@ -19,7 +19,7 @@ import {
 // coarse-looking: it drew Gran Paradiso's summit 130 m below its real 4047 m,
 // left every peak unviewable from any distance, and made the new label
 // occlusion test unable to tell a real mountain from an interpolation
-// artefact. See docs/PROGRESS.md 2026-08-03.
+// artefact. See docs/PROGRESS-ARCHIVE.md 2026-08-03.
 //
 // The height data is one texture that is already fully resident (4096x2355
 // RG8, ~19 MB), so unlike a typical tiled terrain there is NOTHING to stream -

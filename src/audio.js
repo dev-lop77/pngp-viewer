@@ -9,7 +9,7 @@ import { snowCoverAt } from './snow.js';
 //   - licensing. Every dataset in this project had its licence read before it
 //     shipped (§9, and the DTM licences that blocked the deploy for days). A
 //     field recording would be one more of those, for a much smaller payoff.
-//   - size. The published site is ~21 MB (docs/PROGRESS.md 2026-08-03) and the
+//   - size. The published site is ~21 MB (docs/PROGRESS-ARCHIVE.md 2026-08-03) and the
 //     bundle is already an open phase-7 item. Ambience loops long enough not to
 //     read as loops would be megabytes each; this is one file and zero bytes of
 //     asset.

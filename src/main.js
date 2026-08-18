@@ -63,7 +63,7 @@ renderer.setPixelRatio(window.devicePixelRatio);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 document.body.appendChild(renderer.domElement);
 
-// POI name labels (docs/PROGRESS.md 2026-07-31) are real DOM elements
+// POI name labels (docs/PROGRESS-ARCHIVE.md 2026-07-31) are real DOM elements
 // (CSS2DObject) layered over the WebGL canvas, not WebGL geometry -
 // crisp text at any zoom, no per-name texture to generate/manage.
 const labelRenderer = new CSS2DRenderer();
@@ -76,7 +76,7 @@ labelRenderer.domElement.style.top = '0';
 labelRenderer.domElement.style.pointerEvents = 'none';
 document.body.appendChild(labelRenderer.domElement);
 
-// Walk/fly navigation (docs/PROGRESS.md 2026-07-31) replaces OrbitControls -
+// Walk/fly navigation (docs/PROGRESS-ARCHIVE.md 2026-07-31) replaces OrbitControls -
 // default is walking at eye height, 'F' toggles a faster free-fly mode, no
 // scroll/zoom in either (see src/controls.js).
 const controls = new WalkFlyControls(camera, renderer.domElement);
@@ -784,7 +784,7 @@ if (import.meta.env.DEV) {
     // The satellite ground texture, published as the HOLDERS themselves so a probe
     // can A/B the ground colour in ONE session from ONE camera - the only honest
     // way to compare two looks, since two runs differ in animals, birds and gust
-    // (docs/PROGRESS.md 2026-08-10, "a separate render is not the same scene").
+    // (docs/PROGRESS-ARCHIVE.md 2026-08-10, "a separate render is not the same scene").
     //
     // Handed over here rather than left to a probe's own `import('/src/basemap.js')`,
     // which is a trap: after any HMR reload the page holds the module as

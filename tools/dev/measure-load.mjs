@@ -4,7 +4,7 @@
 //
 // The difference is not pedantry. Every raster here is served compressed, the
 // JSON heavily so, and `ls` reports neither - the last time this number was
-// wanted (docs/PROGRESS.md, 2026-08-18) it was assembled by hand from HTTP
+// wanted (docs/PROGRESS-ARCHIVE.md, 2026-08-18) it was assembled by hand from HTTP
 // content-lengths against the live site, which is right but is not something
 // anyone will redo casually. This does the same thing against any URL, so a
 // change that quietly adds four megabytes to the front page can be caught the
