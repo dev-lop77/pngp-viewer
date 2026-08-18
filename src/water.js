@@ -17,6 +17,39 @@ const WATERFALL_COLOR = new THREE.Color(0xdff4fb);
 
 const RIVER_WIDTH_M = 8;
 const RIVER_HEIGHT_OFFSET_M = 3; // avoid z-fighting with terrain, like trails.js's HEIGHT_OFFSET_M
+
+// The torrents (waterway=stream), shipped since 2026-08-18 - the user looked
+// down on the two lakes at the head of the Val di Rhemes and said the plain
+// truth: "non si vedono i torrenti in uscita dai due laghi". 1,506 of them,
+// 1,226 km, same water shader as the rivers.
+//
+// Narrower and lower than a river, because that is what they are: 3 m against
+// 8 m, and 1.5 m of clearance against 3 m. The clearance matters more than it
+// sounds - a torrent runs in a gully the 10-20 m terrain grid rounds off, so
+// lifting it 3 m like a valley river would leave it visibly floating over its
+// own bed on the steep ground where most of these are.
+const STREAM_WIDTH_M = 3;
+const STREAM_HEIGHT_OFFSET_M = 1.5;
+
+// THE FALL ITSELF, rebuilt 2026-08-18: "Non è bellissima, penso si possa
+// migliorare, anche usando più poligoni."
+//
+// It was a two-vertex-wide strip lying flat on the hillside - one quad per
+// centerline step, no geometry across the width at all, so nothing could catch
+// the light differently from one side of the water to the other and the sheet
+// read as a painted stripe. Now it is a real sheet: COLUMNS quads across, and
+// where the ground under it is steep the middle of the sheet stands proud of the
+// slope, which is the one thing the terrain cannot give us. The DEM is 10-20 m
+// per pixel, so the lip a fall pours over is rounded away before we ever see it;
+// bowing the curtain outward puts back the shape the data lost, without
+// pretending to know where the real cliff face is.
+const WF_COLUMNS = 8;
+const WF_LIFT_MAX_M = 4;
+const WF_LIFT_PER_GRADE_M = 5; // a 0.8 grade lifts the middle by the full 4 m
+// Streak length along the fall, in real metres - the flow attribute below counts
+// metres so a 12 m fall and a 140 m one get the same size of streak rather than
+// the same NUMBER of them.
+const WF_STREAK_M = 6;
 const GLACIER_HEIGHT_OFFSET_M = 2;
 const GLACIER_COLOR = 0xe8f3fb;
 
@@ -112,30 +145,52 @@ function waterfallMaterial() {
     vertexShader: `
       #include <common>
       #include <logdepthbuf_pars_vertex>
+      attribute float aFlow;
       varying vec2 vUv;
+      varying float vFlow;
       varying vec3 vWorldPos;
       void main() {
         vUv = uv;
+        vFlow = aFlow;
         vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         #include <logdepthbuf_vertex>
       }
     `,
+    // The sheet is drawn with THREE things the flat strip could not have, all of
+    // them from the geometry rewrite above (2026-08-18):
+    //   - streaks spaced in real METRES (aFlow), so a 13 m fall and a 141 m one
+    //     get streaks of the same size instead of the same count. The old shader
+    //     divided the fall into six bands however long it was.
+    //   - variation ACROSS the water, which needs the columns to exist: each
+    //     one runs at its own phase, so the sheet breaks up into strands.
+    //   - white water at the bottom and softer edges, which is where a real fall
+    //     stops being water and starts being spray.
     fragmentShader: `
       #include <logdepthbuf_pars_fragment>
       uniform float uTime;
       uniform vec3 uColor;
       varying vec2 vUv;
+      varying float vFlow;
       varying vec3 vWorldPos;
       ${NOISE_GLSL}
       ${ATMO_FOG_PARS}
       uniform vec3 uAtmoFogColor;
       void main() {
-        float flow = fract(vUv.y * 6.0 - uTime * 1.4 + noise(vec2(vUv.x * 10.0, vUv.y * 2.0)) * 0.3);
-        float streak = smoothstep(0.0, 0.15, flow) * smoothstep(0.4, 0.15, flow);
-        float brightness = 0.75 + streak * 0.35 + (1.0 - vUv.y) * 0.15;
+        float strand = noise(vec2(vUv.x * 14.0, vFlow * 0.06));
+        float flow = fract(vFlow / ${WF_STREAK_M}.0 - uTime * 1.1 + strand * 0.55);
+        float streak = smoothstep(0.0, 0.18, flow) * smoothstep(0.45, 0.18, flow);
+        // Spray at the foot, and the thinning that makes the edges read as spray
+        // rather than as a cut sheet of plastic.
+        float foam = smoothstep(0.72, 1.0, vUv.y);
+        float edge = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x);
+        float brightness = 0.72 + streak * 0.4 + foam * 0.3 + (1.0 - vUv.y) * 0.1;
         vec3 color = atmoApply(uColor * brightness, uAtmoFogColor, vWorldPos, cameraPosition);
-        gl_FragColor = vec4(color, 0.8);
+        // Opaque down the strands, thinner between them and at the edges: the
+        // old sheet was a flat 0.8 everywhere, which is why it read as one solid
+        // object rather than as falling water.
+        float alpha = clamp(0.5 + streak * 0.35 + foam * 0.25, 0.0, 1.0) * (0.3 + 0.7 * edge);
+        gl_FragColor = vec4(color, alpha);
         #include <logdepthbuf_fragment>
       }
     `,
@@ -265,13 +320,17 @@ function appendRibbon(line, widthAt, heightOffsetM, positions, uvs, indices, ver
   vertOffsetRef.value += n * 2;
 }
 
-function buildRiversMesh(rivers) {
+// One merged ribbon mesh for a whole set of flowing lines - the 21 rivers in one
+// draw call, the 1,506 streams in another. Split by width rather than merged
+// into a single mesh so each keeps its own ribbon width, and so alignToGround()
+// below can give each its own clearance.
+function buildFlowMesh(features, { widthM, heightOffsetM, name }) {
   const positions = [];
   const uvs = [];
   const indices = [];
   const vertOffset = { value: 0 };
-  for (const river of rivers) {
-    appendRibbon(river.line, () => RIVER_WIDTH_M, RIVER_HEIGHT_OFFSET_M, positions, uvs, indices, vertOffset);
+  for (const feature of features ?? []) {
+    appendRibbon(feature.line, () => widthM, heightOffsetM, positions, uvs, indices, vertOffset);
   }
   if (!positions.length) return null;
 
@@ -282,17 +341,80 @@ function buildRiversMesh(rivers) {
   geometry.computeVertexNormals();
 
   const mesh = new THREE.Mesh(geometry, buildWaterMaterial({ deep: RIVER_COLOR_DEEP, shallow: RIVER_COLOR_SHALLOW, flowing: true }));
-  mesh.name = 'water-rivers';
+  mesh.name = name;
   return mesh;
 }
 
+// One waterfall's sheet: WF_COLUMNS quads across the width, bowed away from the
+// slope in proportion to how steep the ground under it is.
+//
+// Three attributes come out of this: position, uv (u across the sheet 0..1, v
+// along it 0..1) and aFlow, the distance in real metres from the brink, which is
+// what the shader scrolls its streaks along.
+function appendWaterfallSheet(centerline, widthTopM, widthBottomM, positions, uvs, flows, indices, vertOffsetRef) {
+  const n = centerline.length;
+  if (n < 2) return;
+
+  // Cumulative horizontal distance, so both the width taper and the streaks are
+  // spaced by real metres rather than by however many samples the march took.
+  const along = [0];
+  for (let i = 1; i < n; i++) {
+    const [x0, , z0] = centerline[i - 1];
+    const [x1, , z1] = centerline[i];
+    along.push(along[i - 1] + Math.hypot(x1 - x0, z1 - z0));
+  }
+  const total = along[n - 1] || 1;
+
+  const base = vertOffsetRef.value;
+  for (let i = 0; i < n; i++) {
+    const [x, y, z] = centerline[i];
+    const prev = centerline[Math.max(0, i - 1)];
+    const next = centerline[Math.min(n - 1, i + 1)];
+    const dx = next[0] - prev[0];
+    const dz = next[2] - prev[2];
+    const runXZ = Math.hypot(dx, dz) || 1;
+    const px = -dz / runXZ; // perpendicular, in the XZ plane
+    const pz = dx / runXZ;
+    // How steeply the ground falls here, which is how far the sheet stands off it.
+    const grade = Math.max(0, (prev[1] - next[1]) / runXZ);
+    const lift = Math.min(WF_LIFT_MAX_M, grade * WF_LIFT_PER_GRADE_M);
+
+    const t = along[i] / total;
+    const half = (widthTopM + (widthBottomM - widthTopM) * t) / 2;
+    for (let c = 0; c <= WF_COLUMNS; c++) {
+      const u = c / WF_COLUMNS; // 0..1 across the sheet
+      const side = u * 2 - 1; // -1..1
+      // A curtain hangs furthest from the rock in the middle and touches it at
+      // the edges - which is also what keeps the sheet from cutting into the
+      // slope on either side.
+      const bow = 1 - side * side;
+      positions.push(x + px * side * half, y + lift * bow, z + pz * side * half);
+      uvs.push(u, t);
+      flows.push(along[i]);
+    }
+  }
+
+  const stride = WF_COLUMNS + 1;
+  for (let i = 0; i < n - 1; i++) {
+    for (let c = 0; c < WF_COLUMNS; c++) {
+      const a = base + i * stride + c;
+      const b = a + 1;
+      const d = a + stride;
+      const e = d + 1;
+      indices.push(a, d, b, b, d, e);
+    }
+  }
+  vertOffsetRef.value += n * stride;
+}
+
 // Small N (hand-curated allowlist, tools/build-hydrology.mjs) - one merged
-// ribbon mesh for the flowing water, plus one breathing mist sprite per
+// sheet mesh for the falling water, plus one breathing mist sprite per
 // waterfall, adapting the reference project ode-to-yosemite's approach
 // (docs/PROGRESS.md).
 function buildWaterfalls(waterfalls) {
   const positions = [];
   const uvs = [];
+  const flows = [];
   const indices = [];
   const vertOffset = { value: 0 };
   const mistSprites = [];
@@ -300,8 +422,7 @@ function buildWaterfalls(waterfalls) {
   const mistTexture = buildMistTexture();
 
   for (const wf of waterfalls) {
-    const widthAt = (t) => wf.widthTopM + (wf.widthBottomM - wf.widthTopM) * t;
-    appendRibbon(wf.centerline, widthAt, 0, positions, uvs, indices, vertOffset);
+    appendWaterfallSheet(wf.centerline, wf.widthTopM, wf.widthBottomM, positions, uvs, flows, indices, vertOffset);
 
     const base = wf.centerline[wf.centerline.length - 1];
     const spriteMaterial = new THREE.SpriteMaterial({
@@ -331,6 +452,7 @@ function buildWaterfalls(waterfalls) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setAttribute('aFlow', new THREE.Float32BufferAttribute(flows, 1));
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
     const mesh = new THREE.Mesh(geometry, waterfallMaterial());
@@ -367,8 +489,19 @@ export async function loadWater(dataUrl = `${import.meta.env.BASE_URL}data`) {
   const lakesMesh = buildLakesMesh(manifest.lakes);
   if (lakesMesh) group.add(lakesMesh);
 
-  const riversMesh = buildRiversMesh(manifest.rivers);
+  const riversMesh = buildFlowMesh(manifest.rivers, {
+    widthM: RIVER_WIDTH_M,
+    heightOffsetM: RIVER_HEIGHT_OFFSET_M,
+    name: 'water-rivers',
+  });
   if (riversMesh) group.add(riversMesh);
+
+  const streamsMesh = buildFlowMesh(manifest.streams, {
+    widthM: STREAM_WIDTH_M,
+    heightOffsetM: STREAM_HEIGHT_OFFSET_M,
+    name: 'water-streams',
+  });
+  if (streamsMesh) group.add(streamsMesh);
 
   const glaciersMesh = buildGlaciersMesh(manifest.glaciers);
   if (glaciersMesh) group.add(glaciersMesh);
@@ -412,7 +545,8 @@ export async function loadWater(dataUrl = `${import.meta.env.BASE_URL}data`) {
     for (const child of group.children) {
       const offsetM = child.name === 'water-glaciers' ? GLACIER_HEIGHT_OFFSET_M
         : child.name === 'water-rivers' ? RIVER_HEIGHT_OFFSET_M
-          : null;
+          : child.name === 'water-streams' ? STREAM_HEIGHT_OFFSET_M
+            : null;
       if (offsetM === null) continue; // lakes and the waterfall group - see above
       const attr = child.geometry?.getAttribute('position');
       if (!attr) continue;

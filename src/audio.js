@@ -457,6 +457,16 @@ export function buildWaterEarshot(manifest) {
     const line = (river.line ?? []).map(([x, , z]) => [x, z]);
     resampleLine(line, WATER_STEP_M, add('river', 1));
   }
+  // The torrents, shipped since 2026-08-18 (src/water.js). Same synthesis as a
+  // river - it is running water over stones either way - at roughly half the
+  // strength, because that is the difference between standing beside the Dora di
+  // Rhemes and beside a two-metre gully above the treeline. 1,226 km of them at
+  // WATER_STEP_M adds ~30,000 points to the index; the query still only ever
+  // looks at the 3x3 cells around the camera.
+  for (const stream of manifest.streams ?? []) {
+    const line = (stream.line ?? []).map(([x, , z]) => [x, z]);
+    resampleLine(line, WATER_STEP_M, add('river', 0.45));
+  }
   for (const wf of manifest.waterfalls ?? []) {
     const base = wf.centerline?.[wf.centerline.length - 1];
     if (!base) continue;
