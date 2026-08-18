@@ -2,44 +2,48 @@
 // Turns tools/hydrology-draft.json (from tools/fetch-hydrology.mjs) plus a
 // small hand-curated waterfall allowlist into public/data/water.json.
 //
-// Boundary filter: same rule as trails/POI (docs/ARCHITECTURE.md §4) - a
+// Region filter: same rule as trails/POI (docs/ARCHITECTURE.md §4), and
+// since 2026-08-18 literally the same code - tools/lib/region.mjs. A
 // lake/river/glacier is kept whole if any of its points fall inside the
-// real park boundary, not clipped to it.
+// region (park + the valleys our terrain draws), not clipped to it.
 //
-// Waterfalls are the one exception, by explicit user decision: only one
-// waterfall node falls inside the *strict* boundary polygon
-// (Cascatone dell'Umbrias), and it sits in the known DEM nodata gap (fake
-// ~292m elevation, docs/PROGRESS.md). Cascate di Lillaz - the one
-// ARCHITECTURE.md names by name - sits just 36m outside the boundary;
-// Cascata Entrelor (50m) and Cascata Biolet (180m) are in the same real
-// cluster near Cogne/Valnontey. Every other non-nodata-flagged candidate
-// in tools/osm-poi-draft.json is 3.2km+ away (Pila, Rutor, Mascognaz -
-// different valleys entirely) - a clean, non-arbitrary cutoff. Same
-// precedent as the already-logged missing-Rifugio-Vittorio-Emanuele-II
-// gap: hand-curated inclusion for named features the strict polygon test
-// misses by a small margin.
+// Waterfalls are the one exception, by explicit user decision: they stay a
+// hand-curated allowlist. A waterfall is not just a point on a map here, it
+// is a rendered ribbon marched down the terrain (buildWaterfallRibbon
+// below), so it has to be a fall we have actually looked at - and OSM's
+// waterfall nodes in this region are half unnamed and sometimes duplicated
+// on the same spot. The list is small enough to keep honest by hand.
 //
 // Usage: node tools/build-hydrology.mjs
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import proj4 from 'proj4';
-import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
-import { point, polygon } from '@turf/helpers';
-import { setLocalOrigin, worldToLocal } from '../src/geo.js';
+import { setLocalOrigin } from '../src/geo.js';
 import { sampleHeightfield, isNearNoData, decodeHeightfield } from '../src/heightfield.js';
+import { loadRegion } from './lib/region.mjs';
 
 const DRAFT_FILE = 'tools/hydrology-draft.json';
 const POI_DRAFT_FILE = 'tools/osm-poi-draft.json';
-const BOUNDARY_FILE = 'tools/park-boundary.geojson';
 const HEIGHTFIELD_DIR = 'public/data';
 const OUT_FILE = 'public/data/water.json';
 
 // Distance-to-boundary computed and reviewed with the user before picking
-// this list (see header comment) - not a guess from names.
+// the first three (see header comment) - not a guess from names.
+//
+// The fourth was pointed at directly: the user stood at 45.52285, 7.08510
+// looking west-north-west and asked why the fall in front of them was not
+// there (2026-08-18). It is OSM node 4397259567, 252 m away on that bearing,
+// with the `Dora di Goletta` running within 120 m of it - the Goletta fall
+// below Lago Goletta, above Rifugio Benevolo. Two things had hidden it: it is
+// outside the park (fixed by the region rule), and it is UNNAMED in OSM, so
+// tools/fetch-osm.mjs used to drop it before this file ever saw it. The name
+// below is ours, from the stream it falls from; OSM also carries a duplicate
+// node (9836453182) on the exact same coordinates, which we simply do not
+// list.
 const WATERFALL_ALLOWLIST = [
   { osmId: 843888598, name: 'Cascate di Lillaz' },
   { osmId: 7968946886, name: 'Cascata Entrelor' },
   { osmId: 1035891741, name: 'Cascata Biolet' },
+  { osmId: 4397259567, name: 'Cascata di Goletta' },
 ];
 
 // Waterfall ribbon shape (visual approximation, not a hydrological
@@ -51,11 +55,8 @@ const WF_CLIMB_MARGIN_M = 3; // stop once we've climbed this far above the lowes
 const WF_WIDTH_TOP_M = 6;
 const WF_WIDTH_BOTTOM_M = 14;
 
-proj4.defs('EPSG:23032', '+proj=utm +zone=32 +ellps=intl +towgs84=-87,-98,-121,0,0,0,0 +units=m +no_defs');
-
 const draft = JSON.parse(readFileSync(DRAFT_FILE, 'utf8'));
 const poiDraft = JSON.parse(readFileSync(POI_DRAFT_FILE, 'utf8'));
-const boundaryGeoJSON = JSON.parse(readFileSync(BOUNDARY_FILE, 'utf8'));
 const heightfieldManifest = JSON.parse(readFileSync(`${HEIGHTFIELD_DIR}/heightfield.json`, 'utf8'));
 const heightfieldBuffer = readFileSync(`${HEIGHTFIELD_DIR}/${heightfieldManifest.file.name}`);
 const heights = decodeHeightfield(heightfieldBuffer, heightfieldManifest);
@@ -65,18 +66,9 @@ function sampleHeight(x, z) {
   return sampleHeightfield(heights, heightfieldManifest, x, z);
 }
 
-// Park boundary, converted to local scene coordinates once - same
-// approach as tools/build-trails.mjs.
-const boundaryLocalRing = boundaryGeoJSON.geometry.coordinates[0].map(([lon, lat]) => {
-  const [e, n] = proj4('WGS84', 'EPSG:23032', [lon, lat]);
-  const { x, z } = worldToLocal(e, n);
-  return [x, z];
-});
-const boundaryPoly = polygon([boundaryLocalRing]);
-
-function anyPointInBoundary(line) {
-  return line.some(([x, , z]) => booleanPointInPolygon(point([x, z]), boundaryPoly));
-}
+// The shipped region, shared with build-trails.mjs and build-poi.mjs.
+const region = loadRegion();
+const anyPointInBoundary = region.containsAnyPoint;
 
 const round1 = (n) => Math.round(n * 10) / 10;
 
@@ -226,7 +218,7 @@ console.log(
   `Lakes: ${lakes.length}/${draft.features.filter((f) => f.category === 'lake').length}, ` +
     `Rivers: ${rivers.length}/${draft.features.filter((f) => f.category === 'river').length}, ` +
     `Glaciers: ${glaciers.length}/${draft.features.filter((f) => f.category === 'glacier').length} ` +
-    'fall within the park boundary.',
+    `fall within the region (${region.parts.map((p) => p.name).join(' + ')}).`,
 );
 console.log(`Waterfalls: ${waterfalls.length} (hand-curated allowlist, drops: ${waterfalls.map((w) => w.dropM + 'm').join(', ')})`);
 
@@ -236,14 +228,11 @@ const output = {
   localOrigin: heightfieldManifest.localOrigin,
   axes: heightfieldManifest.axes,
   coordUnits: 'local scene meters, see localOrigin/axes above - same frame as the terrain',
-  boundary: {
-    name: boundaryGeoJSON.properties.name,
-    source: boundaryGeoJSON.properties.source,
-    filter:
-      'lakes/rivers/glaciers: included only if at least one point falls inside this polygon. ' +
-      'Waterfalls: hand-curated allowlist instead (see tools/build-hydrology.mjs header) - the ' +
-      "park's named falls sit just outside the strict boundary.",
-  },
+  boundary: region.describe(
+    'lakes/rivers/glaciers: included only if at least one point falls inside one of these ' +
+      'polygons. Waterfalls: hand-curated allowlist instead (see tools/build-hydrology.mjs ' +
+      'header) - a fall is a rendered ribbon, so each one is looked at by hand.',
+  ),
   knownLimitations: [
     'waterway=stream (minor tributaries) and natural=glacier multipolygon relations are not ' +
       'fetched at all - a deliberate v1 scope cut, see docs/ARCHITECTURE.md §7.',

@@ -164,9 +164,23 @@ const byCategory = pois.reduce((acc, p) => {
   acc[p.category] = (acc[p.category] ?? 0) + 1;
   return acc;
 }, {});
-const named = pois.filter((p) => p.name);
+// A POI can't be shown without a label, so unnamed ones go - with one
+// exception since 2026-08-18: WATERFALLS. A fall is not a name on a marker
+// post, it is a ribbon that build-hydrology.mjs marches down the terrain from
+// the brink point, and that file gives each one a name of its own from a
+// small hand-curated allowlist. Dropping unnamed waterfalls here is exactly
+// why the fall on the Dora di Goletta - which the user stood in front of and
+// asked about - could never reach the pipeline: it has no name in OSM.
+// build-poi.mjs still ships only named POIs, so nothing gains a blank label.
+const keptUnnamed = (p) => !p.name && p.category === 'waterfall';
+const named = pois.filter((p) => p.name || keptUnnamed(p));
+const unnamedWaterfalls = named.filter(keptUnnamed).length;
 console.log('Raw, by category:', byCategory);
-console.log(`Dropping ${pois.length - named.length} unnamed (can't show a POI with no label) -> ${named.length} left.`);
+console.log(
+  `Dropping ${pois.length - named.length} unnamed (can't show a POI with no label) -> ` +
+    `${named.length} left, including ${unnamedWaterfalls} unnamed waterfalls kept for ` +
+    'tools/build-hydrology.mjs.',
+);
 
 writeFileSync(
   OUT_FILE,
@@ -177,7 +191,8 @@ writeFileSync(
         'add missing places), then it feeds tools/build-poi.mjs. Source: OpenStreetMap ' +
         '(ODbL, attribution required if these ship as-is - see docs/ARCHITECTURE.md §9). ' +
         `Unnamed elements already dropped (${pois.length - named.length} of ${pois.length}) - ` +
-        "can't show a POI with no label anyway.",
+        "can't show a POI with no label anyway - except unnamed waterfalls " +
+        `(${unnamedWaterfalls} kept), which build-hydrology.mjs names itself.`,
       generatedAt: new Date().toISOString(),
       bboxWgs84: { south, west, north, east },
       count: named.length,

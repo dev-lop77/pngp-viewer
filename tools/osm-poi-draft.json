@@ -1,13 +1,13 @@
 {
-  "note": "DRAFT for review, not public/data/poi.json - curate this (remove junk, fix names, add missing places), then it feeds tools/build-poi.mjs. Source: OpenStreetMap (ODbL, attribution required if these ship as-is - see docs/ARCHITECTURE.md §9). Unnamed elements already dropped (1330 of 3925) - can't show a POI with no label anyway.",
-  "generatedAt": "2026-08-03T13:09:09.637Z",
+  "note": "DRAFT for review, not public/data/poi.json - curate this (remove junk, fix names, add missing places), then it feeds tools/build-poi.mjs. Source: OpenStreetMap (ODbL, attribution required if these ship as-is - see docs/ARCHITECTURE.md §9). Unnamed elements already dropped (1248 of 3933) - can't show a POI with no label anyway - except unnamed waterfalls (86 kept), which build-hydrology.mjs names itself.",
+  "generatedAt": "2026-08-18T07:03:48.559Z",
   "bboxWgs84": {
     "south": 45.46178020162524,
     "west": 6.796187831788339,
     "north": 45.911263212262774,
     "east": 7.885816501969224
   },
-  "count": 2595,
+  "count": 2685,
   "pois": [
     {
       "osmType": "node",
@@ -255,7 +255,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Ronco Canavese",
-      "valley": "Valle Soana",
       "ele": null,
       "elevationM": 952.1,
       "dataIncomplete": false,
@@ -272,7 +271,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Valprato Soana",
-      "valley": "Valle Soana",
       "ele": null,
       "elevationM": 1096.7,
       "dataIncomplete": false,
@@ -786,13 +784,13 @@
       "hutKind": "alpine_hut",
       "name": "Rifugio Barbustel",
       "ele": 2132,
-      "elevationM": 2195.6,
+      "elevationM": 2195.5,
       "dataIncomplete": false,
-      "lat": 45.6491892,
-      "lon": 7.5884154,
+      "lat": 45.6492054,
+      "lon": 7.5884334,
       "local": {
-        "x": 19033.6,
-        "z": 4648.8
+        "x": 19035,
+        "z": 4647
       }
     },
     {
@@ -1725,6 +1723,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 369418834,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 238.5,
+      "dataIncomplete": true,
+      "lat": 45.879413,
+      "lon": 6.8244577,
+      "local": {
+        "x": -39797.7,
+        "z": -22262.3
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 372779698,
       "category": "pass",
       "hutKind": null,
@@ -1937,7 +1951,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Bruil",
-      "valley": "Val di Rhêmes",
       "ele": 1722,
       "elevationM": 1723,
       "dataIncomplete": false,
@@ -1954,7 +1967,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Valnontey",
-      "valley": "Cogne",
       "ele": null,
       "elevationM": 1669.6,
       "dataIncomplete": false,
@@ -1967,11 +1979,26 @@
     },
     {
       "osmType": "node",
+      "osmId": 437286777,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1768.9,
+      "dataIncomplete": false,
+      "lat": 45.5839763,
+      "lon": 7.3327067,
+      "local": {
+        "x": -1042,
+        "z": 11511
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 437302412,
       "category": "trailhead",
       "hutKind": null,
       "name": "Cogne",
-      "valley": "Cogne",
       "ele": null,
       "elevationM": 1539.9,
       "dataIncomplete": false,
@@ -2756,7 +2783,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Pellaud",
-      "valley": "Val di Rhêmes",
       "ele": 1815,
       "elevationM": 1815.3,
       "dataIncomplete": false,
@@ -2965,7 +2991,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Dégioz",
-      "valley": "Valsavarenche",
       "ele": null,
       "elevationM": 1545.9,
       "dataIncomplete": false,
@@ -3234,6 +3259,38 @@
     },
     {
       "osmType": "node",
+      "osmId": 768350521,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 2029.8,
+      "dataIncomplete": false,
+      "lat": 45.5286874,
+      "lon": 7.0900611,
+      "local": {
+        "x": -20117.1,
+        "z": 17231.2
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 768687476,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 2068.9,
+      "dataIncomplete": false,
+      "lat": 45.5416226,
+      "lon": 7.2186092,
+      "local": {
+        "x": -10047.3,
+        "z": 16025
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 769052369,
       "category": "pass",
       "hutKind": null,
@@ -3246,6 +3303,22 @@
       "local": {
         "x": -12372.8,
         "z": 15279.1
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 769056455,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1748.9,
+      "dataIncomplete": false,
+      "lat": 45.5811985,
+      "lon": 7.2189844,
+      "local": {
+        "x": -9920.4,
+        "z": 11628.8
       }
     },
     {
@@ -3282,6 +3355,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 774079911,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 989.5,
+      "dataIncomplete": false,
+      "lat": 45.7227869,
+      "lon": 7.7475873,
+      "local": {
+        "x": 31564.3,
+        "z": -3321.8
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 774087039,
       "category": "pass",
       "hutKind": null,
@@ -3294,6 +3383,22 @@
       "local": {
         "x": 29302.8,
         "z": -3944.1
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 777244179,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 2099.8,
+      "dataIncomplete": false,
+      "lat": 45.8767169,
+      "lon": 7.72903,
+      "local": {
+        "x": 30392.2,
+        "z": -20446.6
       }
     },
     {
@@ -3618,6 +3723,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 843889904,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1679.7,
+      "dataIncomplete": false,
+      "lat": 45.5946456,
+      "lon": 7.3974093,
+      "local": {
+        "x": 4029.2,
+        "z": 10428.5
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 846716011,
       "category": "peak",
       "hutKind": null,
@@ -3798,7 +3919,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Cretaz",
-      "valley": "Cogne",
       "ele": 1499,
       "elevationM": 1477.9,
       "dataIncomplete": false,
@@ -4999,7 +5119,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Piamprato",
-      "valley": "Valle Soana",
       "ele": null,
       "elevationM": 1553.7,
       "dataIncomplete": false,
@@ -5588,6 +5707,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 1277047489,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 2318.3,
+      "dataIncomplete": false,
+      "lat": 45.645667,
+      "lon": 7.5668196,
+      "local": {
+        "x": 17343.9,
+        "z": 5010.2
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 1277048194,
       "category": "peak",
       "hutKind": null,
@@ -5616,6 +5751,22 @@
       "local": {
         "x": 15911.9,
         "z": 4157.3
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1277048265,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 2162.7,
+      "dataIncomplete": false,
+      "lat": 45.6479619,
+      "lon": 7.5851571,
+      "local": {
+        "x": 18777.3,
+        "z": 4780.6
       }
     },
     {
@@ -5728,6 +5879,38 @@
       "local": {
         "x": 12675,
         "z": -18519.7
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1281730839,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 2541.7,
+      "dataIncomplete": false,
+      "lat": 45.4972727,
+      "lon": 7.0815705,
+      "local": {
+        "x": -20863.5,
+        "z": 20705.5
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1287522640,
+      "category": "hut",
+      "hutKind": "alpine_hut",
+      "name": "Centro Silvana Pomatto",
+      "ele": null,
+      "elevationM": 1168.8,
+      "dataIncomplete": false,
+      "lat": 45.7129003,
+      "lon": 7.7242984,
+      "local": {
+        "x": 29734.4,
+        "z": -2252
       }
     },
     {
@@ -5888,6 +6071,22 @@
       "local": {
         "x": 28446.3,
         "z": -19047.4
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1291363187,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 2434.4,
+      "dataIncomplete": false,
+      "lat": 45.7886715,
+      "lon": 7.7759978,
+      "local": {
+        "x": 33887.1,
+        "z": -10607.5
       }
     },
     {
@@ -6228,6 +6427,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 1301668280,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 2232,
+      "dataIncomplete": false,
+      "lat": 45.5159294,
+      "lon": 7.2119796,
+      "local": {
+        "x": -10628.4,
+        "z": 18867.9
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 1302032487,
       "category": "peak",
       "hutKind": null,
@@ -6404,6 +6619,38 @@
     },
     {
       "osmType": "node",
+      "osmId": 1312913031,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1937,
+      "dataIncomplete": false,
+      "lat": 45.8690946,
+      "lon": 7.6399355,
+      "local": {
+        "x": 23463.6,
+        "z": -19713.8
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1313852027,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1652.9,
+      "dataIncomplete": false,
+      "lat": 45.6984556,
+      "lon": 7.8343356,
+      "local": {
+        "x": 38275.5,
+        "z": -516.5
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 1314469569,
       "category": "peak",
       "hutKind": null,
@@ -6448,6 +6695,22 @@
       "local": {
         "x": 28671.8,
         "z": 872.5
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1323395792,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1180.7,
+      "dataIncomplete": false,
+      "lat": 45.7159049,
+      "lon": 7.7587648,
+      "local": {
+        "x": 32422.2,
+        "z": -2543.6
       }
     },
     {
@@ -6744,7 +7007,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Campiglia Soana",
-      "valley": "Valle Soana",
       "ele": null,
       "elevationM": 1344.9,
       "dataIncomplete": false,
@@ -6753,6 +7015,22 @@
       "local": {
         "x": 14564.2,
         "z": 16789.1
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1343723682,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 865.2,
+      "dataIncomplete": false,
+      "lat": 45.6394558,
+      "lon": 7.7523207,
+      "local": {
+        "x": 31788.3,
+        "z": 5942.1
       }
     },
     {
@@ -6824,8 +7102,7 @@
       "osmId": 1349527920,
       "category": "trailhead",
       "hutKind": null,
-      "name": "Eaux Rousses (L'Eau-Rousse)",
-      "valley": "Valsavarenche",
+      "name": "L'Eau-Rousse",
       "ele": null,
       "elevationM": 1662.1,
       "dataIncomplete": false,
@@ -6930,6 +7207,38 @@
       "local": {
         "x": -20005.2,
         "z": 11238.9
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1364893125,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1576.8,
+      "dataIncomplete": false,
+      "lat": 45.8285091,
+      "lon": 7.7263284,
+      "local": {
+        "x": 30097.1,
+        "z": -15093.9
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1369123043,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 910.6,
+      "dataIncomplete": false,
+      "lat": 45.6330008,
+      "lon": 7.8111383,
+      "local": {
+        "x": 36361.6,
+        "z": 6729
       }
     },
     {
@@ -7049,7 +7358,7 @@
       "osmId": 1379747629,
       "category": "waterfall",
       "hutKind": null,
-      "name": "Prima Cascata del Rutor",
+      "name": null,
       "ele": null,
       "elevationM": 1634.2,
       "dataIncomplete": false,
@@ -7065,7 +7374,7 @@
       "osmId": 1379747812,
       "category": "waterfall",
       "hutKind": null,
-      "name": "Seconda Cascata del Rutor",
+      "name": null,
       "ele": null,
       "elevationM": 1948.2,
       "dataIncomplete": false,
@@ -7074,6 +7383,38 @@
       "local": {
         "x": -29504.7,
         "z": 671.9
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1379747943,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": "Terza Cascata del Rutor",
+      "ele": null,
+      "elevationM": 1690.5,
+      "dataIncomplete": false,
+      "lat": 45.6838536,
+      "lon": 6.9609865,
+      "local": {
+        "x": -29757.6,
+        "z": -255.5
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1379747966,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 2179.5,
+      "dataIncomplete": false,
+      "lat": 45.6707313,
+      "lon": 6.9686317,
+      "local": {
+        "x": -29199.2,
+        "z": 1217.5
       }
     },
     {
@@ -7098,7 +7439,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Epinel",
-      "valley": "Cogne",
       "ele": 1452,
       "elevationM": 1454.1,
       "dataIncomplete": false,
@@ -7115,7 +7455,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Gimillan",
-      "valley": "Cogne",
       "ele": 1787,
       "elevationM": 1791.2,
       "dataIncomplete": false,
@@ -7724,7 +8063,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Chanavey",
-      "valley": "Val di Rhêmes",
       "ele": null,
       "elevationM": 1688.9,
       "dataIncomplete": false,
@@ -7733,6 +8071,22 @@
       "local": {
         "x": -17414.8,
         "z": 11625
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1400902410,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1638.1,
+      "dataIncomplete": false,
+      "lat": 45.5893944,
+      "lon": 7.3914165,
+      "local": {
+        "x": 3550.1,
+        "z": 11002.6
       }
     },
     {
@@ -7785,11 +8139,26 @@
     },
     {
       "osmType": "node",
+      "osmId": 1420717357,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 2178.8,
+      "dataIncomplete": false,
+      "lat": 45.5984368,
+      "lon": 7.444007,
+      "local": {
+        "x": 7671.8,
+        "z": 10078.9
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 1426354426,
       "category": "trailhead",
       "hutKind": null,
       "name": "Le Pont",
-      "valley": "Valsavarenche",
       "ele": 1952,
       "elevationM": 1950.1,
       "dataIncomplete": false,
@@ -7806,7 +8175,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Nivolet",
-      "valley": "Pian del Nivolet",
       "ele": null,
       "elevationM": 2404.7,
       "dataIncomplete": false,
@@ -7815,6 +8183,22 @@
       "local": {
         "x": -14180.1,
         "z": 19995.2
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1429749069,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1555.5,
+      "dataIncomplete": false,
+      "lat": 45.6134851,
+      "lon": 7.2044927,
+      "local": {
+        "x": -10970.6,
+        "z": 8016.6
       }
     },
     {
@@ -7951,7 +8335,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Lillaz",
-      "valley": "Cogne",
       "ele": 1615,
       "elevationM": 1612.2,
       "dataIncomplete": false,
@@ -7964,11 +8347,42 @@
     },
     {
       "osmType": "node",
+      "osmId": 1440052743,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1971.8,
+      "dataIncomplete": false,
+      "lat": 45.5614264,
+      "lon": 7.392995,
+      "local": {
+        "x": 3611,
+        "z": 14112.2
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1440053841,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1754.2,
+      "dataIncomplete": false,
+      "lat": 45.5805177,
+      "lon": 7.3891022,
+      "local": {
+        "x": 3349.8,
+        "z": 11985.1
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 1446305913,
       "category": "trailhead",
       "hutKind": null,
       "name": "Le Thumel",
-      "valley": "Val di Rhêmes",
       "ele": null,
       "elevationM": 1881,
       "dataIncomplete": false,
@@ -8217,6 +8631,22 @@
       "local": {
         "x": 27196,
         "z": 9969.6
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1480246926,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 800,
+      "dataIncomplete": false,
+      "lat": 45.604082,
+      "lon": 7.6844806,
+      "local": {
+        "x": 26436.8,
+        "z": 9787.6
       }
     },
     {
@@ -8905,6 +9335,22 @@
       "local": {
         "x": -304.8,
         "z": -18482.4
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1548736039,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 852.5,
+      "dataIncomplete": false,
+      "lat": 45.7310278,
+      "lon": 7.076238,
+      "local": {
+        "x": -20656.7,
+        "z": -5274.4
       }
     },
     {
@@ -9645,6 +10091,38 @@
     },
     {
       "osmType": "node",
+      "osmId": 1621610198,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1245.8,
+      "dataIncomplete": false,
+      "lat": 45.7181851,
+      "lon": 7.1635101,
+      "local": {
+        "x": -13899.2,
+        "z": -3688
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1621610201,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1271.8,
+      "dataIncomplete": false,
+      "lat": 45.7185182,
+      "lon": 7.1636327,
+      "local": {
+        "x": -13888.8,
+        "z": -3724.7
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 1621611074,
       "category": "pass",
       "hutKind": null,
@@ -9805,22 +10283,6 @@
     },
     {
       "osmType": "node",
-      "osmId": 1665786749,
-      "category": "pass",
-      "hutKind": null,
-      "name": "Col Di Raye Chevrere",
-      "ele": 2703,
-      "elevationM": 2692.6,
-      "dataIncomplete": false,
-      "lat": 45.6680207,
-      "lon": 7.54088,
-      "local": {
-        "x": 15367.8,
-        "z": 2490.2
-      }
-    },
-    {
-      "osmType": "node",
       "osmId": 1666029174,
       "category": "hut",
       "hutKind": "alpine_hut",
@@ -9833,6 +10295,22 @@
       "local": {
         "x": -3347.1,
         "z": 11882.6
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 1666029817,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1810.1,
+      "dataIncomplete": false,
+      "lat": 45.5844057,
+      "lon": 7.3319819,
+      "local": {
+        "x": -1097.5,
+        "z": 11462.1
       }
     },
     {
@@ -10685,6 +11163,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 1828046846,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 881.4,
+      "dataIncomplete": false,
+      "lat": 45.554558,
+      "lon": 7.7927121,
+      "local": {
+        "x": 34794.2,
+        "z": 15422.4
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 1829824760,
       "category": "peak",
       "hutKind": null,
@@ -11277,6 +11771,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 1956972649,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 3014.6,
+      "dataIncomplete": false,
+      "lat": 45.8807993,
+      "lon": 7.838166,
+      "local": {
+        "x": 38868.2,
+        "z": -20771.1
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 1958398041,
       "category": "pass",
       "hutKind": null,
@@ -11441,7 +11951,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Agnel",
-      "valley": "Val Orco",
       "ele": null,
       "elevationM": 2336.9,
       "dataIncomplete": false,
@@ -11474,7 +11983,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Serrù",
-      "valley": "Val Orco",
       "ele": null,
       "elevationM": 2410.6,
       "dataIncomplete": false,
@@ -11711,6 +12219,38 @@
     },
     {
       "osmType": "node",
+      "osmId": 2116523695,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1967.9,
+      "dataIncomplete": false,
+      "lat": 45.4948718,
+      "lon": 7.3673169,
+      "local": {
+        "x": 1456.6,
+        "z": 21465.8
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 2121016586,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 2146.8,
+      "dataIncomplete": false,
+      "lat": 45.4692733,
+      "lon": 7.4351376,
+      "local": {
+        "x": 6700.3,
+        "z": 24415.2
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 2127800891,
       "category": "peak",
       "hutKind": null,
@@ -11791,6 +12331,70 @@
     },
     {
       "osmType": "node",
+      "osmId": 2138958588,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1253.3,
+      "dataIncomplete": false,
+      "lat": 45.5185891,
+      "lon": 7.4875869,
+      "local": {
+        "x": 10903.4,
+        "z": 19014.9
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 2138958604,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1267,
+      "dataIncomplete": false,
+      "lat": 45.5190671,
+      "lon": 7.4875343,
+      "local": {
+        "x": 10900.3,
+        "z": 18961.7
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 2139999366,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 2050.2,
+      "dataIncomplete": false,
+      "lat": 45.5142964,
+      "lon": 7.4554425,
+      "local": {
+        "x": 8383.7,
+        "z": 19444
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 2139999709,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1885.3,
+      "dataIncomplete": false,
+      "lat": 45.5158636,
+      "lon": 7.4605101,
+      "local": {
+        "x": 8782.9,
+        "z": 19277.5
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 2140571340,
       "category": "peak",
       "hutKind": null,
@@ -11851,6 +12455,22 @@
       "local": {
         "x": 13170.2,
         "z": 25181
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 2145073375,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1218.8,
+      "dataIncomplete": false,
+      "lat": 45.5056204,
+      "lon": 7.5153978,
+      "local": {
+        "x": 13048.8,
+        "z": 20496.2
       }
     },
     {
@@ -12303,6 +12923,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 2302314845,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1340.8,
+      "dataIncomplete": false,
+      "lat": 45.6826222,
+      "lon": 7.6053819,
+      "local": {
+        "x": 20420.3,
+        "z": 957.5
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 2308224474,
       "category": "peak",
       "hutKind": null,
@@ -12386,7 +13022,7 @@
       "osmId": 2387438974,
       "category": "waterfall",
       "hutKind": null,
-      "name": "Terza Cascata del Rutor",
+      "name": "Prima Cascata del Rutor",
       "ele": null,
       "elevationM": 2007.2,
       "dataIncomplete": false,
@@ -12395,6 +13031,70 @@
       "local": {
         "x": -29455.7,
         "z": 708.9
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 2392411713,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1146.3,
+      "dataIncomplete": false,
+      "lat": 45.5300929,
+      "lon": 7.6780744,
+      "local": {
+        "x": 25801.8,
+        "z": 17999.5
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 2392481119,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1100.1,
+      "dataIncomplete": false,
+      "lat": 45.5325363,
+      "lon": 7.6901785,
+      "local": {
+        "x": 26751.3,
+        "z": 17743.5
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 2392481152,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1159.1,
+      "dataIncomplete": false,
+      "lat": 45.5338439,
+      "lon": 7.6904451,
+      "local": {
+        "x": 26774.5,
+        "z": 17598.6
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 2392777436,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 927.1,
+      "dataIncomplete": false,
+      "lat": 45.5249219,
+      "lon": 7.7093427,
+      "local": {
+        "x": 28234.1,
+        "z": 18613.7
       }
     },
     {
@@ -13167,6 +13867,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 2434442031,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 459,
+      "dataIncomplete": false,
+      "lat": 45.6704735,
+      "lon": 7.6915238,
+      "local": {
+        "x": 27106.5,
+        "z": 2420.5
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 2434442671,
       "category": "peak",
       "hutKind": null,
@@ -13611,6 +14327,22 @@
       "local": {
         "x": 15215.8,
         "z": -16915.2
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 2501653967,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 238.5,
+      "dataIncomplete": true,
+      "lat": 45.8785665,
+      "lon": 6.8497503,
+      "local": {
+        "x": -37837.6,
+        "z": -22115
       }
     },
     {
@@ -14259,7 +14991,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Rhêmes-Notre-Dame",
-      "valley": "Val di Rhêmes",
       "ele": null,
       "elevationM": 1725.2,
       "dataIncomplete": false,
@@ -15296,6 +16027,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 3149270116,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 238.5,
+      "dataIncomplete": true,
+      "lat": 45.8796734,
+      "lon": 6.8244705,
+      "local": {
+        "x": -39796,
+        "z": -22291.2
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 3152363109,
       "category": "pass",
       "hutKind": null,
@@ -16080,6 +16827,38 @@
     },
     {
       "osmType": "node",
+      "osmId": 3670675697,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 815.1,
+      "dataIncomplete": false,
+      "lat": 45.7217883,
+      "lon": 7.5028593,
+      "local": {
+        "x": 12517.9,
+        "z": -3538.1
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 3670675701,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 767.4,
+      "dataIncomplete": false,
+      "lat": 45.7235617,
+      "lon": 7.5040895,
+      "local": {
+        "x": 12617.3,
+        "z": -3733.3
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 3691898433,
       "category": "pass",
       "hutKind": null,
@@ -16380,6 +17159,22 @@
       "local": {
         "x": 31985,
         "z": -10172.5
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 3773474052,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 353,
+      "dataIncomplete": false,
+      "lat": 45.6125254,
+      "lon": 7.7445855,
+      "local": {
+        "x": 31138.6,
+        "z": 8924.7
       }
     },
     {
@@ -17200,6 +17995,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 3895339397,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1547.9,
+      "dataIncomplete": false,
+      "lat": 45.828756,
+      "lon": 7.7196638,
+      "local": {
+        "x": 29579.9,
+        "z": -15129.6
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 3914012330,
       "category": "peak",
       "hutKind": null,
@@ -17600,6 +18411,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 4032456744,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 389.1,
+      "dataIncomplete": false,
+      "lat": 45.536439,
+      "lon": 7.8237239,
+      "local": {
+        "x": 37185.2,
+        "z": 17471.4
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 4069575509,
       "category": "peak",
       "hutKind": null,
@@ -17804,6 +18631,22 @@
       "local": {
         "x": -22816.4,
         "z": -1495.8
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 4228817184,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1633.3,
+      "dataIncomplete": false,
+      "lat": 45.5942537,
+      "lon": 7.3963486,
+      "local": {
+        "x": 3945.6,
+        "z": 10470.4
       }
     },
     {
@@ -18176,6 +19019,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 4397259567,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 2235.2,
+      "dataIncomplete": false,
+      "lat": 45.5233361,
+      "lon": 7.0819368,
+      "local": {
+        "x": -20765.7,
+        "z": 17810.6
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 4397298287,
       "category": "peak",
       "hutKind": null,
@@ -18284,6 +19143,38 @@
       "local": {
         "x": 35145.1,
         "z": -14456.6
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 4450922246,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1978.6,
+      "dataIncomplete": false,
+      "lat": 45.8252851,
+      "lon": 7.8171101,
+      "local": {
+        "x": 37142.9,
+        "z": -14627.3
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 4450922247,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1996.7,
+      "dataIncomplete": false,
+      "lat": 45.8253281,
+      "lon": 7.8169103,
+      "local": {
+        "x": 37127.4,
+        "z": -14632.3
       }
     },
     {
@@ -18716,6 +19607,38 @@
       "local": {
         "x": -20711.8,
         "z": -5257.9
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 4960689722,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 783.3,
+      "dataIncomplete": false,
+      "lat": 45.7729586,
+      "lon": 7.6027219,
+      "local": {
+        "x": 20388.5,
+        "z": -9082.6
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 4971913521,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 825.5,
+      "dataIncomplete": false,
+      "lat": 45.7736381,
+      "lon": 7.6033165,
+      "local": {
+        "x": 20436,
+        "z": -9157.3
       }
     },
     {
@@ -19264,18 +20187,18 @@
     },
     {
       "osmType": "node",
-      "osmId": 5162683141,
+      "osmId": 5162683140,
       "category": "pass",
       "hutKind": null,
       "name": "Bocchetta di Valbona",
       "ele": 2332,
-      "elevationM": 2331.4,
+      "elevationM": 2332.9,
       "dataIncomplete": false,
-      "lat": 45.5461665,
-      "lon": 7.7294421,
+      "lat": 45.5462456,
+      "lon": 7.7293545,
       "local": {
-        "x": 29841.1,
-        "z": 16278.5
+        "x": 29834.4,
+        "z": 16269.6
       }
     },
     {
@@ -19301,13 +20224,13 @@
       "hutKind": null,
       "name": "Cima Bonze",
       "ele": 2516,
-      "elevationM": 2507.6,
+      "elevationM": 2507.5,
       "dataIncomplete": false,
-      "lat": 45.5505581,
-      "lon": 7.7298172,
+      "lat": 45.5505574,
+      "lon": 7.729807,
       "local": {
-        "x": 29878.1,
-        "z": 15791
+        "x": 29877.3,
+        "z": 15791.1
       }
     },
     {
@@ -19372,6 +20295,38 @@
       "local": {
         "x": 40733.8,
         "z": -13160.9
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 5204402548,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 729.1,
+      "dataIncomplete": false,
+      "lat": 45.7349979,
+      "lon": 7.6268578,
+      "local": {
+        "x": 22192.6,
+        "z": -4832.6
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 5204402549,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 586.8,
+      "dataIncomplete": false,
+      "lat": 45.738635,
+      "lon": 7.6248701,
+      "local": {
+        "x": 22044.9,
+        "z": -5239.3
       }
     },
     {
@@ -20496,6 +21451,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 6661253745,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 238.5,
+      "dataIncomplete": true,
+      "lat": 45.884269,
+      "lon": 7.0970929,
+      "local": {
+        "x": -18628.5,
+        "z": -22261
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 6702684891,
       "category": "peak",
       "hutKind": null,
@@ -20944,6 +21915,38 @@
     },
     {
       "osmType": "node",
+      "osmId": 7112625466,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 238.5,
+      "dataIncomplete": true,
+      "lat": 45.8855031,
+      "lon": 7.0991877,
+      "local": {
+        "x": -18462.7,
+        "z": -22394.3
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 7112642619,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 238.5,
+      "dataIncomplete": true,
+      "lat": 45.9088049,
+      "lon": 7.0934182,
+      "local": {
+        "x": -18848.5,
+        "z": -24993.9
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 7130664849,
       "category": "peak",
       "hutKind": null,
@@ -21204,7 +22207,6 @@
       "category": "trailhead",
       "hutKind": null,
       "name": "Pont",
-      "valley": "Val di Rhêmes",
       "ele": 1794,
       "elevationM": 1794.5,
       "dataIncomplete": false,
@@ -27745,6 +28747,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 7325610903,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 2184.3,
+      "dataIncomplete": false,
+      "lat": 45.4725384,
+      "lon": 7.6517737,
+      "local": {
+        "x": 23640.7,
+        "z": 24359.5
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 7332103353,
       "category": "peak",
       "hutKind": null,
@@ -28209,6 +29227,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 7563657113,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 966.5,
+      "dataIncomplete": false,
+      "lat": 45.6892178,
+      "lon": 7.6946998,
+      "local": {
+        "x": 27387.8,
+        "z": 342
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 7631617114,
       "category": "peak",
       "hutKind": null,
@@ -28269,6 +29303,38 @@
       "local": {
         "x": -16648.8,
         "z": -11481.9
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 7751485785,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1992.5,
+      "dataIncomplete": false,
+      "lat": 45.9063273,
+      "lon": 7.5043568,
+      "local": {
+        "x": 13018.3,
+        "z": -24038.7
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 7751485985,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1973,
+      "dataIncomplete": false,
+      "lat": 45.9072385,
+      "lon": 7.5066093,
+      "local": {
+        "x": 13194.9,
+        "z": -24136.7
       }
     },
     {
@@ -28417,6 +29483,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 7873508485,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 2240.8,
+      "dataIncomplete": false,
+      "lat": 45.669862,
+      "lon": 6.9697618,
+      "local": {
+        "x": -29113.7,
+        "z": 1316.3
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 7881154985,
       "category": "peak",
       "hutKind": null,
@@ -28525,6 +29607,70 @@
       "local": {
         "x": -25605.6,
         "z": -12032.1
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 8091966588,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 238.5,
+      "dataIncomplete": true,
+      "lat": 45.5406611,
+      "lon": 6.8948436,
+      "local": {
+        "x": -35326.1,
+        "z": 15519.7
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 8091966645,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 238.5,
+      "dataIncomplete": true,
+      "lat": 45.534946,
+      "lon": 6.8911582,
+      "local": {
+        "x": -35630.5,
+        "z": 16147
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 8091966693,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 238.5,
+      "dataIncomplete": true,
+      "lat": 45.5386754,
+      "lon": 6.8896025,
+      "local": {
+        "x": -35741.1,
+        "z": 15729.5
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 8091966728,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 238.5,
+      "dataIncomplete": true,
+      "lat": 45.5406292,
+      "lon": 6.8908793,
+      "local": {
+        "x": -35635.7,
+        "z": 15515.1
       }
     },
     {
@@ -30417,6 +31563,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 9172139676,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 238.5,
+      "dataIncomplete": true,
+      "lat": 45.5194483,
+      "lon": 6.8933684,
+      "local": {
+        "x": -35503.2,
+        "z": 17873.3
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 9213690834,
       "category": "peak",
       "hutKind": null,
@@ -30897,6 +32059,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 9836453182,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 2235.2,
+      "dataIncomplete": false,
+      "lat": 45.5233361,
+      "lon": 7.0819368,
+      "local": {
+        "x": -20765.7,
+        "z": 17810.6
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 9863728245,
       "category": "pass",
       "hutKind": null,
@@ -30909,6 +32087,22 @@
       "local": {
         "x": 42235.1,
         "z": -14339.6
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 9964137190,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1747.5,
+      "dataIncomplete": false,
+      "lat": 45.749456,
+      "lon": 7.8592589,
+      "local": {
+        "x": 40296.6,
+        "z": -6154.8
       }
     },
     {
@@ -31617,6 +32811,38 @@
     },
     {
       "osmType": "node",
+      "osmId": 11653271807,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 238.5,
+      "dataIncomplete": true,
+      "lat": 45.6351746,
+      "lon": 6.817576,
+      "local": {
+        "x": -41072.6,
+        "z": 4858.2
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 11815305947,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 405.8,
+      "dataIncomplete": false,
+      "lat": 45.6136698,
+      "lon": 7.7333518,
+      "local": {
+        "x": 30264.7,
+        "z": 8783.8
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 11818276655,
       "category": "peak",
       "hutKind": null,
@@ -31629,6 +32855,22 @@
       "local": {
         "x": -8928.9,
         "z": -24336.6
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 12040265968,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 859.1,
+      "dataIncomplete": false,
+      "lat": 45.7309819,
+      "lon": 7.0760348,
+      "local": {
+        "x": -20672.7,
+        "z": -5269.7
       }
     },
     {
@@ -31905,6 +33147,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 12095923238,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 2268.4,
+      "dataIncomplete": false,
+      "lat": 45.8557365,
+      "lon": 7.841182,
+      "local": {
+        "x": 39061.8,
+        "z": -17983.1
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 12104313760,
       "category": "pass",
       "hutKind": null,
@@ -31933,6 +33191,22 @@
       "local": {
         "x": 37945.3,
         "z": -17724.1
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 12157321373,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 238.5,
+      "dataIncomplete": true,
+      "lat": 45.5862782,
+      "lon": 6.8341147,
+      "local": {
+        "x": -39930.4,
+        "z": 10325.5
       }
     },
     {
@@ -31997,6 +33271,22 @@
       "local": {
         "x": -39342.6,
         "z": 226.7
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 12211327405,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1533.8,
+      "dataIncomplete": false,
+      "lat": 45.6078225,
+      "lon": 7.3623468,
+      "local": {
+        "x": 1324.4,
+        "z": 8909.3
       }
     },
     {
@@ -32301,6 +33591,22 @@
       "local": {
         "x": -22586.2,
         "z": 23606.4
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 13152539698,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 1183.6,
+      "dataIncomplete": false,
+      "lat": 45.7159386,
+      "lon": 7.7588333,
+      "local": {
+        "x": 32427.6,
+        "z": -2547.3
       }
     },
     {
@@ -32769,6 +34075,22 @@
     },
     {
       "osmType": "node",
+      "osmId": 13899903911,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 589.2,
+      "dataIncomplete": false,
+      "lat": 45.610653,
+      "lon": 7.8174166,
+      "local": {
+        "x": 36814.3,
+        "z": 9219
+      }
+    },
+    {
+      "osmType": "node",
       "osmId": 14008266424,
       "category": "peak",
       "hutKind": null,
@@ -32845,6 +34167,86 @@
       "local": {
         "x": 38614.3,
         "z": -21061.1
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 14070704872,
+      "category": "peak",
+      "hutKind": null,
+      "name": "Aiguille du Peigne",
+      "ele": null,
+      "elevationM": 238.5,
+      "dataIncomplete": true,
+      "lat": 45.8972174,
+      "lon": 6.8993835,
+      "local": {
+        "x": -33931.5,
+        "z": -24084.6
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 14076381085,
+      "category": "pass",
+      "hutKind": null,
+      "name": "Colle Raye Chevrère",
+      "ele": 2495,
+      "elevationM": 2707.6,
+      "dataIncomplete": false,
+      "lat": 45.6695841,
+      "lon": 7.5419478,
+      "local": {
+        "x": 15454.1,
+        "z": 2318
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 14089499501,
+      "category": "peak",
+      "hutKind": null,
+      "name": "Aiguille des Veys",
+      "ele": null,
+      "elevationM": 1797.1,
+      "dataIncomplete": false,
+      "lat": 45.7020219,
+      "lon": 6.8305876,
+      "local": {
+        "x": -39857.2,
+        "z": -2540.9
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 14090196688,
+      "category": "waterfall",
+      "hutKind": null,
+      "name": null,
+      "ele": null,
+      "elevationM": 860.5,
+      "dataIncomplete": false,
+      "lat": 45.7546678,
+      "lon": 7.5513332,
+      "local": {
+        "x": 16356.3,
+        "z": -7121.6
+      }
+    },
+    {
+      "osmType": "node",
+      "osmId": 14094177901,
+      "category": "peak",
+      "hutKind": null,
+      "name": "Mont di Parc",
+      "ele": null,
+      "elevationM": 1725.9,
+      "dataIncomplete": false,
+      "lat": 45.7233786,
+      "lon": 6.9536508,
+      "local": {
+        "x": -30216.5,
+        "z": -4661.3
       }
     },
     {
@@ -34500,7 +35902,7 @@
       "osmId": 112844090,
       "category": "lake",
       "hutKind": null,
-      "name": "Lago Di Sant'Elena",
+      "name": "Lago Tsanteleina",
       "ele": 2696,
       "elevationM": 2696.7,
       "dataIncomplete": false,
@@ -37878,13 +39280,13 @@
       "hutKind": "alpine_hut",
       "name": "Rifugio Gian Federico Benevolo",
       "ele": 2285,
-      "elevationM": 2286.3,
+      "elevationM": 2286.2,
       "dataIncomplete": false,
-      "lat": 45.5156877,
-      "lon": 7.0844162,
+      "lat": 45.5156949,
+      "lon": 7.0843627,
       "local": {
-        "x": -20592.4,
-        "z": 18664.9
+        "x": -20596.5,
+        "z": 18664
       }
     },
     {
@@ -40488,11 +41890,11 @@
       "ele": 1810,
       "elevationM": 1810,
       "dataIncomplete": false,
-      "lat": 45.5576641,
-      "lon": 7.1130482,
+      "lat": 45.5576686,
+      "lon": 7.1130357,
       "local": {
-        "x": -18246.4,
-        "z": 14054.4
+        "x": -18247.4,
+        "z": 14053.9
       }
     },
     {
@@ -41492,7 +42894,7 @@
       "osmId": 1315971583,
       "category": "lake",
       "hutKind": null,
-      "name": "Lago del Glacier des Uselletes",
+      "name": "Lago del Ghiacciaio di Ussellettes",
       "ele": null,
       "elevationM": 2958.8,
       "dataIncomplete": false,
@@ -41549,6 +42951,22 @@
       "local": {
         "x": 10061.5,
         "z": 23895.4
+      }
+    },
+    {
+      "osmType": "way",
+      "osmId": 1547313643,
+      "category": "lake",
+      "hutKind": null,
+      "name": "Lago Pian Clavalitè",
+      "ele": null,
+      "elevationM": 1492.9,
+      "dataIncomplete": false,
+      "lat": 45.6856356,
+      "lon": 7.4947821,
+      "local": {
+        "x": 11813.8,
+        "z": 466.7
       }
     }
   ]

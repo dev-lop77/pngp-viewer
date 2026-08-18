@@ -1,35 +1,40 @@
 #!/usr/bin/env node
 // Filters tools/osm-poi-draft.json (from tools/fetch-osm.mjs) down to the
-// real Gran Paradiso National Park boundary (tools/park-boundary.geojson,
-// from tools/fetch-park-boundary.mjs) and writes public/data/poi.json.
+// region we ship (tools/region.geojson, from tools/fetch-region.mjs) and
+// writes public/data/poi.json.
 //
 // Per the user's explicit choice 2026-07-28: the draft was too large to
-// curate by hand, so geographic filtering against the real park boundary
-// stands in for manual curation - "keep everything that falls within our
-// project" - rather than a hand-picked subset. The categories already
-// chosen (peak/hut/pass/waterfall/lake) are kept as-is.
+// curate by hand, so geographic filtering stands in for manual curation -
+// "keep everything that falls within our project" - rather than a hand-picked
+// subset. The categories already chosen (peak/hut/pass/waterfall/lake) are
+// kept as-is.
+//
+// The polygon that decides "within our project" was the park alone until
+// 2026-08-18; it is now the park plus the valleys our terrain draws, shared
+// with build-trails/build-hydrology/build-roads via tools/lib/region.mjs.
 //
 // Usage: node tools/build-poi.mjs
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
-import { point, polygon, multiPolygon } from '@turf/helpers';
-import proj4 from 'proj4';
-import { setLocalOrigin, worldToLocal } from '../src/geo.js';
+import { setLocalOrigin } from '../src/geo.js';
+import { loadRegion } from './lib/region.mjs';
 
 const DRAFT_FILE = 'tools/osm-poi-draft.json';
-const BOUNDARY_FILE = 'tools/park-boundary.geojson';
 const HEIGHTFIELD_FILE = 'public/data/heightfield.json';
 const OUT_FILE = 'public/data/poi.json';
 
 // Huts are the one category admitted from just outside the boundary (user's
 // call, 2026-08-03: "cattura anche i rifugi subito fuori dal perimetro"). 750 m
-// is taken from the real distance distribution rather than picked: the huts
-// just outside sit at 40 m (Sogno di Berdzé), 63 m (Ciavanassa) and 573 m
-// (Rifugio Benevolo, the Val di Rhêmes classic), and the next one is 1542 m
-// away - a 969 m gap, so the threshold lands in empty space instead of cutting
-// through a continuum. Same escape hatch as the hand-picked waterfalls, but
-// derived from the data instead of a name list.
+// came from the real distance distribution against the park polygon rather
+// than being picked: the huts just outside sat at 40 m (Sogno di Berdzé), 63 m
+// (Ciavanassa) and 573 m (Rifugio Benevolo, the Val di Rhêmes classic), and
+// the next one was 1542 m away - a 969 m gap, so the threshold landed in empty
+// space instead of cutting through a continuum.
+//
+// Kept unchanged when the boundary became the region (2026-08-18), though it
+// now does far less work: Benevolo and most of its neighbours are simply
+// inside. The build prints what the buffer still admits, so the number stays
+// answerable to the data rather than to its own history.
 //
 // Deliberately NOT extended to other categories: peaks and passes have no such
 // gap, and settlements/trailheads are worse still - no buffer separates the
@@ -43,7 +48,6 @@ const HUT_BUFFER_M = 750;
 const HUT_DEDUPE_M = 150;
 
 const draft = JSON.parse(readFileSync(DRAFT_FILE, 'utf8'));
-const boundary = JSON.parse(readFileSync(BOUNDARY_FILE, 'utf8'));
 const heightfieldManifest = JSON.parse(readFileSync(HEIGHTFIELD_FILE, 'utf8'));
 // Curation lives here, not in the fetch: the draft keeps OSM's raw names so
 // fetch-osm.mjs can detect upstream renames, and relabelling a place costs a
@@ -52,65 +56,37 @@ const trailheadById = new Map(
   JSON.parse(readFileSync('tools/trailheads.json', 'utf8')).trailheads.map((t) => [t.id, t]),
 );
 
-const geom = boundary.geometry;
-const boundaryPoly =
-  geom.type === 'Polygon' ? polygon(geom.coordinates) : multiPolygon(geom.coordinates);
-
-// Boundary rings in local scene metres, so "how far outside" is a real metre
-// distance. Converting the ring once is far cheaper than converting every
-// POI to WGS84 and doing spherical maths - same approach as build-trails.mjs.
-proj4.defs('EPSG:23032', '+proj=utm +zone=32 +ellps=intl +towgs84=-87,-98,-121,0,0,0,0 +units=m +no_defs');
 setLocalOrigin(heightfieldManifest.localOrigin.x, heightfieldManifest.localOrigin.y);
-const rings = (geom.type === 'Polygon' ? geom.coordinates : geom.coordinates.flat()).map((ring) =>
-  ring.map(([lon, lat]) => {
-    const [e, n] = proj4('WGS84', 'EPSG:23032', [lon, lat]);
-    const { x, z } = worldToLocal(e, n);
-    return [x, z];
-  }),
-);
 
-// Distance to the nearest boundary EDGE, not the nearest vertex: with 7,857
-// vertices around a park this size, vertex-only distance would overstate by
-// tens of metres on a long straight stretch.
-function metresFromBoundary(px, pz) {
-  let best = Infinity;
-  for (const ring of rings) {
-    for (let i = 1; i < ring.length; i++) {
-      const [ax, az] = ring[i - 1];
-      const [bx, bz] = ring[i];
-      const dx = bx - ax;
-      const dz = bz - az;
-      const lenSq = dx * dx + dz * dz;
-      const t = lenSq > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / lenSq)) : 0;
-      const cx = ax + t * dx;
-      const cz = az + t * dz;
-      const d = Math.hypot(px - cx, pz - cz);
-      if (d < best) best = d;
-    }
-  }
-  return best;
-}
+// Point-in-region and distance-to-region both live in tools/lib/region.mjs
+// now, in local scene metres - this file used to carry its own copy of the
+// ring conversion and the point-to-edge distance, and having three copies of
+// the same idea is how they drifted apart in the first place.
+const region = loadRegion();
 
 const kept = [];
 const nearMisses = [];
 for (const p of draft.pois) {
-  const insideBoundary = booleanPointInPolygon(point([p.lon, p.lat]), boundaryPoly);
+  // The draft carries unnamed waterfalls on purpose (tools/fetch-osm.mjs, for
+  // build-hydrology.mjs' ribbons). A POI here is a name on a marker post, so
+  // they have no place in poi.json.
+  if (!p.name) continue;
+  const insideBoundary = region.contains(p.local.x, p.local.z);
   // Trailheads are already an explicit, hand-curated id allowlist
-  // (tools/trailheads.json), so the boundary test has nothing left to decide -
-  // 14 of the 22 are deliberately outside it. Their distance is still recorded
-  // for information.
+  // (tools/trailheads.json), so the boundary test has nothing left to decide.
+  // Their distance is still recorded for information.
   if (insideBoundary || p.category === 'trailhead') {
     const curated = trailheadById.get(`${p.osmType[0]}${p.osmId}`);
     kept.push({
       ...p,
       displayName: curated?.displayName,
       valley: curated?.valley,
-      outsideByM: insideBoundary ? 0 : Math.round(metresFromBoundary(p.local.x, p.local.z)),
+      outsideByM: insideBoundary ? 0 : Math.round(region.metresOutside(p.local.x, p.local.z)),
     });
     continue;
   }
   if (p.category !== 'hut') continue;
-  const outsideByM = Math.round(metresFromBoundary(p.local.x, p.local.z));
+  const outsideByM = Math.round(region.metresOutside(p.local.x, p.local.z));
   if (outsideByM <= HUT_BUFFER_M) kept.push({ ...p, outsideByM });
   else if (outsideByM <= 3000) nearMisses.push({ ...p, outsideByM });
 }
@@ -184,19 +160,16 @@ const output = {
   coordUnits: 'local scene meters {x, z} at ground level - see localOrigin/axes above, same frame as the terrain',
   categories: ['peak', 'hut', 'pass', 'waterfall', 'lake', 'trailhead'],
   count: pois.length,
-  boundary: {
-    name: boundary.properties.name,
-    source: boundary.properties.source,
-    filter:
-      'a POI is included if it falls inside this polygon (point-in-polygon), except huts, ' +
-      `which are also kept up to ${HUT_BUFFER_M} m outside it - see outsideBoundaryByM on ` +
+  boundary: region.describe(
+    'a POI is included if it falls inside one of these polygons (point-in-polygon), except ' +
+      `huts, which are also kept up to ${HUT_BUFFER_M} m outside - see outsideBoundaryByM on ` +
       'each POI and the rationale in tools/build-poi.mjs',
-  },
+  ),
   source: {
     dataset: 'OpenStreetMap contributors',
     license: 'ODbL 1.0',
     attribution: '© OpenStreetMap contributors',
-    fetchedVia: 'tools/fetch-osm.mjs + tools/fetch-park-boundary.mjs',
+    fetchedVia: 'tools/fetch-osm.mjs + tools/fetch-region.mjs',
   },
   generatedBy: 'tools/build-poi.mjs',
   generatedAt: new Date().toISOString(),
