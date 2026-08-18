@@ -54,6 +54,8 @@ const SRC_META = 'DEM/pngp_heightmap_meta.json';
 const BASE_JSON = 'public/data/heightfield.json';
 const BASE_BIN_DIR = 'public/data';
 const BOUNDARY = 'tools/park-boundary.geojson';
+// Same grid as the heightmap above, written by tools/dtm-source/merge-heightmaps.sh.
+const OUTER_RING_PNG = 'DEM/outer_ring.png';
 const OUT_DIR = 'public/data';
 const OUT_JSON = `${OUT_DIR}/heighttier.json`;
 
@@ -312,6 +314,25 @@ const NODATA = 0;
 const NATIVE_PER_BASE = NW / BW;
 const DILATE_PX = Math.ceil(3 * NATIVE_PER_BASE) + 1;
 console.log(`native/base ratio ${NATIVE_PER_BASE.toFixed(3)} -> dilating the hole mask by ${DILATE_PX} native px`);
+// A THIRD THING COUNTS AS A HOLE, since 2026-08-18: the outer ring, where the
+// elevation came from the 30 m global DEM because no Italian source reaches
+// across the frontier (tools/build-outer-ring.mjs). It is not missing data - it
+// is data at a twentieth of the detail this tier exists to add, and correcting a
+// 30 m surface with a 30 m surface is a correction of nothing.
+//
+// It also breaks the tier if it is left in, which is how it was found. The park's
+// bounding box clips a piece of the frontier crest, and along the seam the 5 m
+// mosaic and the 20.5 m base describe genuinely different mountains: the widest
+// residual came out at 110 m against a codec built for 96, on the ridge above Col
+// du Fond. Raising the codec's range would have shipped the seam at higher
+// precision. Treating the ring the way a hole is treated leaves the base surface
+// alone there, which is the honest answer - and the ring is faded out by
+// src/terrain.js anyway, so nothing is lost that anyone can see.
+const ringPng = decode(readFileSync(OUTER_RING_PNG));
+if (ringPng.width !== NW || ringPng.height !== NH) {
+  throw new Error(`${OUTER_RING_PNG} is ${ringPng.width}x${ringPng.height}, `
+    + `the heightmap is ${NW}x${NH} - they must be the same grid`);
+}
 const MW = TW + 2 * DILATE_PX;
 const MH = TH + 2 * DILATE_PX;
 const holeMask = new Uint8Array(MW * MH);
@@ -320,7 +341,9 @@ for (let y = 0; y < MH; y++) {
   if (ny < 0 || ny >= NH) { holeMask.fill(1, y * MW, (y + 1) * MW); continue; }
   for (let x = 0; x < MW; x++) {
     const nx = col0 - DILATE_PX + x;
-    holeMask[y * MW + x] = (nx < 0 || nx >= NW || native[ny * NW + nx] === NODATA) ? 1 : 0;
+    const outside = nx < 0 || nx >= NW;
+    holeMask[y * MW + x] = (outside || native[ny * NW + nx] === NODATA
+      || ringPng.data[ny * NW + nx] > 127) ? 1 : 0;
   }
 }
 // Separable max filter, so the dilation is O(n) rather than O(n * r^2).
@@ -377,6 +400,13 @@ for (const stride of LEVEL_STRIDES) {
   let loSigned = Infinity;
   let hiSigned = -Infinity;
   let holes = 0;
+  // WHERE the widest residual is, not just how wide. The guard below tells whoever
+  // trips it to re-measure rather than raise the range, and re-measuring means
+  // going to look at the ground in question - which needs a coordinate. Without
+  // one the only available move is the one the message forbids.
+  let worstAt = null;
+  // Every clipped pixel, not just how many. See the guard below.
+  const clippedAt = [];
   for (let y = 0; y < LH; y++) {
     const fadeY = Math.min(1, Math.min(y, LH - 1 - y) / fadePx);
     for (let x = 0; x < LW; x++) {
@@ -404,10 +434,14 @@ for (const stride of LEVEL_STRIDES) {
       const under = baseToM(baseAtNative(col0 + x * stride + (stride - 1) / 2,
         row0 + y * stride + (stride - 1) / 2));
       const residual = (truth - under) * fade;
+      if (Math.abs(residual) > maxAbs) worstAt = { x, y, residual, truth, under };
       maxAbs = Math.max(maxAbs, Math.abs(residual));
       loSigned = Math.min(loSigned, residual);
       hiSigned = Math.max(hiSigned, residual);
-      if (Math.abs(residual) > RESIDUAL_HALF_RANGE_M) clipped++;
+      if (Math.abs(residual) > RESIDUAL_HALF_RANGE_M) {
+        clipped++;
+        if (clippedAt.length < 32) clippedAt.push({ x, y, residual, truth, under });
+      }
       const code = encodeResidual(residual);
       bytes[y * LW + x] = code;
       worstErr = Math.max(worstErr, Math.abs(decodeResidual(code) - residual));
@@ -418,8 +452,49 @@ for (const stride of LEVEL_STRIDES) {
     + ` (widest |value| ${maxAbs.toFixed(2)} of ${RESIDUAL_HALF_RANGE_M})`
     + `, worst round-trip ${worstErr.toFixed(3)} m, clipped ${clipped} px`);
   console.log(`  nodata left flat: ${holes} px (${((holes / (LW * LH)) * 100).toFixed(2)}%)`);
-  if (clipped) throw new Error(`${clipped} residual pixels of the ${levelResX.toFixed(2)} m level exceed `
-    + `+/-${RESIDUAL_HALF_RANGE_M} m - re-measure RESIDUAL_HALF_RANGE_M, do not simply raise it`);
+  if (worstAt) {
+    const wE = xmin + (col0 + worstAt.x * stride + (stride - 1) / 2 + 0.5) * nativeResX;
+    const wN = ymax - (row0 + worstAt.y * stride + (stride - 1) / 2 + 0.5) * nativeResY;
+    const [wLon, wLat] = proj4(CRS, 'EPSG:4326', [wE, wN]);
+    console.log(`  widest at ${wLat.toFixed(5)}, ${wLon.toFixed(5)} - native mean `
+      + `${worstAt.truth.toFixed(1)} m over base ${worstAt.under.toFixed(1)} m`);
+  }
+  // THE GUARD IS ABOUT SCALE, NOT ABOUT PERFECTION, and until 2026-08-18 it could
+  // not tell the two apart. It was written when a mis-sized codec left 343 pixels
+  // off the scale and produced corrections of -1990 m, and any nonzero count
+  // failed - which was right while every pixel in range came from one 5 m survey.
+  //
+  // The southern extension brought in ground where the sources disagree. Measured
+  // over the 44.1 M cells Piemonte DTM5 and TINITALY both cover: they agree to a
+  // mean of 0.81 m with a standard deviation of 3.3 m, and 1,245 cells - 0.0028% -
+  // differ by more than 96 m. Those are isolated single-cell spikes in one source
+  // or the other (the one that stopped this build reads 1013.6 m in Piemonte
+  // against 857.4 in TINITALY and 858.2 in Copernicus, with both its neighbours
+  // 100 m away at 856 and 876), and a spike is not a scale error.
+  //
+  // So the test is proportion, and the two cases are three orders of magnitude
+  // apart: the historic failure was 8.6e-6 of its level, today's defects are
+  // 5.6e-8 of theirs. The budget sits between them, far below the thing this was
+  // written to catch. Clipping such a pixel pulls the fine surface back towards
+  // the coarse one, which for a spike is the right direction anyway.
+  //
+  // Every clipped pixel is printed, so this can never quietly become normal.
+  const CLIP_BUDGET = Math.max(4, Math.round(LW * LH * 1e-7));
+  if (clippedAt.length) {
+    console.log(`  clipped pixels (budget ${CLIP_BUDGET}):`);
+    for (const c of clippedAt) {
+      const cE = xmin + (col0 + c.x * stride + (stride - 1) / 2 + 0.5) * nativeResX;
+      const cN = ymax - (row0 + c.y * stride + (stride - 1) / 2 + 0.5) * nativeResY;
+      const [cLon, cLat] = proj4(CRS, 'EPSG:4326', [cE, cN]);
+      console.log(`    ${cLat.toFixed(5)}, ${cLon.toFixed(5)}  residual ${c.residual.toFixed(1)} m `
+        + `(fine ${c.truth.toFixed(1)} over coarse ${c.under.toFixed(1)})`);
+    }
+  }
+  if (clipped > CLIP_BUDGET) throw new Error(`${clipped} residual pixels of the ${levelResX.toFixed(2)} m level exceed `
+    + `+/-${RESIDUAL_HALF_RANGE_M} m, over a budget of ${CLIP_BUDGET} - re-measure RESIDUAL_HALF_RANGE_M, `
+    + `do not simply raise it. Start at the coordinates printed above: this many is no longer a handful of `
+    + `source spikes, it is the two grids describing different ground (a seam, a hole the dilation missed) `
+    + `or a codec sized for the wrong data.`);
 
   // The edge must be exactly zero on EVERY level, or the "no seam by construction"
   // claim is a story - and it is one claim per level, since each is drawn alone.
