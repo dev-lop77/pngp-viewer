@@ -84,7 +84,9 @@ two-metre gully.
 
 The fall at the Tsanteleina outflow is node 1281730839, 2,541.7 m, **exactly on
 stream 112844050** (0 m - the torrent draining the lake 156 m above it). Unnamed
-in OSM again, so "Cascata di Tsanteleina" is our name, like Goletta.
+in OSM again, so "Cascata di Tsanteleina" is our name, like Goletta - and both
+were put to the user, who **kept them**. They are ours on purpose, not by
+oversight: OSM has no name for either node.
 
 A quiet correction came with the re-fetch: the lake water.json calls
 `Lago Di Sant'Elena` is OSM way 112844090, which OSM now names **Lago
@@ -124,9 +126,10 @@ against a list, so any Alta Via the region ever reaches works with no code chang
 **But the number 3 is not in the source.** Measured over all 1,130 features: 37
 carry AV1, 49 carry AV2, none carry AV3 - and AV1 runs along the far side of the
 Aosta valley, so none of its 37 enters our region either. 13 of our 116 trails are
-AV2, 116 km with the numbered trails and the TAPPA stages overlapping. **A question
-for them: is "3" the Alta Via Canavesana on the Piemonte side (OSM relation
-1076948, `ref=AVC`), or something else?**
+AV2, 116 km with the numbered trails and the TAPPA stages overlapping. They were asked whether "3" meant the Alta Via Canavesana on the Piemonte side
+(OSM relation 1076948, `ref=AVC`, which IS inside our region but is not in the VDA
+trail dataset) or something else, and **they answered: leave it at Alta Via 2**.
+So point 5 is closed as built - do not go looking for an AV3 again.
 
 What ships: a soft yellow casing 3 px wide drawn UNDER the red trail line and 0.3 m
 lower, so the CAI dash pattern stays legible on top - a thicker RED line would have
