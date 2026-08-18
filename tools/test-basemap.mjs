@@ -144,7 +144,20 @@ const result = await page.evaluate(async () => {
 
   const terrain = await loadTerrain();
   const forest = await loadForest(); // before anything renders, or a wooded point measures the 1x1 placeholder
-  const loaded = await loadBasemap();
+  // WITH THE PAGE'S OWN LIMIT, which matters twice and cost a false failure on
+  // 2026-08-18 to notice. loadBasemap() defaults to a conservative 4096 (see its
+  // header), and it installs whatever it loads into the SHARED holder the page's
+  // shaders are bound to - so calling it bare here replaced the page's 8192 texture
+  // with the coarse level, and then the level assertion below became a race between
+  // two loads: whichever finished last decided what it saw. It passed three times
+  // and failed the fourth for no change of its own.
+  //
+  // Asking with the real limit also makes the pixel sampling right rather than merely
+  // stable: the numbers below are then measured on the level a visitor on this machine
+  // is actually shown.
+  const loaded = await loadBasemap(undefined, {
+    maxTextureSize: window.__pngp.renderer.capabilities.maxTextureSize,
+  });
 
   const scene = new THREE.Scene();
   scene.add(terrain.object);

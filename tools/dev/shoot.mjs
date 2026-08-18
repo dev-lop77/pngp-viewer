@@ -17,8 +17,13 @@ import { chromium } from 'playwright';
 const args = process.argv.slice(2);
 const flags = new Map(
   args.filter((a) => a.startsWith('--')).map((a) => {
-    const [k, v] = a.replace(/^--/, '').split('=');
-    return [k, v ?? 'true'];
+    // split on the FIRST '=' only: --url=http://host/#at=45.5,7.1,2355 is a
+    // perfectly ordinary argument here, and splitting on every '=' silently
+    // truncated it to "http://host/#at" - which looks like it worked, because
+    // the viewer just opens at its default place.
+    const body = a.replace(/^--/, '');
+    const eq = body.indexOf('=');
+    return eq === -1 ? [body, 'true'] : [body.slice(0, eq), body.slice(eq + 1)];
   }),
 );
 const positional = args.filter((a) => !a.startsWith('--'));
