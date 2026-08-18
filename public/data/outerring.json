@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "grid": "the heightfield grid divided by downscale - same bbox, same row order, coarser cells",
+  "crs": "EPSG:23032",
+  "bboxCrsUnits": {
+    "xmin": 329116,
+    "ymin": 5027000,
+    "xmax": 413000,
+    "ymax": 5085000
+  },
+  "dimensions": {
+    "width": 2048,
+    "height": 1416
+  },
+  "downscaleFromHeightfield": 2,
+  "resolutionMPerPx": {
+    "x": 40.958984375,
+    "y": 40.96045197740113
+  },
+  "rowOrientation": "row 0 = north edge (ymax); row N-1 = south edge (ymin)",
+  "encoding": {
+    "channels": 1,
+    "depth": 8,
+    "meaning": "distance beyond the edge of local survey data, as a fraction of maxDistanceM. 0 = inside the ground the park is actually surveyed on; 255 = maxDistanceM or more out into the coarse global fallback across the French and Swiss frontier",
+    "maxDistanceM": 8000,
+    "quantisedTo": "16 levels, stored at PNG sample depth 4 and scaled x17 on decode"
+  },
+  "coverage": {
+    "ringCells": 440210,
+    "ringFraction": 0.1518,
+    "deepestRingM": 20558
+  },
+  "file": {
+    "name": "outerring.f29961fb.png",
+    "bytes": 23532,
+    "sha256Prefix": "f29961fb"
+  },
+  "generatedBy": "tools/build-outer-ring.mjs",
+  "generatedAt": "2026-08-18T12:19:14.248Z"
+}

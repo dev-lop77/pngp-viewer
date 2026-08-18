@@ -3,30 +3,30 @@
   "crs": "EPSG:23032",
   "bboxCrsUnits": {
     "xmin": 329116,
-    "ymin": 5036775,
+    "ymin": 5027000,
     "xmax": 413000,
     "ymax": 5085000
   },
   "localOrigin": {
     "crs": "EPSG:23032",
     "x": 371058,
-    "y": 5060887.5,
+    "y": 5056000,
     "note": "bbox center. World (E,N) -> local scene meters: X = E - originX, Z = originY - N, Y = elevationM (see docs/ARCHITECTURE.md §6)."
   },
   "axes": "+X = East, +Y = Up (elevation, meters), +Z = South - right-handed, matches Three.js Y-up (East x Up = South in real-world ENU).",
   "dimensions": {
     "width": 4096,
-    "height": 2355
+    "height": 2832
   },
   "resolutionMPerPx": {
     "x": 20.4794921875,
-    "y": 20.477707006369428
+    "y": 20.480225988700564
   },
   "pixelConvention": "area (cell-center), not point-sample: pixel (i,j) center = (xmin + (i+0.5)*resX, ymax - (j+0.5)*resY). Matches GDAL -te/-tr semantics used to produce the source PNG.",
   "rowOrientation": "row 0 = north edge (ymax); row N-1 = south edge (ymin)",
   "elevationRangeM": {
-    "min": 238.51132202148,
-    "max": 4809.8129882812,
+    "min": 219.25816345215,
+    "max": 4810.9555664062,
     "units": "meters"
   },
   "encoding": {
@@ -39,16 +39,16 @@
     "noData": null
   },
   "file": {
-    "name": "heightfield.3e0525a4.bin",
-    "bytes": 19292160,
-    "sha256Prefix": "3e0525a4"
+    "name": "heightfield.1fefad51.bin",
+    "bytes": 23199744,
+    "sha256Prefix": "1fefad51"
   },
   "source": {
     "sources": [
       {
         "name": "DTM0508_002_UNICO (Regione Autonoma Valle d'Aosta)",
         "priority": 1,
-        "coverage": "Valle d'Aosta side of the park - highest quality, native ~10m",
+        "coverage": "Valle d'Aosta side of the park - highest quality. The source ASC is 2.0 m/px (DEM/pngp_extraction_report.txt); extract-heightmap.sh resamples it to this grid, so 'native' here means the target resolution, not the source's.",
         "license": "CC BY 4.0",
         "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
         "licenseVerifiedVia": "https://metadati.partout.it/metadata_documents/CC_BY_DTM_v2.pdf (linked from https://geoportale.regione.vda.it/download/dtm/, which lists this product as 'DTM 2005/2008 aggregato' = DTM0508). Granted under DGR 1620 del 25/11/2016 and DGR 899 del 27/06/2014; sharing and modification allowed 'per qualsiasi fine, anche commerciale'.",
@@ -68,7 +68,7 @@
       {
         "name": "TINITALY 1.1 (INGV)",
         "priority": 3,
-        "coverage": "Whatever the first two sources miss (mainly the highest peaks) - national 10m mosaic",
+        "coverage": "Whatever the first two sources miss (mainly the highest peaks) - national 10m mosaic, so it is upsampled wherever this grid is finer than 10 m and adds coverage rather than detail",
         "fetchedVia": "tools/dtm-source/fetch-tinitaly.sh",
         "license": "CC BY 4.0",
         "attribution": "Tarquini S., I. Isola, M. Favalli, A. Battistini, G. Dotta, (2023). TINITALY, a digital elevation model of Italy with a 10 meters cell size (Version 1.1). Istituto Nazionale di Geofisica e Vulcanologia (INGV). https://doi.org/10.13127/tinitaly/1.1 - CC BY 4.0"
@@ -76,14 +76,14 @@
     ],
     "nativeHeightmap": "DEM/pngp_heightmap.png",
     "nativeDimensions": {
-      "width": 8388,
-      "height": 4823
+      "width": 16777,
+      "height": 11600
     },
     "nativeResolutionMPerPx": {
-      "x": 10.000476871721506,
-      "y": 9.998963300850093
+      "x": 4.999940394587829,
+      "y": 5
     }
   },
   "generatedBy": "tools/process-heightmap.mjs",
-  "generatedAt": "2026-08-10T11:14:13.290Z"
+  "generatedAt": "2026-08-18T12:16:26.801Z"
 }

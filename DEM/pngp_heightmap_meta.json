@@ -1,9 +1,9 @@
 {
   "crs": "EPSG:23032",
-  "bbox_utm32n": { "xmin": 329116, "ymin": 5036775, "xmax": 413000, "ymax": 5085000 },
+  "bbox_utm32n": { "xmin": 329116, "ymin": 5027000, "xmax": 413000, "ymax": 5085000 },
   "resolution_m_per_px": { "x": 5, "y": 5 },
-  "image_size_px": { "width": 16777, "height": 9645 },
-  "elevation_m": { "min": 238.51132202148, "max": 4809.8129882812 },
+  "image_size_px": { "width": 16777, "height": 11600 },
+  "elevation_m": { "min": 219.25816345215, "max": 4810.9555664062 },
   "note": "Priority mosaic of 3 sources (best real value per pixel, not a single dataset) - closes the Piemonte-side nodata gap present in the VDA-only heightmap. See docs/ARCHITECTURE.md §3.",
   "sources": [
     {
