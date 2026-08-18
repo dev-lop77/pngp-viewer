@@ -2,6 +2,84 @@
 
 Read this first at the start of each session. Update it before ending one.
 
+## NEXT SESSION: start with the depth, and it needs them at a screen
+
+**State: published, healthy, nothing half-finished.** The working tree is clean, the
+fast suite is 10/10, and https://dev-lop77.github.io/pngp-viewer/ serves the whole
+park with the credits verified against the CDN. There is no rescue work waiting.
+
+### Start here: the DEPTH half of their own request, which is still untouched
+
+Of the three topics they named, the first one was **two** requests and only one has
+been built. Their words when asked which they meant: ***"entrambe, ma nell'ordine"***
+- push the aerial perspective first, and judge a depth-of-field pass only if
+something is still missing afterwards. The EDGES are done. The DEPTH is not, and
+`uAtmoHaze` is exactly where it has always been.
+
+It is first because it is theirs, it is cheap, and **it cannot be decided from a
+desk** - it is a looking decision. Open by putting them in front of it, not by
+proposing a number.
+
+Facts to start the conversation from, so it does not begin with a measurement:
+
+- The haze is `1 - exp(-d * uAtmoHaze)` with `uAtmoHaze = 1.8e-5` (src/atmosphere.js).
+  At 2 km it has taken 4% of the ground, at 10 km 16%, at 30 km 42%, at 60 km 66%,
+  and at the map's 102 km diagonal 84%. Whether that is "enough air" is a taste
+  question and the whole point of asking them.
+- `scene.fog`'s near/far in main.js are DEAD numbers - installAtmosphere() replaces
+  the fragment chunk, so only its COLOUR survives. Touching them does nothing, and
+  it is a good half-hour to not lose.
+- **There is still no post-processing stack**: no EffectComposer, rendered straight
+  to screen. A real depth-of-field means introducing one and paying a full-screen
+  pass - which is why they were right to want it second.
+- Since this morning there are two live knobs worth sweeping in front of them,
+  exposed as uniforms precisely so a probe can move them without a rebuild:
+  `OUTER_RING_FADE_M` (4000) and `EDGE_FADE_M` (1500) in src/outerring.js. EDGE_FADE_M
+  is CONSTRAINED, not free - over ~2.1 km it starts dissolving the park's southern
+  tip, and tools/test-outerring.mjs fails if it does.
+- Frame rate on real hardware is **no longer an unknown**: they measured it after the
+  terrain grew 20% and the glaciers gained half a million triangles, and it is
+  unchanged. So a cheap haze change costs nothing to try, and a DOF pass is the only
+  thing in this topic with a real price.
+
+### Then, in this order
+
+**3D models for the 45 rifugi and bivacchi.** Long, self-contained, and independent
+of everything above. `hutKind` already separates three genuinely different buildings
+(`alpine_hut`, `wilderness_hut`, `shelter:basic_hut`) and they must not collapse into
+one model. Everything else in this project is procedural geometry authored in JS
+(`buildIbex()` and friends), and tools/dev/model-preview.html is the bench for judging
+shapes side by side under the app's own light. The open question is what replaces the
+marker post and the label once a building stands there.
+
+**Summit crosses on the 252 peaks.** The trap is measured and known: a peak's
+`elevationM` is its real altitude and the drawn mesh sits tens of metres below it on a
+sharp summit, which is why poi.js plants markers with `sampleRenderedHeight` rather
+than the real number. A cross at the true altitude floats. Also worth asking before
+building: all 252, or only the ones that really have one?
+
+### Debts, written down rather than hidden
+
+- **Piemonte DTM5 spikes are in the shipped DEM**, not only in the tier: 1,245 cells
+  over 96 m out of the 44.1 M it shares with TINITALY. Invisible in practice. A
+  de-spike pass over the mosaic is a real option nobody has taken.
+- **Glaciers should be a terrain mask, not a sheet.** 1.25% of the ice still dips
+  under the rock because a triangle's interior is flat, and the offset is squeezed
+  between eye height above and sag below so it cannot cover the tail. Drawing them the
+  way src/forest.js draws canopy removes the whole class - and 563,567 triangles with
+  it.
+- **The 5 m tier is 51.03 MB** and the push warns about it. GitHub recommends under
+  50, its hard limit is 100. Not a wall today; the next time that file grows it is.
+
+### Two mistakes this project keeps making, both made again on 2026-08-18
+
+1. **Measuring seated geometry with the sampler that seated it.** Commit a362e16 is
+   named for this, and it happened twice more that day - the glacier's vertices came
+   back "2 m above the ground" from the very function that had put them there.
+2. **Believing a truncated log.** `run-tests.sh` keeps only the TAIL of each test's
+   output, so the suite showed one failure where the test itself reported four.
+
+
 ## PUBLISHED (2026-08-18, second publish of the day)
 
 Live at https://dev-lop77.github.io/pngp-viewer/ after the user's "committa e
@@ -283,7 +361,7 @@ de-spike pass over the mosaic is a real option and was not taken. And the
 other three; it must be before this is published.
 
 
-## NEXT SESSION: the three they named on closing (2026-08-18)
+## The three topics as first written (2026-08-18 morning - superseded by NEXT SESSION at the top)
 
 Their words, closing a session that ended published and with nothing pending:
 *"La prossima volta possiamo parlare di come migliorare i bordi della mappa,
