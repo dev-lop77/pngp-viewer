@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "grid": "identical to heightfield.json: same dimensions, bboxCrsUnits, resolution and row order",
+  "crs": "EPSG:23032",
+  "bboxCrsUnits": {
+    "xmin": 329116,
+    "ymin": 5027000,
+    "xmax": 413000,
+    "ymax": 5085000
+  },
+  "dimensions": {
+    "width": 4096,
+    "height": 2832
+  },
+  "resolutionMPerPx": {
+    "x": 20.4794921875,
+    "y": 20.480225988700564
+  },
+  "rowOrientation": "row 0 = north edge (ymax); row N-1 = south edge (ymin)",
+  "encoding": {
+    "channels": 1,
+    "depth": 8,
+    "meaning": "fraction of the pixel covered by glacier ice, 0 = none, 255 = full",
+    "quantisedTo": "16 levels, stored at PNG sample depth 4 and scaled x17 on decode"
+  },
+  "coverage": {
+    "outlines": 80,
+    "fullPixels": 69008,
+    "partialPixels": 7043,
+    "approxAreaKm2": 29.07,
+    "note": "No slope attenuation is baked in - an icefall is steep by definition. The terrain shader keeps its own rock term for cliffs inside an outline."
+  },
+  "file": {
+    "name": "glacier.d60915e3.png",
+    "bytes": 30729,
+    "sha256Prefix": "d60915e3"
+  },
+  "source": {
+    "dataset": "OpenStreetMap contributors",
+    "license": "ODbL 1.0",
+    "attribution": "© OpenStreetMap contributors",
+    "fetchedVia": "tools/fetch-hydrology.mjs + tools/fetch-osm.mjs (waterfalls)",
+    "modifications": "Derived product, not the original data: the glacier outlines shipped in water.json were rasterised to the heightfield grid under the even-odd rule and stored as per-pixel ice coverage."
+  },
+  "generatedBy": "tools/build-glacier-mask.mjs",
+  "generatedAt": "2026-08-19T10:42:04.897Z"
+}
