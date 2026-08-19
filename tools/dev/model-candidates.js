@@ -34,6 +34,7 @@
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_BUILDERS, HI_BUILDERS } from '../../src/wildlife.js';
+import { HUT_BUILDERS, HI_HUT_BUILDERS, HUT_FAR_BUILDERS } from '../../src/huts.js';
 import {
   CONE_SEGMENTS, CANOPY_COLOR, RADIUS_MIN, RADIUS_MAX, tieredTreeParts,
 } from '../../src/vegetation.js';
@@ -61,6 +62,34 @@ function treeCurrent() {
 // smooth normals. `smooth` is a property of the CANDIDATE, not of the preview,
 // because it is half of what "higher resolution" means here.
 export const SETS = {
+  // The huts (2026-08-19). Unlike the animals, these are NOT current-vs-candidate:
+  // nothing has ever stood at a rifugio before, so each set shows the model that is
+  // being proposed beside the distance shape it degrades into - and those two have to
+  // read as the same building, or a hut will appear to change identity as you walk up
+  // to it. The bivouac shape is the user's own choice from 2026-08-19: the barrel
+  // -vaulted Apollonio type, not a little house.
+  rifugio: {
+    subject: 'Rifugio (23 alpine_hut)',
+    heightM: 8.6,
+    variants: [
+      { label: 'full model', build: () => HUT_BUILDERS.rifugio(), smooth: false,
+        note: 'stone floor, dark timber storey, gallery along the facade, steep shingle roof, shutters' },
+      { label: 'distance shape', build: () => HUT_FAR_BUILDERS.rifugio(), smooth: false,
+        note: 'drawn beyond 800 m - keeps the ridge line, which is what separates a refuge from a boulder' },
+    ],
+  },
+  bivouac: {
+    subject: 'Bivouac (21 basic_hut + 7 wilderness_hut)',
+    heightM: 2,
+    variants: [
+      { label: 'full model', build: () => HUT_BUILDERS.bivouac(), smooth: false,
+        note: 'orange vaulted box on a bolted pad, dark door, name plate; wilderness huts take it at 1.3x' },
+      { label: 'High (Models)', build: () => HI_HUT_BUILDERS.bivouac(), smooth: false,
+        note: 'the tricolour on a mast by the door - the user\'s addition, 2026-08-19' },
+      { label: 'distance shape', build: () => HUT_FAR_BUILDERS.bivouac(), smooth: false,
+        note: 'six facets, no door and no plate - a 4 cm-proud panel on a 3 px building only aliases' },
+    ],
+  },
   ibex: {
     subject: 'Ibex',
     // Metres, roughly the height of the model, for the preview's camera framing.

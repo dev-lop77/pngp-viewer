@@ -1616,6 +1616,33 @@ pngp-viewer/
 │                              streaks along a new `aFlow` attribute measured in METRES, so a
 │                              13 m fall and a 141 m one get the same size of streak instead of
 │                              the same number of them
+│   ├── huts.js             the 51 rifugi and bivacchi as BUILDINGS (2026-08-19), procedural
+│                              geometry authored in JS like every other model here. Two models
+│                              from three OSM tags, by the user's choice: a wood-and-stone
+│                              mountain hut for the 23 `alpine_hut`, and the orange
+│                              barrel-vaulted Apollonio bivouac for the 21 `shelter:basic_hut`
+│                              and the 7 `wilderness_hut` (those at 1.3x). "Generico ma
+│                              riconoscibile" was the brief for the hut, after a first attempt
+│                              at a realistic refuge was rejected - "sembra che il tetto sia
+│                              staccato", which it did, because roof and gable ends were one
+│                              tent in the roof's colour; the gable is the WALL carrying on up
+│                              and is drawn in the wall's material now. Always drawn, in two
+│                              levels: the full model within 800 m (NEAR_M) and an
+│                              eight-to-twelve-triangle silhouette beyond it, whose job is the
+│                              SAME outline rather than fewer triangles - the counts are
+│                              nothing (118 and 30 for the hut, 68 and 48 for the bivouac),
+│                              but a 4 cm-proud window panel on a 3-pixel building is pure
+│                              aliasing. Models=High adds the tricolour on a mast to the
+│                              bivouac (the user's own addition) and nothing to the hut.
+│                              Every building is seated on the DRAWN surface at its four
+│                              footprint corners, lifted to the highest of them so nothing is
+│                              buried, and given its own foundation box scaled to bridge the
+│                              corner drop - so a 9.5 m hut on a 30 deg slope stands on a
+│                              terrace instead of floating. Registered with main.js's
+│                              reseatOnDrawnSurface(), because the height tier moves that
+│                              surface by up to 44 m after the first frame. Faces downhill:
+│                              the yaw comes from the terrain gradient sampled at 12 m, so
+│                              the door is on the side you walk up from
 │   ├── poi.js              loads public/data/poi.json, one merged pickable `LineSegments`
 │                              draw call per category (§10) - a thin vertical line from the
 │                              ground to each label, not a marker dot - plus one CSS2DObject
@@ -2125,3 +2152,16 @@ pointers say where.
     innocent.
 14. **Never leave the working tree on an old build while the user can open the
     viewer.** Vite HMR will serve it, and they will report the defect as unfixed.
+15. **A value the render loop writes every frame cannot be pinned by assigning it.**
+    (A verification rule, numbered last on purpose: code and probes already cite
+    §13.9/.10/.11 by number, and renumbering would silently point them elsewhere.)
+    `lighting.js` rewrites every ATMO uniform - haze, valley fog, glow, fog colour -
+    from the time-of-day preset on every frame, so an outside write to `uAtmoHaze`
+    reads back exactly what it just wrote and changes nothing on screen: the same
+    shape as `GROUNDCOVER_WIND` and `SNOW_LEVEL` (`tools/dev/README.md`). Move the
+    HOLDER the loop multiplies in (`HAZE_SCALE`), then wait for **the loop**, not
+    for a clock - a 3 s wait read the previous step's value twice at a vantage
+    SwiftShader draws slower than 1 fps, and two shots were labelled with a haze
+    they were not taken at. `tools/dev/probe-haze.mjs` waits for the uniform to
+    change and then for three presented frames.
+

@@ -142,6 +142,17 @@ export async function loadPOI(dataUrl = `${import.meta.env.BASE_URL}data`, { onS
   // ground (see terrain.js's sampleRenderedHeight).
   let groundHeightAt = null; // set by alignToGround(); until then occlusion is skipped, not guessed
 
+  // Set by main.js once src/huts.js exists: given a POI, has a real building been
+  // drawn where its post stands? The user's decision, 2026-08-19 - "l'edificio
+  // sostituisce il palo, l'etichetta resta". The post is what stands in for a place
+  // you cannot see yet, so it survives at the distance where the building is only a
+  // silhouette and goes when the building is there to be looked at (huts.js's NEAR_M).
+  // A predicate rather than a flag on the POI, because the answer changes as you walk.
+  let hasBuilding = null;
+  function setBuildingProbe(fn) {
+    hasBuilding = fn;
+  }
+
   function alignToGround(heightAt) {
     groundHeightAt = heightAt;
     for (const marker of markers) {
@@ -174,7 +185,14 @@ export async function loadPOI(dataUrl = `${import.meta.env.BASE_URL}data`, { onS
         : Infinity;
       const offset = Math.min(LABEL_MAX_OFFSET_M, Math.max(LABEL_MIN_OFFSET_M, dist * LABEL_OFFSET_PER_M));
 
-      writeMarker(attr.array, index, poi.local.x, poi.local.z, groundY, offset);
+      // A post whose building is standing collapses to NOTHING rather than being
+      // deleted: the merged LineSegments has one fixed slot per POI (§10's one draw
+      // call per category), so the way to hide one segment is to give it no length.
+      // Both ends land at the same point, deliberately: the first version wrote a top
+      // vertex at the ground and a base 2 m under it (BASE_SINK_M), which is invisible
+      // in the render and reads as a 2 m post to anything measuring the attribute -
+      // and a check nobody can state plainly is a check that will be misread.
+      writeMarker(attr.array, index, poi.local.x, poi.local.z, groundY, offset, hasBuilding?.(poi) === true);
       object.position.set(poi.local.x, groundY + offset, poi.local.z);
       object.visible = camera
         ? dist <= LABEL_MAX_DIST_M && !isHiddenByTerrain(groundHeightAt, camera, object.position)
@@ -194,16 +212,17 @@ export async function loadPOI(dataUrl = `${import.meta.env.BASE_URL}data`, { onS
     poi,
   }));
 
-  return { group, manifest: data, alignToGround, updateMarkers, searchEntries };
+  return { group, manifest: data, alignToGround, updateMarkers, searchEntries, setBuildingProbe };
 }
 
 // One marker = one line segment, from just below the ground up to its label.
-function writeMarker(positions, i, x, z, groundY, offset) {
+function writeMarker(positions, i, x, z, groundY, offset, collapsed = false) {
+  const base = groundY - BASE_SINK_M;
   positions[i * 6] = x;
-  positions[i * 6 + 1] = groundY - BASE_SINK_M;
+  positions[i * 6 + 1] = base;
   positions[i * 6 + 2] = z;
   positions[i * 6 + 3] = x;
-  positions[i * 6 + 4] = groundY + offset;
+  positions[i * 6 + 4] = collapsed ? base : groundY + offset;
   positions[i * 6 + 5] = z;
 }
 

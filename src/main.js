@@ -5,6 +5,7 @@ import { loadTerrain } from './terrain.js';
 import { SNOW_LEVEL } from './snow.js';
 import { loadTrails } from './trails.js';
 import { loadPOI, poiInfoHTML } from './poi.js';
+import { createHuts } from './huts.js';
 import { loadWater } from './water.js';
 import { loadRoads } from './roads.js';
 import { loadForest, createCoverageSampler } from './forest.js';
@@ -24,12 +25,12 @@ import { createWildlife } from './wildlife.js';
 import { setModelDetail } from './modeldetail.js';
 import { createBirds } from './birds.js';
 import { createAudio } from './audio.js';
-import { installAtmosphere } from './atmosphere.js';
+import { installAtmosphere, ATMO } from './atmosphere.js';
 import {
   installSkyAltitude, updateSkyAltitude, SKY_ALTITUDE_OVERRIDE, SKY_ALTITUDE_STRENGTH,
   skyAltitudeLengths,
 } from './sky.js';
-import { Lighting } from './lighting.js';
+import { Lighting, HAZE_SCALE } from './lighting.js';
 import { Weather, WEATHER_KEYS } from './weather.js';
 import { localToWGS84, wgs84ToLocal } from './geo.js';
 import {
@@ -409,12 +410,17 @@ const trailsPromise = loadTrails().then((result) => {
 // Select a POI: show its info panel and fly the camera toward it - shared by
 // both selection paths (clicking a label, and the search box).
 //
-// Where a fly-to puts you relative to the POI. Was 2500 m for the old
-// overview camera, then 250 m for walking - still too far in practice: after
-// searching for a col the user had to walk the remaining distance to reach it
-// (2026-08-03). 60 m arrives at the place while keeping the marker and its
-// surroundings in view.
-const FLY_TO_STANDOFF_M = 60;
+// Where a fly-to puts you relative to the POI. Was 2500 m for the old overview camera,
+// then 250 m for walking - still too far in practice: after searching for a col the user
+// had to walk the remaining distance to reach it (2026-08-03). Then 60 m, to arrive at
+// the place while keeping the marker and its surroundings in view.
+//
+// 15 m since 2026-08-19, at the user's request: "Mi piacerebbe arrivare piu vicino di
+// com'e' ora. Da 60m a 15m." It also reads differently now that the 51 rifugi and
+// bivacchi are BUILDINGS rather than posts - 15 m from the centre of a 9.5 m hut is
+// about 10 m off its facade, which is where you would actually stand to look at it, and
+// the camera is still outside every building in the park.
+const FLY_TO_STANDOFF_M = 15;
 const FLY_TO_DURATION_S = 1.2;
 let flying = null;
 
@@ -442,6 +448,7 @@ function selectPoi(poi) {
 }
 
 let poiIndex = null;
+let huts = null; // src/huts.js, created once the terrain and the POI are both up
 const poiPromise = loadPOI(undefined, { onSelect: selectPoi }).then((index) => {
   poiIndex = index;
   scene.add(index.group);
@@ -653,6 +660,21 @@ Promise.all([terrainPromise, poiPromise, trailsPromise]).then(([{ sampleRendered
   // alignToGround) so markers plant in the ground and trails lie on the path.
   index.alignToGround(sampleRenderedHeight);
   trails.alignToGround(sampleRenderedHeight);
+
+  // The 51 rifugi and bivacchi as buildings (2026-08-19). Built HERE rather than from
+  // its own loader because it needs both halves of this promise: the hut POIs, and the
+  // drawn surface to stand them on - a building placed at poi.elevationM would be
+  // buried or on stilts, which is the same trap poi.js's own comment describes.
+  huts = createHuts({
+    pois: index.manifest.pois.filter((poi) => poi.category === 'hut'),
+    sampleHeight: sampleRenderedHeight,
+  });
+  scene.add(huts.group);
+  huts.update(camera); // materialise them before the next frame, like the wildlife
+  registerSeatable({ name: 'huts', alignToGround: huts.alignToGround });
+  // And the post that stood for each of them steps aside once its building is there.
+  index.setBuildingProbe(huts.hasBuilding);
+  applyModelDetail(); // the Models control may already be High from a restored choice
   // And REGISTER them, because seating them once here is not enough: the height tier
   // loads after the first frame and moves the drawn surface under them by up to 44 m.
   // Measured at Le Pont before this was fixed - the dashed trails sat at a constant
@@ -768,6 +790,9 @@ if (import.meta.env.DEV) {
     // the same trap the comment above this block describes.
     get terrain() { return terrainSurface; },
     getPoiIndex: () => poiIndex,
+    // The buildings, for a probe that needs to ask where one was seated and which
+    // level it is drawn at - a getter because they are created after this block runs.
+    getHuts: () => huts,
     getWildlife: () => wildlife, // loads late, so a getter rather than the value
     // Same reason, and a probe needs it for a second one: the fine trees' near set is
     // refilled from the render loop, so anything that renders a frame of its own has
@@ -840,6 +865,16 @@ if (import.meta.env.DEV) {
     // it is driving so a test can bracket a pixel without re-deriving Preetham on
     // its own side. `lengths` reads the LIVE uniforms, which is the only way to
     // tell "the pin reached the shader" from "the pin set a field nobody reads".
+    // The distance haze, for the same reason and with the same trap closed: the
+    // uniform is rewritten every frame from the time-of-day preset, so the knob a
+    // probe (or a console) can actually move is the SCALE holder, and `haze` reads
+    // the live uniform so a shot can report the value it was taken at rather than
+    // the value someone meant to set.
+    atmo: {
+      hazeScale: HAZE_SCALE,
+      uniforms: ATMO.uniforms,
+      haze: () => ATMO.uniforms.uAtmoHaze.value,
+    },
     sky: {
       altitude: SKY_ALTITUDE_OVERRIDE,
       strength: SKY_ALTITUDE_STRENGTH,
@@ -904,6 +939,33 @@ if (import.meta.env.DEV) {
     devNoteEl.textContent = `${name}: 70 m off, ${agl} m up`
       + `${found.site ? ` at ${found.site}` : ''}`
       + ` (it was ${(found.distanceM / 1000).toFixed(1)} km away)`;
+  });
+
+  // 'H' sweeps the distance haze in place, because "is there enough air between
+  // the ridges" is a looking decision and cannot be taken from a table of
+  // exponentials - and because headless is SwiftShader, so a screenshot of it is
+  // the shape of the change and not the change (docs/ARCHITECTURE.md §13.11).
+  // It moves HAZE_SCALE, the holder lighting.js multiplies in, rather than the
+  // uniform: the uniform is rewritten every frame and an assignment to it reads
+  // back its own write. The note prints what the sweep has actually reached -
+  // the LIVE uniform, and the fraction of the ground colour it has taken at
+  // three real distances - so a value the user likes can be read off the screen
+  // instead of recomputed afterwards.
+  const HAZE_STEPS = [0.6, 1, 1.5, 2.2, 3];
+  let hazeStep = 1; // start on the shipped look, so the first press is a change
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'KeyH') return;
+    if (isTypingTarget(document.activeElement)) return;
+    hazeStep = (hazeStep + 1) % HAZE_STEPS.length;
+    HAZE_SCALE.value = HAZE_STEPS[hazeStep];
+    // Read the uniform AFTER the next frame writes it, so the note cannot claim a
+    // value the shader never saw.
+    requestAnimationFrame(() => {
+      const h = ATMO.uniforms.uAtmoHaze.value;
+      const at = (km) => `${Math.round((1 - Math.exp(-km * 1000 * h)) * 100)}%`;
+      devNoteEl.textContent = `haze x${HAZE_SCALE.value} = ${(h * 1e5).toFixed(2)}e-5`
+        + ` \u00b7 10 km ${at(10)} \u00b7 30 km ${at(30)} \u00b7 60 km ${at(60)}`;
+    });
   });
 }
 
@@ -1082,6 +1144,10 @@ const envModels = document.getElementById('env-models');
 function applyModelDetail() {
   setModelDetail(Number(envModels.value));
   vegetation?.applyDetail();
+  // The huts' High level is the tricolour on the bivouacs (the user's own addition,
+  // 2026-08-19). Same reason as vegetation's: without this the change waits for the
+  // camera to walk 30 m and the control looks broken.
+  huts?.applyDetail();
 }
 envModels.addEventListener('change', applyModelDetail);
 restoreChoice(envModels, storedState?.models);
@@ -1182,7 +1248,7 @@ if (import.meta.env.DEV) {
   devNoteEl.style.cssText = 'position:fixed;top:52px;right:10px;padding:3px 7px;'
     + 'background:rgba(10,14,20,0.55);border-radius:4px;color:#9fe0a0;'
     + 'font:11px/1.4 -apple-system,system-ui,sans-serif;pointer-events:none;';
-  devNoteEl.textContent = 'G: next mammal · B: next bird';
+  devNoteEl.textContent = 'G: next mammal · B: next bird · H: haze';
   lookDiagEl.after(devNoteEl);
 
   // What the ambience is currently being driven by. Audio is the one feature so
@@ -1246,6 +1312,9 @@ renderer.setAnimationLoop(() => {
   // The flowers are CPU-placed, so unlike the grass they need the loop. Cheap: 25
   // cached cells and at most a few hundred matrices (src/edelweiss.js).
   edelweiss?.update(camera);
+  // 51 buildings, two distance levels: a pass over all of them costs nothing and only
+  // runs when the camera has walked far enough to change any of it (src/huts.js).
+  huts?.update(camera);
   // The terrain tier's cross-fade. Here because this is the only place with a frame
   // delta, and because the ground has to move over several frames rather than one:
   // everything in the scene is standing on it.

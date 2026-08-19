@@ -100,6 +100,16 @@ const SUN_DISTANCE = 50000; // arbitrary - only direction from target (origin) m
 
 const NEUTRAL_MOD = { cover: 0.12, dark: 0.06, hazeMul: 1, vfAdd: 0, exposureMul: 1, grey: 0, glowMul: 1, starsMul: 1 };
 
+// A global multiplier on the distance haze, for judging "how much air" the view
+// has - the DEPTH half of the aerial-perspective request (docs/PROGRESS.md).
+// It exists as a holder rather than as a number to edit because uAtmoHaze is
+// REWRITTEN EVERY FRAME from the time-of-day preset below (`s.haze * m.hazeMul`),
+// so pinning the uniform from outside reads back exactly the value it just wrote
+// and changes nothing on screen - the same trap as GROUNDCOVER_WIND and
+// SNOW_LEVEL (docs/ARCHITECTURE.md §13.10, tools/dev/probe-groundcover.mjs).
+// Published on window.__pngp.atmo.hazeScale, and 1.0 is the shipped look.
+export const HAZE_SCALE = { value: 1 };
+
 function dir(elev, azim) {
   return new THREE.Vector3().setFromSphericalCoords(
     1, THREE.MathUtils.degToRad(90 - elev), THREE.MathUtils.degToRad(azim),
@@ -207,7 +217,7 @@ export class Lighting {
     A.uAtmoSunDir.value.copy(s.light);
     A.uAtmoGlowColor.value.copy(s.glowColor);
     A.uAtmoGlow.value = s.glow * m.glowMul;
-    A.uAtmoHaze.value = s.haze * m.hazeMul;
+    A.uAtmoHaze.value = s.haze * m.hazeMul * HAZE_SCALE.value;
     A.uAtmoValleyFog.value = s.valleyFog * 3.2e-4 + m.vfAdd;
     A.uAtmoFogTop.value = s.fogTop;
     A.uAtmoSnow.value = m.snow ?? 0;

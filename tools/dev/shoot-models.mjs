@@ -43,6 +43,18 @@ const SHOTS = {
     { dist: 24, why: 'standing under it' },
     { dist: 90, why: 'across a valley shoulder' },
   ],
+  // The huts (2026-08-19). Two ranges each, and the far one is deliberately PAST the
+  // 800 m where src/huts.js swaps in the distance shape - the question there is not
+  // "is the detail worth it" but "is it still the same building", which is the only
+  // way a walk toward a refuge does not look like one model being replaced by another.
+  rifugio: [
+    { dist: 35, why: 'arriving in the yard' },
+    { dist: 900, why: 'past the LOD switch, where only the distance shape is drawn' },
+  ],
+  bivouac: [
+    { dist: 9, why: 'at the door' },
+    { dist: 900, why: 'past the LOD switch - a bivouac is two pixels of orange here' },
+  ],
 };
 
 mkdirSync(OUT_DIR, { recursive: true });
