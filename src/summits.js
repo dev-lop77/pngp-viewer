@@ -138,6 +138,30 @@ export const MONUMENTS = [
   { lat: 45.5246603, lon: 7.1890672, poiName: 'Croce (45.5247N, 7.1891E)', kind: 'cross' },
 ];
 
+// crestSearchM: put it on the HIGHEST DRAWN GROUND within this radius instead of exactly
+// on its own coordinate. Set for the Madonna on 2026-08-19, when the user found her below
+// the skyline - "Sposta la Madonna del Gran Paradiso 6 metri piu in alto, almeno che stia
+// in cresta" - and asked for six metres.
+//
+// Six metres of LIFT would not have done it, and this is why the mechanism is a search
+// rather than an offset. Measured on the drawn surface around her: she stood at 4033.7 m
+// and the crest within 16 m is 4045.1 m, which is 11.4 m above her and 14 m to the SOUTH.
+// A fixed +6 m would have left her hanging six metres over the flank with a six-metre
+// plinth underneath, which is the same defect as the pale 2.8 m plinth the seating rule
+// already had to fix once. Moving her onto the crest is what "che stia in cresta" asks
+// for, and it also follows the rule the whole project runs on: a summit's DRAWN mesh is
+// not where its data says it is (this one is 24 m below her real 4,058 m), so anything
+// that has to look right on a summit follows the drawn surface, not the number.
+//
+// Searched again on every re-seat, because the tier that changes the drawn surface also
+// moves the crest.
+// 7 m, and the radius is the whole decision. At 20 m the search found the true top of the
+// dome, 19.7 m away and 11.2 m up, and put her BEHIND the crest - invisible from the
+// viewpoint the user was standing at when they asked. At 7 m she rises about 8 m and moves
+// about 6, which is both what they asked for ("6 metri piu in alto") and what they meant
+// ("almeno che stia in cresta"): on the crest line, in the same place to the eye.
+const CREST_SEARCH_M = { Madonna: 7 };
+
 // pois: every POI from public/data/poi.json.
 // sampleHeight: terrain.sampleRenderedHeight - the DRAWN surface, never elevationM.
 export function createSummitMonuments({ pois, sampleHeight }) {
@@ -217,9 +241,32 @@ export function createSummitMonuments({ pois, sampleHeight }) {
     return { y, drop: (y - lo) + 0.8 };
   }
 
+  // The highest drawn ground within `radius`, on a 2 m grid. 2 m because the crest of a
+  // summit is a line and a coarser step walks over it; 21x21 samples is nothing next to
+  // the terrain it is asking.
+  function crest(heightAt, x0, z0, radius) {
+    let best = { x: x0, z: z0, h: heightAt(x0, z0) ?? -Infinity };
+    for (let dz = -radius; dz <= radius; dz += 2) {
+      for (let dx = -radius; dx <= radius; dx += 2) {
+        if (dx * dx + dz * dz > radius * radius) continue; // a circle, not a square
+        const h = heightAt(x0 + dx, z0 + dz);
+        if (Number.isFinite(h) && h > best.h) best = { x: x0 + dx, z: z0 + dz, h };
+      }
+    }
+    return best;
+  }
+
   function seat(heightAt) {
     for (const p of placed) {
-      const { x, z } = p.poi.local;
+      let { x, z } = p.poi.local;
+      const radius = CREST_SEARCH_M[p.poiName];
+      if (radius) {
+        const top = crest(heightAt, x, z, radius);
+        p.movedM = Math.hypot(top.x - x, top.z - z);
+        p.raisedM = top.h - (heightAt(x, z) ?? top.h);
+        x = top.x;
+        z = top.z;
+      }
       const y = heightAt(x, z);
       // No fallback to elevationM for a lat/lon entry, which has none: if the sampler
       // cannot answer, the monument keeps the height it already had rather than jumping

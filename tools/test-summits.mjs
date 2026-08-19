@@ -113,6 +113,8 @@ const placed = await page.evaluate(() => {
       name: p.poiName,
       kind: p.kind,
       y: p.mesh.position.y,
+      movedM: p.movedM ?? 0,
+      raisedM: p.raisedM ?? 0,
       baseBottom: p.base.position.y - p.base.scale.y,
       bilinear: bilinear(p.mesh.position.x, p.mesh.position.z),
       inScene: Boolean(p.mesh.parent) && Boolean(p.base.parent),
@@ -122,6 +124,16 @@ const placed = await page.evaluate(() => {
 check(placed.visible === true, 'at Models = High they are drawn');
 check(placed.missing.length === 0, `no monument lost its place (${placed.missing.join(', ') || 'none'})`);
 check(placed.rows.length === 3, `all three are in the scene (${placed.rows.length})`);
+// The Madonna is snapped to the crest (CREST_SEARCH_M in src/summits.js) because the user
+// found her below the skyline. If that search ever stops finding anything - a radius edited
+// to 0, a sampler that returns the same height everywhere - she goes back to standing on
+// the flank and nothing else fails. So it is asserted: she moved, and she moved UP.
+const madonna = placed.rows.find((r) => r.name === 'Madonna');
+check(madonna?.movedM > 1 && madonna?.movedM < 12,
+  `the Madonna was moved onto the crest, by ${(madonna?.movedM ?? 0).toFixed(1)} m`);
+check(madonna?.raisedM > 4,
+  `and the crest was higher than where she stood, by ${(madonna?.raisedM ?? 0).toFixed(1)} m`);
+
 for (const r of placed.rows) {
   check(r.inScene, `${r.name}: both its model and its base are in the scene graph`);
   // Against the bilinear height, which is a different function over different data. The

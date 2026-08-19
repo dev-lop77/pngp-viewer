@@ -154,6 +154,22 @@ Two mechanics worth keeping in mind before adding a fourth:
   cross on the user's own slope, taller than it was wide, which read worse than the
   floating corner it fixed.
 
+**The Madonna was moved onto the crest** the same day, after the user sent a viewpoint:
+*"Sposta la Madonna del Gran Paradiso 6 metri piu in alto, almeno che stia in cresta."*
+Measured before moving anything: she stood at 4,033.7 m on the flank, and the drawn crest
+within 16 m is 4,045.1 - **11.4 m above her and 14 m to the south**. So a literal +6 m
+would have left her hanging over the flank with a 6 m plinth, which is the defect the
+seating rule already had to fix once. `CREST_SEARCH_M` puts her on the highest DRAWN
+ground within a radius instead, re-searched on every re-seat because the tier moves the
+crest too.
+
+**The radius is the whole decision, and 20 m was wrong.** At 20 m the search found the
+true top of the dome, 19.7 m away and 11.2 m up, and put her BEHIND the crest - invisible
+from the very viewpoint the user was standing at. At 7 m she rises 8.2 m and moves 5.8,
+which is both what they asked for and what they meant: on the crest line, in the same
+place to the eye. `tools/test-summits.mjs` asserts that she moved and moved up, so the
+search cannot silently stop working and leave her back on the flank.
+
 The Madonna took a second pass: the first had modelled arms, and at six metres they read
 as sticks laid across the robe while the whole thing read as a chess piece. Arms are
 below the size this scene resolves. Robe plus MANTLE OVER THE HEAD is the silhouette that
