@@ -16,11 +16,22 @@ scattered through it were promoted into ARCHITECTURE §13 first, so that the one
 part of the log you needed *before* making a mistake is no longer in a file you
 open *after*.
 
-## NEXT SESSION: the summit crosses. The depth and the huts are CLOSED
+## NEXT SESSION: nothing is half-finished - ask what they want next
 
-**State: published, healthy, nothing half-finished.** The working tree is clean, the
-fast suite passes, and https://dev-lop77.github.io/pngp-viewer/ serves the whole park
-with the credits verified against the CDN. There is no rescue work waiting.
+**State on 2026-08-19: all three of the topics the user named are CLOSED, and the working
+tree is ahead of the published site.** The live build is still 2026-08-18, so the 51
+buildings, the three monuments and the 15 m fly-to are NOT public yet. Fast suite passes.
+
+What is actually left, in the order worth proposing:
+
+1. **Publish.** `tools/dev/deploy.sh`, about four minutes, and the last publish took
+   224 s on Pages' side because of the 5 m tier.
+2. **Glaciers as a terrain mask rather than a sheet** - the real open debt below. It
+   removes 563,567 triangles AND the class of defect where 1.25% of the ice still dips
+   under the rock.
+3. Whatever they name. The three topics they gave on 2026-08-18 are done: the aerial
+   perspective (kept as it was, after looking), the huts, and the crosses - which they
+   cut down to three named monuments rather than 252.
 
 ### The DEPTH topic is finished - do not reopen it
 
@@ -117,19 +128,46 @@ it, which three's CSS2DRenderer sets to `display:none`.
 **Open, if the user wants it:** the refuge has no High level of its own - the flag is
 the only thing the Models control adds today.
 
-### Start here: summit crosses on the 252 peaks
+### DONE 2026-08-19: three monuments, and the 252 crosses are NOT happening
 
-The trap is measured and known: a peak's `elevationM` is its real altitude and the
-drawn mesh sits tens of metres below it on a sharp summit, which is why poi.js plants
-markers with `sampleRenderedHeight` rather than the real number. A cross at the true
-altitude floats. Two things to settle with the user first: **all 252 or only the ones
-that really have one**, and whether the cross replaces that peak's marker post the way
-a hut now does (`poi.js`'s `setBuildingProbe` is the mechanism, and it takes any
-predicate - it is not hut-specific).
+The user cut the topic down to a list before it started: ***"per il momento ne mettiamo
+solo una, sulla cima della Granta Parei. Poi se si riesce la madonnina sulla cima del
+Gran Paradiso"***, plus a second cross ***"non proprio in vetta"***, and
+***"Aggiungile solo se Models e' High"***. So `src/summits.js` holds THREE named
+objects, not a category:
 
-`src/huts.js` is the template for the whole job: procedural parts, two levels, seated
-at the corners, re-seated on tier change, and a bench set in
-`tools/dev/model-candidates.js` so the SHAPE is agreed before anything is wired in.
+| | where | how it is anchored |
+|---|---|---|
+| summit cross | Granta Parey, 3,387 m | POI `n1562997760` |
+| Madonna | Gran Paradiso, 4,058 m | POI `n1707240539` - OSM already had the statue as its own point, 3 m below the summit |
+| second cross | 45.5246603N, 7.1890672E, ~2,306 m, 817 m from Aouille | lat/lon through `geo.js` |
+
+Two mechanics worth keeping in mind before adding a fourth:
+
+- **They are drawn only at Models = High**, on the group's visibility, and
+  `main.js`'s `applyModelDetail()` drives it. That is why they are not in `poi.js`: a
+  marker is information, these are ornament.
+- **Seated a THIRD of the way up the footprint's corner spread**, which is the
+  OPPOSITE of `huts.js`'s "highest corner". A building cannot be buried - a sunken door
+  is visible and wrong - while a cairn can be, and half-buried is what a real one looks
+  like. Seating the cross on its highest corner put a 2.8 m pale plinth under a 3 m
+  cross on the user's own slope, taller than it was wide, which read worse than the
+  floating corner it fixed.
+
+The Madonna took a second pass: the first had modelled arms, and at six metres they read
+as sticks laid across the robe while the whole thing read as a chess piece. Arms are
+below the size this scene resolves. Robe plus MANTLE OVER THE HEAD is the silhouette that
+says Madonna, and that is what ships.
+
+`tools/test-summits.mjs` is in the fast suite: the POI ids still resolve, the lat/lon is
+inside the park, both shapes are mergeable and human-scale, Standard draws nothing, High
+draws all three, and each one's base reaches BELOW the surface rather than resting on air
+- measured against the bilinear height, not the sampler that seated them (§13.9).
+
+**A share link is not a coordinate.** The second cross arrived as a mapy.com short link
+and it cannot be resolved from a script: the code is expanded by the browser, so
+`mapy.com/s/<code>` answers 404 to curl and to WebFetch. Asking for the numbers took one
+message; guessing would have put a cross somewhere plausible and wrong.
 
 ### Before touching anything
 

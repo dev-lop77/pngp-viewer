@@ -6,6 +6,7 @@ import { SNOW_LEVEL } from './snow.js';
 import { loadTrails } from './trails.js';
 import { loadPOI, poiInfoHTML } from './poi.js';
 import { createHuts } from './huts.js';
+import { createSummitMonuments } from './summits.js';
 import { loadWater } from './water.js';
 import { loadRoads } from './roads.js';
 import { loadForest, createCoverageSampler } from './forest.js';
@@ -449,6 +450,7 @@ function selectPoi(poi) {
 
 let poiIndex = null;
 let huts = null; // src/huts.js, created once the terrain and the POI are both up
+let monuments = null; // src/summits.js - the cross and the Madonna, Models = High only
 const poiPromise = loadPOI(undefined, { onSelect: selectPoi }).then((index) => {
   poiIndex = index;
   scene.add(index.group);
@@ -672,6 +674,16 @@ Promise.all([terrainPromise, poiPromise, trailsPromise]).then(([{ sampleRendered
   scene.add(huts.group);
   huts.update(camera); // materialise them before the next frame, like the wildlife
   registerSeatable({ name: 'huts', alignToGround: huts.alignToGround });
+
+  // The summit cross and the Madonna (2026-08-19). Same promise as the huts: both are
+  // seated on the DRAWN surface, because a peak's real altitude is metres above the mesh
+  // that draws it and anything planted at the real number floats.
+  monuments = createSummitMonuments({
+    pois: index.manifest.pois,
+    sampleHeight: sampleRenderedHeight,
+  });
+  scene.add(monuments.group);
+  registerSeatable({ name: 'summit-monuments', alignToGround: monuments.alignToGround });
   // And the post that stood for each of them steps aside once its building is there.
   index.setBuildingProbe(huts.hasBuilding);
   applyModelDetail(); // the Models control may already be High from a restored choice
@@ -793,6 +805,7 @@ if (import.meta.env.DEV) {
     // The buildings, for a probe that needs to ask where one was seated and which
     // level it is drawn at - a getter because they are created after this block runs.
     getHuts: () => huts,
+    getMonuments: () => monuments,
     getWildlife: () => wildlife, // loads late, so a getter rather than the value
     // Same reason, and a probe needs it for a second one: the fine trees' near set is
     // refilled from the render loop, so anything that renders a frame of its own has
@@ -1148,6 +1161,8 @@ function applyModelDetail() {
   // 2026-08-19). Same reason as vegetation's: without this the change waits for the
   // camera to walk 30 m and the control looks broken.
   huts?.applyDetail();
+  // The cross and the Madonna exist only at High, by the user's decision.
+  monuments?.applyDetail();
 }
 envModels.addEventListener('change', applyModelDetail);
 restoreChoice(envModels, storedState?.models);

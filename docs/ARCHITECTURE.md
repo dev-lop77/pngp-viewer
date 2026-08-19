@@ -1616,6 +1616,21 @@ pngp-viewer/
 │                              streaks along a new `aFlow` attribute measured in METRES, so a
 │                              13 m fall and a 141 m one get the same size of streak instead of
 │                              the same number of them
+│   ├── summits.js          what people carried up and left on top (2026-08-19): a summit
+│                              cross on the Granta Parey, the Madonna on the Gran Paradiso,
+│                              and a second cross the user gave as 45.5247N 7.1891E - "non
+│                              proprio in vetta". A LIST, not a rule applied to the 252
+│                              peaks, and drawn ONLY at Models = High, which is the user's
+│                              own condition and the reason this is not part of poi.js: a
+│                              marker is information and is always there, these are
+│                              ornament. Each entry names either the POI id it stands on
+│                              (preferred - an id survives a bbox rebuild, local metres do
+│                              not) or a lat/lon converted through geo.js. Seated on the
+│                              DRAWN surface a THIRD of the way up its footprint's corner
+│                              spread, which is the opposite of huts.js's rule and
+│                              deliberately: a building cannot be buried, a cairn can, and
+│                              seating one on its highest corner put a 2.8 m pale plinth
+│                              under a 3 m cross. Re-seated with the height tier
 │   ├── huts.js             the 51 rifugi and bivacchi as BUILDINGS (2026-08-19), procedural
 │                              geometry authored in JS like every other model here. Two models
 │                              from three OSM tags, by the user's choice: a wood-and-stone

@@ -35,6 +35,7 @@ import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_BUILDERS, HI_BUILDERS } from '../../src/wildlife.js';
 import { HUT_BUILDERS, HI_HUT_BUILDERS, HUT_FAR_BUILDERS } from '../../src/huts.js';
+import { SUMMIT_BUILDERS } from '../../src/summits.js';
 import {
   CONE_SEGMENTS, CANOPY_COLOR, RADIUS_MIN, RADIUS_MAX, tieredTreeParts,
 } from '../../src/vegetation.js';
@@ -76,6 +77,20 @@ export const SETS = {
         note: 'stone floor, dark timber storey, gallery along the facade, steep shingle roof, shutters' },
       { label: 'distance shape', build: () => HUT_FAR_BUILDERS.rifugio(), smooth: false,
         note: 'drawn beyond 800 m - keeps the ridge line, which is what separates a refuge from a boulder' },
+    ],
+  },
+  // What people carried up and left on top (2026-08-19). One set, both models, because
+  // the question the user will ask of them is the same one: does it read as a summit
+  // cross and as a Madonna from the distance you meet them at. They are drawn only at
+  // Models = High, which is the user's own condition.
+  summit: {
+    subject: 'Summit cross and Madonna',
+    heightM: 3.65,
+    variants: [
+      { label: 'summit cross', build: () => SUMMIT_BUILDERS.cross(), smooth: false,
+        note: '3.2 m of iron on a cairn, arm at two thirds, four stays - Granta Parey' },
+      { label: 'Madonna', build: () => SUMMIT_BUILDERS.madonna(), smooth: false,
+        note: 'robed bronze figure on a pedestal, 2.6 m overall - Gran Paradiso' },
     ],
   },
   bivouac: {

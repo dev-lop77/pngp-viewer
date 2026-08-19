@@ -51,6 +51,12 @@ const SHOTS = {
     { dist: 35, why: 'arriving in the yard' },
     { dist: 900, why: 'past the LOD switch, where only the distance shape is drawn' },
   ],
+  // The summit pieces, at the two ranges that matter: standing on the top beside it, and
+  // the last stretch of the ridge where you first make it out.
+  summit: [
+    { dist: 6, why: 'standing on the summit beside it' },
+    { dist: 60, why: 'the last stretch of ridge, where you first make it out' },
+  ],
   bivouac: [
     { dist: 9, why: 'at the door' },
     { dist: 900, why: 'past the LOD switch - a bivouac is two pixels of orange here' },
