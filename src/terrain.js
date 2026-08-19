@@ -5,7 +5,8 @@ import {
   HEIGHT_TIER, HEIGHT_TIER_RECT, HEIGHT_TIER_MIX, GROUND_SEGMENTS, heightTierGlsl,
   emptyTier, createTierTexture, sampleTier,
 } from './heighttier.js';
-import { attachAtmo } from './atmosphere.js';
+import { attachAtmo, ATMO } from './atmosphere.js';
+import { SUN_POWER } from './lighting.js';
 import { FOREST_MASK } from './forest.js';
 import { GLACIER_MASK } from './glaciermask.js';
 import { SNOW_LEVEL, snowGlsl, snowColorGlsl } from './snow.js';
@@ -159,6 +160,26 @@ const MORAINE_FROM = 0.12;
 const MORAINE_TO = 0.78;
 const MORAINE_COLOR = 0xb2a79b; // #8c8378 on screen: the grey-brown of fresh moraine
 const MORAINE_STRENGTH = 0.85; // how much of the ice the debris takes at the middle of the band
+
+// SUNLIT ICE. The user, 2026-08-19, after choosing the neutral white: "Nonostante sia Midday
+// il ghiaccio e' un po' troppo grigio, dovrebbe riflettere di piu' la luce del sole pieno."
+//
+// It cannot be fixed with a brighter albedo, because the albedo is ALREADY 1.0. Under this rig
+// a white Lambert surface comes out at rgb(195,195,195): the BRDF divides by pi, midday lights
+// with sun 1.8 plus ambient 0.6, exposure is 0.75 and ACES compresses what survives. That is
+// the ceiling for anything that goes through the diffuse path, and the old glacier sheet hit
+// exactly the same one from the other side (it asked for 0xe8f3fb and rendered pale grey).
+//
+// So the extra light is added where the pipeline has room for it: as EMISSIVE radiance, which
+// three adds after the lighting and therefore after the division. It is scaled by how much the
+// ground faces the sun - dot(N, sunDir) - so it is bright at midday on a sun-facing slope, dim
+// on a north face, and gone at night. That is not a cheat so much as a stand-in for what a
+// single-bounce Lambert cannot do with snow: real firn is 0.8-0.9 albedo AND forward-scatters,
+// so under full sun it is the brightest thing in a mountain landscape by a wide margin.
+//
+// A holder, like GLACIER_MIX and MORAINE_MIX, so it can be switched off and measured.
+export const ICE_SUN_MIX = { value: 1 };
+const ICE_SUN_GAIN = 0.55; // at dot(N, sun) = 1 and full firn
 // A holder for the debris alone, so it can be switched OFF and measured - the same arrangement
 // as GLACIER_MIX and for a sharper reason. Rock is warm and moraine is warm, so a test that
 // walks out to a tongue's edge and looks for the warmest point finds the rock OUTSIDE the ice
@@ -340,6 +361,18 @@ ${heightTierGlsl()}
     uniform sampler2D uGlacierMask;
     uniform float uGlacierMix;
     uniform float uMoraineMix;
+    uniform float uIceSunMix;
+    uniform float uIceSunPower; // src/lighting.js's SUN_POWER: 1 at midday, ~0.1 at night
+    // The sun's direction, bound to the SAME holder lighting.js writes every frame for the
+    // aerial perspective (ATMO.uniforms.uAtmoSunDir). Declared under its own name rather than
+    // borrowed from the fog chunk, which only exists while USE_FOG is defined.
+    uniform vec3 uIceSunDir;
+    // Carried from terrainAlbedo() to the emissive patch further down the fragment shader:
+    // plain globals, because that is what a GLSL translation unit gives us and the two places
+    // are in the same one.
+    float terrainIceAmount = 0.0;
+    vec3 terrainIceColor = vec3( 1.0 );
+    vec3 terrainIceNormal = vec3( 0.0, 1.0, 0.0 );
 ${snowGlsl()}
 ${basemapGlsl()}
 ${outerRingGlsl({ worldWidth, worldDepth })}
@@ -431,7 +464,13 @@ ${bandMix}
                 * ( 1.0 - smoothstep( ${glsl((MORAINE_FROM + MORAINE_TO) / 2)}, ${glsl(MORAINE_TO)}, iceMask ) );
       iceColor = mix( iceColor, ${glslRgb(MORAINE_COLOR)}, rim * ${glsl(MORAINE_STRENGTH)} * uMoraineMix );
 
-      ground = mix( ground, iceColor, clamp( ice * iceSlope, 0.0, 1.0 ) );
+      float iceHere = clamp( ice * iceSlope, 0.0, 1.0 );
+      ground = mix( ground, iceColor, iceHere );
+      // Handed to the emissive patch below - see ICE_SUN_GAIN. The moraine is deliberately
+      // included in iceColor here, so a debris-covered margin does not glare.
+      terrainIceAmount = iceHere;
+      terrainIceColor = iceColor;
+      terrainIceNormal = n;
 
       // Weather snow goes on last, over rock and forest floor alike. WHERE it
       // lies is src/snow.js's business, not this file's - altitude, aspect and
@@ -455,6 +494,11 @@ ${bandMix}
     shader.uniforms.uGlacierMask = GLACIER_MASK;
     shader.uniforms.uGlacierMix = GLACIER_MIX;
     shader.uniforms.uMoraineMix = MORAINE_MIX;
+    shader.uniforms.uIceSunMix = ICE_SUN_MIX;
+    shader.uniforms.uIceSunPower = SUN_POWER;
+    // The same holder the atmosphere reads, so the ice and the haze cannot disagree about
+    // where the sun is - and lighting.js already writes it once per frame.
+    shader.uniforms.uIceSunDir = ATMO.uniforms.uAtmoSunDir;
     shader.uniforms.uSnow = SNOW_LEVEL; // declared by snowGlsl(), driven from main.js
     // Same arrangement again, for the same reason: the satellite texture is a
     // separate download and the mix stays 0 until it lands, so this material
@@ -504,6 +548,22 @@ ${bandMix}
     fs = patch(fs, '#include <common>', `#include <common>\n${ALBEDO}`);
     // Multiplied, not assigned, so material.color stays a working global tint.
     fs = patch(fs, '#include <map_fragment>', '#include <map_fragment>\n  diffuseColor.rgb *= terrainAlbedo();');
+    // Sunlit ice, added as emissive radiance because the diffuse path is already at its
+    // ceiling (see ICE_SUN_GAIN). This is why terrainAlbedo() has to run first: it is what
+    // sets terrainIceAmount, and three's emissive chunk comes after the map chunk in
+    // meshphysical's fragment shader - which is the only reason a plain global works here.
+    fs = patch(fs, '#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      float iceSun = max( dot( normalize( terrainIceNormal ), normalize( uIceSunDir ) ), 0.0 );
+      totalEmissiveRadiance += terrainIceColor * terrainIceAmount * iceSun
+                             * ${glsl(ICE_SUN_GAIN)} * uIceSunMix
+                             // SQUARED, and measured rather than chosen. Linear in the sun's
+                             // power the night preset still puts 0.1 of the gain on the ice,
+                             // and a night frame is dark enough that this raised the brightest
+                             // sixth of it from 42.9 to 74.4 - the glaciers became the brightest
+                             // thing in the park at midnight. Squaring takes night to 0.01 and
+                             // leaves midday at 1.0 by construction, with dawn at 0.31 and dusk
+                             // at 0.06, which is the order those hours belong in.
+                             * uIceSunPower * uIceSunPower;`);
     // The ground dissolving into the air, and it goes AFTER the fog rather than
     // into the albedo. Albedo is what the sun multiplies: fading it there would
     // dim the ground towards black at night and leave the shape of the terrain

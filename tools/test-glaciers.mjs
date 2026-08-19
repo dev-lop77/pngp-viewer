@@ -340,6 +340,67 @@ check(debris.margin.delta > 3,
 check(Math.abs(debris.body.delta) < 1.5,
   `and it leaves the body of the glacier alone (${debris.body.delta.toFixed(2)} of R-B there)`);
 
+// ---- 5. the sunlit ice follows the sun ----
+//
+// The user's complaint, 2026-08-19: "Nonostante sia Midday il ghiaccio e' un po' troppo grigio,
+// dovrebbe riflettere di piu' la luce del sole pieno." The albedo could not answer it - it is
+// already 1.0 and this rig's white ceiling is rgb(195) - so the extra light is emissive
+// radiance, added after the lighting and scaled by dot(N, sun) and by the SQUARE of
+// src/lighting.js's SUN_POWER.
+//
+// That square is the part worth a test. Linear, the night preset still put a tenth of the gain
+// on the ice, and a night frame is dark enough that this made the glaciers the brightest thing
+// in the park at midnight: the brightest sixth of the frame went from 42.9 to 74.4. So what is
+// asserted is not just "the ice is brighter" but "the ice is brighter WHEN THE SUN IS UP" -
+// measured at the default hour and again at dusk, on one camera, with the term switched off
+// each time to isolate it.
+const sunlit = await page.evaluate(async ({ p }) => {
+  const { camera, controls, iceSunMix, getGroundHeight } = window.__pngp;
+  const ground = getGroundHeight();
+  controls.mode = 'fly';
+  const h = ground(p.x, p.z);
+  camera.position.set(p.x, h + 300, p.z);
+  camera.lookAt(p.x, h, p.z);
+  camera.updateMatrixWorld(true);
+  const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+  const luma = async () => {
+    await frame();
+    const c = document.querySelector('canvas');
+    const gl = c.getContext('webgl2');
+    const w = 16;
+    const buf = new Uint8Array(w * w * 4);
+    gl.readPixels((c.width - w) / 2, (c.height - w) / 2, w, w, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i += 4) sum += 0.299 * buf[i] + 0.587 * buf[i + 1] + 0.114 * buf[i + 2];
+    return sum / (buf.length / 4);
+  };
+  const atTime = async (t) => {
+    const slider = document.getElementById('env-time');
+    slider.value = String(t);
+    slider.dispatchEvent(new Event('input'));
+    await frame();
+    iceSunMix.value = 1;
+    const on = await luma();
+    iceSunMix.value = 0;
+    const off = await luma();
+    iceSunMix.value = 1;
+    return { on, off, delta: on - off, sunPower: window.__pngp.sunPower.value };
+  };
+  const day = await atTime(0.15);
+  const dusk = await atTime(0.68);
+  const slider = document.getElementById('env-time');
+  slider.value = '0.15';
+  slider.dispatchEvent(new Event('input'));
+  return { day, dusk };
+}, { p: { x: bodyPixel.x, z: bodyPixel.z } });
+
+check(sunlit.day.delta > 4,
+  `sunlit ice: at the default hour (sun power ${sunlit.day.sunPower.toFixed(2)}) the term adds`
+  + ` ${sunlit.day.delta.toFixed(1)} levels of luma to the ice`);
+check(sunlit.dusk.delta < sunlit.day.delta / 3,
+  `and it follows the sun down: at dusk (sun power ${sunlit.dusk.sunPower.toFixed(2)}) it adds`
+  + ` only ${sunlit.dusk.delta.toFixed(1)}`);
+
 check(problems.length === 0, `no page errors (${problems.length})`);
 if (problems.length) console.log(`    ${problems.join('\n    ')}`);
 await browser.close();

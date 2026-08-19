@@ -16,23 +16,26 @@ scattered through it were promoted into ARCHITECTURE §13 first, so that the one
 part of the log you needed *before* making a mistake is no longer in a file you
 open *after*.
 
-## NEXT SESSION: everything is published; ask what they want
+## NEXT SESSION: PUBLISH FIRST. That is the user's own instruction.
 
-**State at the end of 2026-08-19: five things shipped and PUBLISHED, working tree clean,
-fast suite 13/13.** The live site carries the buildings, the monuments, the 15 m fly-to and
-the mask glaciers. Nothing is half-finished and no rescue work is waiting.
+***"Domani pubblichiamo, per ora chiudiamo qui."*** (2026-08-19, end of day.) So the first
+action is `tools/dev/deploy.sh`, then verify against the CDN the way the 2026-08-19 entry
+below does - `glacier.json` from the site, `tools/verify.mjs`, and a shot of the LIVE build
+over the Gliairetta.
 
-The user's own next move, in their words at the end of the day: ***"poi facciamo una prova
-con cosa si puo' fare con il nuovo ghiaccio"*** - so the first thing to do is show them what
-the mask now makes possible. It is a per-pixel coverage value the terrain shader already
-samples, which means crevasse fields, a firn/blue-ice split by elevation, a moraine line at
-the margin and a bergschrund shadow are all colour-and-noise work inside one existing
-`if`, with no geometry and no download. What it CANNOT do without new data is put a crevasse
-where a real crevasse is.
+**What is committed and NOT yet public:** firn/live ice, the moraine margin, and the sunlit-ice
+term. The published build has the glaciers as a flat white mask (that much IS live), plus the
+buildings, the monuments and the 15 m fly-to.
 
-Remaining debts, both theirs to prioritise: the Piemonte DTM5 spikes still in the shipped
-DEM (1,245 cells over 96 m, invisible in practice), and the 5 m tier at 51.03 MB against
-GitHub's recommended 50.
+Run the FAST suite before pushing - the user's standing rule - and expect 13 tests, about
+11 minutes. Everything passed at the close of 2026-08-19.
+
+**Then ask.** Every topic the user has named is done. What is left in the ice, if they want it:
+crevasses (noise bands along the slope - the term that pays up close), a bergschrund shadow at
+the headwall, and a brighter LIVE ice on the tongue, which they have seen and not asked for.
+The two defects the white ice exposed are in the open debts at the end of this file, both older
+than the ice and neither touched: the LOD trees standing where there is no wood, and a terrain
+tile skirt visible at eye height.
 
 ### The DEPTH topic is finished - do not reopen it
 
@@ -268,6 +271,26 @@ answer at a pixel the mask says is deep inside a glacier, which is what "the dow
 actually means. The rest was a bbox pre-filter on the containment sweep, a coarser scan that
 tests the cheap sampler before the costly one, and dropping a whole-frame render whose one
 claim is covered three other ways.
+
+**Then the ice got the sun**, at the user's own observation - *"Nonostante sia Midday il
+ghiaccio e' un po' troppo grigio, dovrebbe riflettere di piu' la luce del sole pieno"* - and
+this one could not be answered with a colour. **The albedo was already 1.0**, and a white
+Lambert surface under this rig comes out at rgb(195,195,195): the BRDF divides by pi, midday
+lights with sun 1.8 plus ambient 0.6, exposure is 0.75 and ACES compresses what is left. The
+old sheet hit the same ceiling from the other side.
+
+So the extra light is added where the pipeline has room: as **emissive radiance**, which three
+adds after the lighting and therefore after the division, scaled by `dot(N, sun)` and by the
+SQUARE of `SUN_POWER` (a new holder in lighting.js, written from the same number the sun light
+gets). Measured on one ice pixel: **+33.1 levels of luma at the default hour** (sun power 0.84)
+and **+2.1 at dusk** (0.18).
+
+**The square is a measurement, not a taste.** Linear in the sun's power, the night preset still
+put a tenth of the gain on the ice, and a night frame is dark enough that this took the
+brightest sixth from 42.9 to **74.4** - the glaciers became the brightest thing in the park at
+midnight. Squared, night is +5.7 and dusk +0.4. The first version of the term was worse still:
+it read `uAtmoSunDir`, which is the LIGHT direction, and lighting.js substitutes a moon-like
+angle at night - so the ice would have blazed under moonlight at full gain.
 
 **Still open:** crevasses (noise bands along the slope, which is the term that pays up close),
 a bergschrund shadow at the headwall, and any of it being where the real ones are - which

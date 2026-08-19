@@ -1651,7 +1651,15 @@ pngp-viewer/
 │                              MORAINE_MIX exists so the debris can be switched off and
 │                              measured: rock is warm and moraine is warm, so a test that
 │                              looks for the warmest pixel near a tongue's edge finds the rock
-│                              outside it and passes proving nothing
+│                              outside it and passes proving nothing.
+│                              SUNLIT ICE is the third term and the only one that could not be
+│                              done with a colour: the ice albedo is already 1.0 and a white
+│                              Lambert surface tops out at rgb(195) here, so the extra light is
+│                              EMISSIVE radiance (added after the lighting, hence after the
+│                              BRDF's division by pi), scaled by dot(N, sun) and by the SQUARE
+│                              of lighting.js's SUN_POWER. The square is measured: linear, the
+│                              night preset still put a tenth of the gain on the ice and made
+│                              the glaciers the brightest thing in the park at midnight
 │   ├── glaciermask.js      the glacier mask holder and loader (2026-08-19), the twin of
 │                              forest.js: a coverage fraction on the heightfield's own grid,
 │                              downloaded separately (30 kB), read by terrain.js's shader.

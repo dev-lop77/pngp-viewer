@@ -110,6 +110,15 @@ const NEUTRAL_MOD = { cover: 0.12, dark: 0.06, hazeMul: 1, vfAdd: 0, exposureMul
 // Published on window.__pngp.atmo.hazeScale, and 1.0 is the shipped look.
 export const HAZE_SCALE = { value: 1 };
 
+// How strong the sun is right now, as a fraction of full midday, written every frame beside
+// the ATMO uniforms below. src/terrain.js's sunlit-ice term reads it, and it has to: that term
+// is scaled by dot(N, light direction), and the LIGHT at night is a moon-like angle
+// substituted for the sun (see the preset table's lightElev) - so without this the glaciers
+// would glow at full strength under moonlight. Divided by the midday preset's own 1.8, so
+// midday is 1.0 by construction rather than by a second constant that could drift from it.
+export const SUN_POWER = { value: 1 };
+const MIDDAY_SUN_INTENSITY = 1.8;
+
 function dir(elev, azim) {
   return new THREE.Vector3().setFromSphericalCoords(
     1, THREE.MathUtils.degToRad(90 - elev), THREE.MathUtils.degToRad(azim),
@@ -210,6 +219,9 @@ export class Lighting {
     this.sunLight.position.copy(s.light).multiplyScalar(SUN_DISTANCE);
     this.sunLight.color.copy(s.sunColor);
     this.sunLight.intensity = s.sunIntensity * (1 - m.dark * 0.85);
+    // The same number the light gets, normalised: one source, so the ice cannot disagree with
+    // the sun that is lighting it.
+    SUN_POWER.value = this.sunLight.intensity / MIDDAY_SUN_INTENSITY;
     this.ambientLight.color.copy(s.ambientColor);
     this.ambientLight.intensity = s.ambientIntensity * (1 - m.dark * 0.5);
 

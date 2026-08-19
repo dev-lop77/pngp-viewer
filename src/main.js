@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { loadTerrain, GLACIER_MIX, MORAINE_MIX } from './terrain.js';
+import { loadTerrain, GLACIER_MIX, MORAINE_MIX, ICE_SUN_MIX } from './terrain.js';
 import { SNOW_LEVEL } from './snow.js';
 import { loadTrails } from './trails.js';
 import { loadPOI, poiInfoHTML } from './poi.js';
@@ -32,7 +32,7 @@ import {
   installSkyAltitude, updateSkyAltitude, SKY_ALTITUDE_OVERRIDE, SKY_ALTITUDE_STRENGTH,
   skyAltitudeLengths,
 } from './sky.js';
-import { Lighting, HAZE_SCALE } from './lighting.js';
+import { Lighting, HAZE_SCALE, SUN_POWER } from './lighting.js';
 import { Weather, WEATHER_KEYS } from './weather.js';
 import { localToWGS84, wgs84ToLocal } from './geo.js';
 import {
@@ -914,6 +914,12 @@ if (import.meta.env.DEV) {
     // The debris band on its own, so a test can switch it off and measure the same pixel twice.
     // Rock is warm and so is moraine: without this the only honest reading is impossible.
     moraineMix: MORAINE_MIX,
+    // And the sunlit-ice term, for the same reason: it is emissive radiance added after the
+    // lighting, so the only way to say what it is worth is the same frame with it off.
+    iceSunMix: ICE_SUN_MIX,
+    // What lighting.js is telling the ice about the sun, so a measurement can quote it
+    // rather than infer it from the preset table.
+    sunPower: SUN_POWER,
     // The CPU twin of the mask the terrain shader samples. A test that wants to stand ON a
     // glacier has to be able to find one, and the alternative is coordinates copied into a
     // tool - which is what went stale the one time this bbox was rebuilt.
