@@ -74,8 +74,21 @@ await browser.close();
 const ALREADY_COMPRESSED = /\.(webp|png|jpg|jpeg|avif|woff2?)$/i;
 const rows = [];
 for (const u of seen.keys()) {
-  const name = u.replace(/^https?:\/\/[^/]+\//, '').replace(/\?.*$/, '') || 'index.html';
-  const onDisk = join('dist', name);
+  let name = u.replace(/^https?:\/\/[^/]+\//, '').replace(/\?.*$/, '') || 'index.html';
+  // A PUBLISHED URL CARRIES THE PAGES SUB-PATH and the local dist/ does not, so
+  // 'pngp-viewer/data/x.png' has to become 'data/x.png' or nothing matches and the whole
+  // measurement reports 0.00 MB over 0 requests - which is what it did the first time it
+  // was pointed at the live site (2026-08-19), silently, because every row was skipped by
+  // the existsSync below. Strip one leading segment and try again; a local run is
+  // unaffected because its first attempt already resolves.
+  let onDisk = join('dist', name);
+  if (!existsSync(onDisk) && name.includes('/')) {
+    const stripped = name.slice(name.indexOf('/') + 1) || 'index.html';
+    if (existsSync(join('dist', stripped))) {
+      name = stripped;
+      onDisk = join('dist', stripped);
+    }
+  }
   if (!existsSync(onDisk)) continue; // the document itself under a base path, etc.
   const raw = readFileSync(onDisk);
   const bytes = ALREADY_COMPRESSED.test(name) ? raw.byteLength : gzipSync(raw).byteLength;

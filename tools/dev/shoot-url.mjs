@@ -34,18 +34,27 @@ page.on('pageerror', (e) => problems.push(`[pageerror] ${e.message}`));
 page.on('console', (m) => { if (m.type() === 'error') problems.push(`[console.error] ${m.text()}`); });
 
 await page.goto(url, { waitUntil: 'load' });
-// The terrain, and the POI index the hash may be asking to fly to. Waiting on the
-// terrain sampler rather than on a timeout, because the view in the link is only the
-// view once the ground under it exists.
-await page.waitForFunction(() => window.__pngp?.getGroundHeight?.(), null, { timeout: 180000 });
+// WAIT ON THE HUD, NOT ON THE DEV HANDLE. window.__pngp only exists in a dev build -
+// Vite strips the branch from a production one - so waiting for it timed out against
+// the published site, which is the one case this tool exists for: a share link comes
+// from the live viewer. The HUD's position line gets its "alt ... m" the moment the
+// terrain can answer a height query, which is the same moment the view in the link
+// becomes the view, and it is there in both builds.
+await page.waitForFunction(
+  () => /alt\s+-?\d+\s*m/.test(document.getElementById('nav-position')?.textContent ?? ''),
+  null,
+  { timeout: 180000 },
+);
 await page.waitForTimeout(6000); // trails, water, huts, and a few real frames at ~1 fps
 
 const hud = await page.evaluate(() => ({
   position: document.getElementById('nav-position')?.textContent?.trim(),
   nearest: document.getElementById('nav-nearest')?.textContent?.trim(),
-  camera: [...window.__pngp.camera.position].map((v) => Math.round(v)),
+  // Dev only, and optional for the same reason as the wait above.
+  camera: window.__pngp ? [...window.__pngp.camera.position].map((v) => Math.round(v)) : null,
 }));
-console.log(`${hud.position}\n${hud.nearest}\nlocal metres: ${hud.camera.join(', ')}`);
+console.log(`${hud.position}\n${hud.nearest}`
+  + (hud.camera ? `\nlocal metres: ${hud.camera.join(', ')}` : '\n(production build: no dev handle)'));
 await captureCanvas(page, out);
 console.log(`-> ${out}`);
 if (problems.length) console.log(`\n${problems.length} problem(s):\n  ${problems.join('\n  ')}`);

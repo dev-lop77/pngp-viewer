@@ -16,18 +16,23 @@ scattered through it were promoted into ARCHITECTURE §13 first, so that the one
 part of the log you needed *before* making a mistake is no longer in a file you
 open *after*.
 
-## NEXT SESSION: publish, then ask
+## NEXT SESSION: everything is published; ask what they want
 
-**State at the end of 2026-08-19: four topics closed in one day and the working tree is
-ahead of the published site.** The live build is still 2026-08-18, so NONE of this is
-public: the 51 buildings, the three monuments, the 15 m fly-to, and the glaciers as a mask.
-Fast suite 13/13.
+**State at the end of 2026-08-19: five things shipped and PUBLISHED, working tree clean,
+fast suite 13/13.** The live site carries the buildings, the monuments, the 15 m fly-to and
+the mask glaciers. Nothing is half-finished and no rescue work is waiting.
 
-1. **Publish.** `tools/dev/deploy.sh`, about four minutes. First load gains 30 kB (the
-   glacier mask) and loses 563,567 triangles of runtime geometry.
-2. **Then ask.** Every topic the user has named is done, and the remaining debts are theirs
-   to prioritise: the Piemonte DTM5 spikes still in the shipped DEM, and the 5 m tier at
-   51.03 MB against GitHub's recommended 50.
+The user's own next move, in their words at the end of the day: ***"poi facciamo una prova
+con cosa si puo' fare con il nuovo ghiaccio"*** - so the first thing to do is show them what
+the mask now makes possible. It is a per-pixel coverage value the terrain shader already
+samples, which means crevasse fields, a firn/blue-ice split by elevation, a moraine line at
+the margin and a bergschrund shadow are all colour-and-noise work inside one existing
+`if`, with no geometry and no download. What it CANNOT do without new data is put a crevasse
+where a real crevasse is.
+
+Remaining debts, both theirs to prioritise: the Piemonte DTM5 spikes still in the shipped
+DEM (1,245 cells over 96 m, invisible in practice), and the 5 m tier at 51.03 MB against
+GitHub's recommended 50.
 
 ### The DEPTH topic is finished - do not reopen it
 
@@ -235,43 +240,49 @@ consumed.
 
 Open debts are at the end of this file.
 
-## PUBLISHED (2026-08-18, second publish of the day)
+## PUBLISHED (2026-08-19)
 
-Live at https://dev-lop77.github.io/pngp-viewer/ after the user's "committa e
-pubblica questa versione". Pages reported `built` after **224 s** - four times the
-usual, because the 5 m tier is now 51.03 MB and the push warns about it (GitHub
-recommends under 50 MB; the hard limit is 100, so it is a warning and not a wall,
-but it is one to watch).
+Live at https://dev-lop77.github.io/pngp-viewer/ after *"puoi pubblicare dopo aver settato
+1"*. Pages reported `built`; the push carried the JS bundle, `glacier.d60915e3.png` and
+`glacier.json` and nothing else - everything else today was code, not data.
 
-**Verified against the CDN, not the build.** `heightfield.json` comes back with
-`ymin 5027000`, **four sources**, and `liabilityNotice` present - which is the whole
-point of the licence work, since that array is what the credits panel is built from.
-The credits panel on the LIVE site opens to **7 lines** with the Copernicus notice on
-its own, its own licence link (the COP-DEM-30 PDF, not CC BY 4.0), and the Article
-6(c) liability sentence beneath it. `node tools/verify.mjs <site>`: WebGL2 context,
-no console or page errors. A screenshot from the exact viewpoint the user reported
-the grey wall from now shows the valley (`tools/dev/logs/live-nevaio.png`).
+**Verified against the CDN, not the build**, which is the habit this project earned the hard
+way. `data/glacier.json` comes back with **80 outlines, 69,008 full pixels, 29.07 km2** and
+the ODbL line; the mask itself is 200/30,729 bytes of `image/png`. `node tools/verify.mjs
+<site>`: WebGL2 context, no console or page errors. And a shot of the LIVE site over the
+Gliairetta (`tools/dev/logs/live-glacier.png`) shows the neutral white ice following the
+relief - the sheet is gone from the published build too, not just from the dev server.
 
-**First load, measured on the wire** by summing content-length over the initial load
-including the default Medium tier: **31.60 MB**, against 25.97 before today - so
-**+5.63 MB** for a map that is 20% taller and finally contains the whole park. The
-local estimate had been 31.23 MB; the gap is Pages' gzip level against node's.
+**First load: 31.27 MB**, against 31.23 for the previous build measured the same way, so
+**+0.04 MB** - the glacier mask, and nothing else. (The 31.60 MB in the 2026-08-18 entry was
+summed from content-length on the wire; this figure is node's own gzip of `dist/`, which is
+the like-for-like comparison. Pages compresses slightly harder.)
 
-| | MB on the wire |
+| | MB, node's gzip |
 |---|---|
-| heightfield.bin | 12.78 |
-| heighttier 10 m (the default) | 8.78 |
+| heightfield.bin | 12.66 |
+| heighttier 10 m (the default) | 8.54 |
 | basemap 8192 | 7.07 |
-| canopy + landcover masks | 1.84 |
-| water.json | 0.46 |
+| forest mask | 1.12 |
+| landcover mask | 0.72 |
+| water.json | 0.45 |
 | trails.json | 0.26 |
 | bundle | 0.24 |
 | roads.json | 0.12 |
-| **outerring.png** | **0.02** |
-| poi + ferrata + manifests | 0.03 |
+| **glacier mask** | **0.03** |
+| outerring.png | 0.02 |
+| poi + manifests | 0.03 |
 
-The outer-ring field is 0.02 MB of that, and it is what makes the map stop having
-edges.
+**Two tools were wrong about the published site and are fixed**, both silently:
+`tools/dev/shoot-url.mjs` waited for `window.__pngp`, which Vite strips from a production
+build - so it timed out on the one URL it exists for, a share link from the live viewer. It
+waits for the HUD's own altitude line now, which is in both builds. And
+`tools/dev/measure-load.mjs` sizes each response by reading the file back out of `dist/`,
+which cannot work for a URL carrying the Pages sub-path: it reported **0.00 MB over 0
+requests** rather than failing. It strips one leading segment and retries.
+
+What is live now, that was not this morning: the 51 rifugi and bivacchi as buildings, the
+three summit monuments, the 15 m fly-to standoff, and the glaciers as a mask.
 
 ## Where the project got to, by phase
 
