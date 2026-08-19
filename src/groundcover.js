@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { attachAtmo } from './atmosphere.js';
 import { BASEMAP, BASEMAP_MIX, BASEMAP_SCALE, basemapGlsl } from './basemap.js';
 import { LANDCOVER_MASK } from './landcover.js';
+import { GLACIER_MASK } from './glaciermask.js';
 import { FOREST_MASK } from './forest.js';
 import { TILE_SEGMENTS, MAX_DEPTH } from './terrain.js';
 import { SNOW_LEVEL, snowGlsl, snowColorGlsl } from './snow.js';
@@ -657,6 +658,7 @@ function createLayer({ kind, layer, manifest, heightTexture }) {
     attribute vec3 aBlade; // (leanX, leanZ, phase) - see tuftGeometry()
     uniform sampler2D uHeightMap;
     uniform sampler2D uCoverMask;
+    uniform sampler2D uGlacierMask; // ice: nothing grows and nothing lies on it
 ${isGrass ? '' : '    uniform sampler2D uForestMask; // scree only - see SCREE_FROM_BARE\n'}    uniform float uGroundSegments;
 ${heightTierGlsl()}
     uniform float uWind;
@@ -736,6 +738,14 @@ ${basemapGlsl()}
     vec2 uv = coverUv( slot );
 
     float cover = texture2D( uCoverMask, uv ).r;
+    // NOTHING GROWS AND NOTHING LIES ON A GLACIER. Added 2026-08-19 with the glacier mask,
+    // and it closes a hole that had been covered by luck rather than by a rule: what kept
+    // stones off the ice until now was snowCover() reading 1.0 on a glaciated summit, which
+    // is true on the Gran Paradiso and NOT true on the Gliairetta tongue at 3,100 m under a
+    // clear mid-morning sky - a shot taken the day the ice became a mask has scree cones
+    // standing on the glacier. The landcover mask does not help either: it is derived from
+    // the same imagery that sees a bright bare surface there.
+    float onIce = texture2D( uGlacierMask, uv ).r;
     // The DRAWN height, not the texture's own: see drawnElevation() above. The four
     // corner taps also hand back both gradients, so the aspect below is free.
     vec2 coverGrad;
@@ -748,13 +758,13 @@ ${basemapGlsl()}
     // 1 - cover would cobble every forest floor in the park.
 ${
   isGrass
-    ? '    float mine = cover;'
+    ? '    float mine = cover * ( 1.0 - onIce );'
     : `    float wood = texture2D( uForestMask, uv ).r;
     // Not steeper than talus stands - see SCREE_SLOPE_FADE. coverGrad is already
     // in hand from drawnElevation(), so this is a length() and a smoothstep().
     float repose = 1.0 - smoothstep( ${glsl(SCREE_SLOPE_FADE[0])}, ${glsl(SCREE_SLOPE_FADE[1])},
                                      length( coverGrad ) );
-    float mine = ( 1.0 - cover ) * ( 1.0 - wood ) * repose
+    float mine = ( 1.0 - cover ) * ( 1.0 - wood ) * repose * ( 1.0 - onIce )
                * ${glsl(SCREE_FROM_BARE * SCREE_DENSITY)};`
 }
 
@@ -897,6 +907,7 @@ ${
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uHeightMap = { value: heightTexture };
     shader.uniforms.uCoverMask = LANDCOVER_MASK; // shared holder - may still be downloading
+    shader.uniforms.uGlacierMask = GLACIER_MASK; // the same arrangement again (src/glaciermask.js)
     // The canopy mask, bound for the scree layer only, and for a reason worth the
     // line: "not open vegetation" is not "bare ground". Under a wood the landcover
     // mask reads ~0, so scree taken as 1 - cover would have put boulders on every

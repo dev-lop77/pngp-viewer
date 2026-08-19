@@ -130,6 +130,7 @@ const result = await page.evaluate(async () => {
   const THREE = await import('/node_modules/three/build/three.module.js');
   const {
     loadTerrain, SLOPE_ROCK_TO, SLOPE_ROCK_FROM, ROCK_COLOR,
+    GLACIER_MIX,
   } = await import('/src/terrain.js');
   const { loadForest } = await import('/src/forest.js');
   const { loadBasemap, BASEMAP_GAIN, BASEMAP_DETAIL } = await import('/src/basemap.js');
@@ -280,6 +281,15 @@ const result = await page.evaluate(async () => {
     return rgb;
   };
 
+  // THE ICE IS SWITCHED OFF FOR THESE READINGS, and it has to be. Since 2026-08-19 the
+  // glaciers are a mask that src/terrain.js paints over the photo (they used to be a sheet
+  // of geometry), so at the 'ice' sample point the ground now reads the glacier colour, not
+  // the satellite albedo - this test failed there with 0.816/1.000/1.000, which is exactly
+  // GLACIER_COLOR. That is the mask working, not the basemap breaking. This file's subject
+  // is the PHOTO, one layer at a time, the same discipline probe-groundcover.mjs uses; the
+  // ice has tools/test-glaciers.mjs to prove it is painted and where.
+  GLACIER_MIX.value = 0;
+
   const points = {};
   for (const [name, spot] of Object.entries(wanted)) {
     if (!spot) {
@@ -293,6 +303,8 @@ const result = await page.evaluate(async () => {
     BASEMAP_MIX.value = 1;
     points[name] = { ...spot, photo, procedural, texel: sampleBasemap(spot.x, spot.z) };
   }
+
+  GLACIER_MIX.value = 1; // back to what the app draws, for everything below
 
   // The mix has to MOVE the ground, or everything above could be measuring one
   // look twice. Taken at the point where the two disagree most, so a real change

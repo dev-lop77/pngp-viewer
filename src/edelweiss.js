@@ -276,7 +276,7 @@ function edelweissGeometry() {
   return geometry;
 }
 
-export function createEdelweiss({ sampleGroundHeight, coverAt }) {
+export function createEdelweiss({ sampleGroundHeight, coverAt, iceAt = () => 0 }) {
   const geometry = edelweissGeometry();
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
@@ -342,10 +342,16 @@ export function createEdelweiss({ sampleGroundHeight, coverAt }) {
     if (chance < PATCH_CHANCE) {
       const g = groundAt(ox, oz);
       const cover = coverAt(ox, oz);
+      // A glacier grows nothing, and the landcover mask does not say so: it is derived from
+      // imagery that reads a bright bare surface on ice, which lands inside this layer's own
+      // COVER_MIN..COVER_MAX window. 40 of the 80 glaciers reach into 1,850-2,980 m, so the
+      // ice has to be asked directly (src/glaciermask.js, added 2026-08-19).
+      const ice = iceAt(ox, oz);
       const ok =
         g !== null &&
         g.elevM >= ELEV_MIN_M &&
         g.elevM <= ELEV_MAX_M &&
+        ice < 0.15 &&
         cover >= COVER_MIN &&
         cover <= COVER_MAX &&
         g.slopeDeg >= SLOPE_MIN_DEG &&

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { loadTerrain } from './terrain.js';
+import { loadTerrain, GLACIER_MIX } from './terrain.js';
 import { SNOW_LEVEL } from './snow.js';
 import { loadTrails } from './trails.js';
 import { loadPOI, poiInfoHTML } from './poi.js';
@@ -10,6 +10,7 @@ import { createSummitMonuments } from './summits.js';
 import { loadWater } from './water.js';
 import { loadRoads } from './roads.js';
 import { loadForest, createCoverageSampler } from './forest.js';
+import { loadGlacierMask } from './glaciermask.js';
 import { loadBasemap, BASEMAP_MIX, BASEMAP_SCALE, BASEMAP_GAIN, BASEMAP } from './basemap.js';
 import { createVegetation } from './vegetation.js';
 import { loadLandcover, createLandcoverSampler, LANDCOVER_MASK } from './landcover.js';
@@ -249,6 +250,18 @@ const forestPromise = loadForest().catch((err) => {
   return null;
 });
 
+// The glacier mask, and the fifth loader whose failure is survivable rather than fatal:
+// src/terrain.js binds the shared GLACIER_MASK holder at compile time and it starts as a
+// 1x1 black texture, so without this the ice simply is not painted and the ground under it
+// - real rock, at its real shape - is what shows. 30 kB, and its ODbL credit is the shared
+// 'osm' line the POI and water loaders already set from the same dataset.
+//
+// It replaced 563,567 triangles of draped sheet on 2026-08-19 (src/water.js's header note).
+const glacierMaskPromise = loadGlacierMask().catch((err) => {
+  console.warn('Glacier mask unavailable - the ice will not be painted:', err.message);
+  return null;
+});
+
 // The satellite ground texture, independent of everything else in the same way
 // and for the same reason (src/basemap.js binds shared holders at compile time).
 // Until it lands - and forever, if it fails - the terrain draws the procedural
@@ -363,9 +376,19 @@ Promise.all([terrainPromise, forestPromise]).then(async ([terrain, forest]) => {
     // a 9.6 MB getImageData and keeps 2.4 MB, so a second one would be pure waste.
     const coverAt = createLandcoverSampler({ manifest: landcover.manifest, texture: landcover.texture });
     landcoverCoverAt = coverAt; // dev handle only, see the __pngp block at the end
+    // And the ice, on the CPU, for the flowers. The grass and the scree are shader-side and
+    // read the mask themselves; edelweiss is CPU-placed, so it needs its own answer to "is
+    // this a glacier". 40 of the 80 glaciers reach into its 1,850-2,980 m window, so without
+    // this a patch can be planted on a tongue - and the sampler is forest.js's, reused
+    // rather than rewritten, because the glacier manifest carries the same grid fields it
+    // reads. Awaited separately: a failed 30 kB download must not cost us the flowers.
+    const glacierMask = await glacierMaskPromise;
+    const iceAt = glacierMask
+      ? createCoverageSampler({ manifest: glacierMask.manifest, texture: glacierMask.texture })
+      : () => 0;
     // sampleRenderedHeight for the same reason the walking camera and the animals
     // use it: a flower has to sit on the surface that is actually drawn.
-    edelweiss = createEdelweiss({ sampleGroundHeight: terrain.sampleRenderedHeight, coverAt });
+    edelweiss = createEdelweiss({ sampleGroundHeight: terrain.sampleRenderedHeight, coverAt, iceAt });
     scene.add(edelweiss.object);
   }
 
@@ -883,6 +906,9 @@ if (import.meta.env.DEV) {
     // probe (or a console) can actually move is the SCALE holder, and `haze` reads
     // the live uniform so a shot can report the value it was taken at rather than
     // the value someone meant to set.
+    // The ice mix, so a probe can turn the ice off and photograph the ground underneath
+    // it - which is the only honest way to show what the mask replaced.
+    glacierMix: GLACIER_MIX,
     atmo: {
       hazeScale: HAZE_SCALE,
       uniforms: ATMO.uniforms,
@@ -964,6 +990,20 @@ if (import.meta.env.DEV) {
   // the LIVE uniform, and the fraction of the ground colour it has taken at
   // three real distances - so a value the user likes can be read off the screen
   // instead of recomputed afterwards.
+  // 'J' sweeps how strongly the ice paints over the ground, for the same reason 'H' sweeps
+  // the haze: whether a glacier reads as ice or as dirty snow is a looking decision, and
+  // the satellite photo underneath it already shows something. 1.0 is what ships.
+  const ICE_STEPS = [0, 0.35, 0.7, 1];
+  let iceStep = ICE_STEPS.length - 1;
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'KeyJ') return;
+    if (isTypingTarget(document.activeElement)) return;
+    iceStep = (iceStep + 1) % ICE_STEPS.length;
+    GLACIER_MIX.value = ICE_STEPS[iceStep];
+    devNoteEl.textContent = `glacier ice x${GLACIER_MIX.value}`
+      + (GLACIER_MIX.value === 0 ? ' (off - this is the ground under the ice)' : '');
+  });
+
   const HAZE_STEPS = [0.6, 1, 1.5, 2.2, 3];
   let hazeStep = 1; // start on the shipped look, so the first press is a change
   window.addEventListener('keydown', (e) => {
@@ -1263,7 +1303,7 @@ if (import.meta.env.DEV) {
   devNoteEl.style.cssText = 'position:fixed;top:52px;right:10px;padding:3px 7px;'
     + 'background:rgba(10,14,20,0.55);border-radius:4px;color:#9fe0a0;'
     + 'font:11px/1.4 -apple-system,system-ui,sans-serif;pointer-events:none;';
-  devNoteEl.textContent = 'G: next mammal · B: next bird · H: haze';
+  devNoteEl.textContent = 'G: next mammal · B: next bird · H: haze · J: ice';
   lookDiagEl.after(devNoteEl);
 
   // What the ambience is currently being driven by. Audio is the one feature so

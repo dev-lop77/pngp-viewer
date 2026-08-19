@@ -84,6 +84,13 @@ Both start scripts:
   drives per frame — `GROUNDCOVER_WIND`, `SNOW_LEVEL` — **cannot be pinned by
   assignment**, only by redefining its accessor. The frame times it prints are
   SwiftShader's and are only good as ratios between settings.
+- `probe-glaciers.mjs [tag]` — the glaciers from three fixed vantages, tagged so two runs
+  of different code sit side by side in `logs/`. Written for the 2026-08-19 change from a
+  draped sheet to a terrain mask, and the fixed cameras are the point: whether ice follows
+  the ground can only be judged by comparing one camera to itself. It also reports whether
+  the old `water-glaciers` sheet is in the scene, counting its triangles index-aware - that
+  geometry is indexed, so `position.count / 3` yields 96,988, which is a triangle count of
+  nothing. The real figure was 563,567.
 - `probe-haze.mjs [url] [--scales=..] [--time=0.15] [--only=summit|nivolet|cogne]` —
   sweeps the distance haze in the real page from three vantages that ask three
   different questions (42 km from the Gran Paradiso summit, 5-12 km from the

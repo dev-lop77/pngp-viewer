@@ -16,22 +16,18 @@ scattered through it were promoted into ARCHITECTURE §13 first, so that the one
 part of the log you needed *before* making a mistake is no longer in a file you
 open *after*.
 
-## NEXT SESSION: nothing is half-finished - ask what they want next
+## NEXT SESSION: publish, then ask
 
-**State on 2026-08-19: all three of the topics the user named are CLOSED, and the working
-tree is ahead of the published site.** The live build is still 2026-08-18, so the 51
-buildings, the three monuments and the 15 m fly-to are NOT public yet. Fast suite passes.
+**State at the end of 2026-08-19: four topics closed in one day and the working tree is
+ahead of the published site.** The live build is still 2026-08-18, so NONE of this is
+public: the 51 buildings, the three monuments, the 15 m fly-to, and the glaciers as a mask.
+Fast suite 13/13.
 
-What is actually left, in the order worth proposing:
-
-1. **Publish.** `tools/dev/deploy.sh`, about four minutes, and the last publish took
-   224 s on Pages' side because of the 5 m tier.
-2. **Glaciers as a terrain mask rather than a sheet** - the real open debt below. It
-   removes 563,567 triangles AND the class of defect where 1.25% of the ice still dips
-   under the rock.
-3. Whatever they name. The three topics they gave on 2026-08-18 are done: the aerial
-   perspective (kept as it was, after looking), the huts, and the crosses - which they
-   cut down to three named monuments rather than 252.
+1. **Publish.** `tools/dev/deploy.sh`, about four minutes. First load gains 30 kB (the
+   glacier mask) and loses 563,567 triangles of runtime geometry.
+2. **Then ask.** Every topic the user has named is done, and the remaining debts are theirs
+   to prioritise: the Piemonte DTM5 spikes still in the shipped DEM, and the 5 m tier at
+   51.03 MB against GitHub's recommended 50.
 
 ### The DEPTH topic is finished - do not reopen it
 
@@ -185,6 +181,44 @@ and it cannot be resolved from a script: the code is expanded by the browser, so
 `mapy.com/s/<code>` answers 404 to curl and to WebFetch. Asking for the numbers took one
 message; guessing would have put a cross somewhere plausible and wrong.
 
+### DONE 2026-08-19: the glaciers are a mask, not a sheet
+
+The open debt, taken at the user's word - *"Proseguiamo con la gestione dei ghiacciai"* -
+and closed. The ice is a **30 kB mask** on the heightfield's own grid, read by
+`src/terrain.js`, so the ice IS the ground: `tools/build-glacier-mask.mjs`,
+`src/glaciermask.js`, `GLACIER_COLOR` and `GLACIER_MIX` in terrain.js. **563,567 triangles
+gone**, and with them the whole squeeze the sheet lived in - a lift that had to stay under
+the walker's 1.7 m eye height while outrunning a sag of up to 9.32 m.
+
+Three things it found that were not in the plan:
+
+1. **The satellite photo already shows the ice, brighter than my ice.** The first colour,
+   0xc3defb, was the brightest ice that does not clip - and the frame over the Gliairetta
+   came out **3.6 levels darker** with the ice painted than without it, because the photo
+   shows that glacier at about rgb(190) and this renderer's ceiling is rgb(195). Ice darker
+   than a photo of ice is the wrong way round; 0xe9ffff lands at rgb(185,194,195), which is
+   as bright as this rig goes. The measurement came from the test, not from looking.
+2. **The scree was standing on the glacier.** What had kept stones off the ice was
+   `snowCover()` reading 1.0 on a glaciated summit - true on the Gran Paradiso, false on
+   the Gliairetta tongue at 3,100 m under a clear sky, and a foot-level shot showed cones
+   sitting on the ice. The landcover mask cannot help: it is derived from imagery that
+   reads a glacier as bright bare ground. Both the shader-side cover and the CPU-placed
+   edelweiss now ask the ice mask directly (40 of the 80 glaciers reach into the flowers'
+   1,850-2,980 m window).
+3. **`refineToMaxEdge()` was glacier-only** and went with it: a lake surface is flat by
+   nature and the rivers are ribbons. 70 lines, recoverable from the history.
+
+`tools/test-glaciers.mjs` is in the fast suite. It does NOT measure sag - a mask has no
+interior to sag - it measures what can now break instead: the mask against water.json's own
+80 rings by point-in-polygon (ice inside all 80, none at 4,834 sampled points outside), the
+sheet's absence from the scene, and that the mask really reaches the shader, by switching
+`GLACIER_MIX` off and measuring the frame. Reading the uniform alone would only prove the
+binding - §13.1's silent shader patch is the same shape of lie.
+
+**Still open here:** the ice is one flat colour with no crevasses, no séracs and no
+blue-ice/firn distinction, and it does not brighten with the weather snow (`snowCover()`
+goes on top of it). Nobody has asked for any of that.
+
 ### Before touching anything
 
 Read **`docs/ARCHITECTURE.md` §13 - Landmines** first. It is fifteen rules that have
@@ -268,9 +302,14 @@ of the park is accepted rather than levelled down.
 - **Piemonte DTM5 spikes are in the shipped DEM**, not only in the tier: 1,245
   cells over 96 m out of the 44.1 M it shares with TINITALY. Invisible in
   practice. A de-spike pass over the mosaic is a real option nobody has taken.
-- **Glaciers should be a terrain mask, not a sheet.** 1.25% of the ice still dips
-  under the rock because a triangle's interior is flat, and the offset is squeezed
-  between eye height above and sag below, so it cannot cover the tail. Drawing them
-  the way `src/forest.js` draws canopy removes the class - and 563,567 triangles.
+- ~~**Glaciers should be a terrain mask, not a sheet.**~~ **DONE 2026-08-19.** The ice
+  is a 30 kB mask the terrain shader reads (`tools/build-glacier-mask.mjs`,
+  `src/glaciermask.js`, `GLACIER_COLOR` in `src/terrain.js`), so the ice IS the ground:
+  no interior to sag, nothing to walk under, no offset squeezed between eye height and
+  sag, and **563,567 triangles gone**. It also closed a defect nobody had listed: the
+  scree was standing on the Gliairetta tongue, because what had kept stones off the ice
+  was `snowCover()` reading 1.0 on a glaciated summit - true on the Gran Paradiso, false
+  at 3,100 m under a clear sky. Both the shader-side cover and the CPU-placed edelweiss
+  now ask the ice directly.
 - **The 5 m tier is 51.03 MB** and the push warns about it. GitHub recommends under
   50, its hard limit is 100. Not a wall today; the next time that file grows it is.

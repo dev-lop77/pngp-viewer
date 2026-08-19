@@ -7,6 +7,7 @@ import {
 } from './heighttier.js';
 import { attachAtmo } from './atmosphere.js';
 import { FOREST_MASK } from './forest.js';
+import { GLACIER_MASK } from './glaciermask.js';
 import { SNOW_LEVEL, snowGlsl, snowColorGlsl } from './snow.js';
 import { BASEMAP, BASEMAP_MIX, BASEMAP_SCALE, basemapGlsl } from './basemap.js';
 import {
@@ -40,6 +41,7 @@ export { TILE_SEGMENTS, MAX_DEPTH };
 // table rather than a second copy of the numbers that could drift from it.
 export { VEGETATION_BANDS, BAND_NOISE_M, ASPECT_SHIFT_M, ROCK_COLOR, SLOPE_ROCK_TO, SLOPE_ROCK_FROM };
 export { FOREST_FLOOR_COLOR, FOREST_FLOOR_MIX };
+export { GLACIER_COLOR };
 
 // GLSL needs a decimal point (or an exponent) to read a literal as a float.
 function glsl(n) {
@@ -106,6 +108,33 @@ const ROCK_COLOR = 0xb3aa9f; // == the rocky band; steep ground is bare regardle
 // from a distance, which defeats the point of tinting at all.
 const FOREST_FLOOR_COLOR = 0x667d5e;
 const FOREST_FLOOR_MIX = 0.9;
+
+// GLACIER ICE, painted from the mask src/glaciermask.js loads (2026-08-19), replacing the
+// sheet src/water.js used to drape over the terrain - 563,567 triangles that could still
+// sag into the rock between their seated corners. Here the ice IS the ground, so there is
+// nothing to sag, nothing to walk under, and nothing to offset.
+//
+// Solved backwards like every other colour here (§13.2), and it took a measurement to get
+// right. The pipeline's ceiling is rgb(195,195,195) on screen, so any bright bluish white
+// clips: #cfd9e2 and even #b9c2c9 come back unreachable. The first choice was 0xc3defb,
+// the brightest ice that keeps its blue WITHOUT clipping, at rgb(159,176,192) - and
+// tools/test-glaciers.mjs then measured the whole frame over the Gliairetta getting 3.6
+// levels DARKER with the ice painted than without it, because the satellite photo
+// underneath already shows that glacier at about rgb(190). Ice darker than the photo of
+// ice is the wrong way round. This value clips in the blue and lands at rgb(185,194,195):
+// as bright as this renderer goes, with what blue survives at that brightness.
+const GLACIER_COLOR = 0xe9ffff;
+// How much of the ground the ice takes at full mask coverage. 1.0 - it is not a tint, it
+// is a different surface, and half-painted ice reads as dirty snow. A holder rather than a
+// constant so it can be swept live in dev (main.js binds 'J' to it) - the same way the
+// haze got settled by looking on 2026-08-19 instead of by argument.
+export const GLACIER_MIX = { value: 1.0 };
+// Ice on a cliff: an icefall is genuinely steep, so this fades late and never to zero -
+// what it prevents is a polygon edge running up a rock wall and painting the wall white.
+// Cosines of the slope, like SLOPE_ROCK_*: ~55 deg to ~72 deg.
+const ICE_SLOPE_FROM = 0.57;
+const ICE_SLOPE_TO = 0.31;
+const ICE_ON_CLIFF = 0.25; // what survives on the steepest ground inside an outline
 // Weather snow lying on the ground was simply missing until 2026-08-10:
 // weather.js had computed and ramped mod.snow since phase 4, lighting.js and
 // audio.js both read it - the haze whitens, the footsteps crunch, the master
@@ -266,6 +295,8 @@ ${heightTierGlsl()}
     varying vec3 vTerrainNormal;
     varying vec2 vTerrainXZ;
     uniform sampler2D uForestMask;
+    uniform sampler2D uGlacierMask;
+    uniform float uGlacierMix;
 ${snowGlsl()}
 ${basemapGlsl()}
 ${outerRingGlsl({ worldWidth, worldDepth })}
@@ -328,6 +359,21 @@ ${bandMix}
       // a descending smoothstep on n.y.
       float bare = 1.0 - smoothstep( ${glsl(SLOPE_ROCK_TO)}, ${glsl(SLOPE_ROCK_FROM)}, n.y );
       vec3 ground = mix( albedo, ${glslRgb(ROCK_COLOR)}, bare * 0.9 );
+      // THE ICE, from the mask. After the rock term and after the satellite mix, because a
+      // glacier is not a tint on what is underneath: it is the surface. The photo does
+      // show the ice, but it shows it as whatever Sentinel-2 saw on one day - shadowed,
+      // dulled by the de-shading pass, and in places rock-coloured where the tongue had
+      // retreated since - and OSM's outline is the claim this project actually makes about
+      // where the ice is.
+      //
+      // The slope fade is the one thing that survives underneath: an icefall is steep by
+      // definition, so it fades late and never to zero, and what it prevents is an outline
+      // edge running up a rock wall and painting the wall white.
+      float ice = texture2D( uGlacierMask, fUv ).r * uGlacierMix;
+      float iceSlope = mix( ${glsl(ICE_ON_CLIFF)}, 1.0,
+                            smoothstep( ${glsl(ICE_SLOPE_TO)}, ${glsl(ICE_SLOPE_FROM)}, n.y ) );
+      ground = mix( ground, ${glslRgb(GLACIER_COLOR)}, clamp( ice * iceSlope, 0.0, 1.0 ) );
+
       // Weather snow goes on last, over rock and forest floor alike. WHERE it
       // lies is src/snow.js's business, not this file's - altitude, aspect and
       // slope, so a summit whitens first and a north face keeps it longest. The
@@ -344,6 +390,11 @@ ${bandMix}
     // Shared holder, not the texture itself: the mask downloads independently of
     // the terrain, and this way neither has to wait for the other.
     shader.uniforms.uForestMask = FOREST_MASK;
+    // Same arrangement, same reason: the mask is a 30 kB download of its own and the
+    // material must compile and draw whether it has landed or not (it is a 1x1 black
+    // texture until then, so the term multiplies out to nothing).
+    shader.uniforms.uGlacierMask = GLACIER_MASK;
+    shader.uniforms.uGlacierMix = GLACIER_MIX;
     shader.uniforms.uSnow = SNOW_LEVEL; // declared by snowGlsl(), driven from main.js
     // Same arrangement again, for the same reason: the satellite texture is a
     // separate download and the mix stays 0 until it lands, so this material

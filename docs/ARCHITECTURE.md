@@ -724,6 +724,18 @@ tools/
                              deliberately NOT here - it is a function of elevation and lives
                              in src/groundcover.js, because shipping it as a second texture
                              cost 4.4 MB for a value the shader could already derive.
+  build-glacier-mask.mjs  Written 2026-08-19, and it reads public/data/water.json rather than a
+                             draft on purpose: the draft holds 262 glacier polygons and
+                             water.json ships the 80 that survive the region filter, which are
+                             exactly the ones that used to be drawn. Rasterising the same 80
+                             through tools/lib/mask-raster.mjs makes the mask a REPLACEMENT for
+                             the sheet rather than a new claim about where the ice is, and lets
+                             tools/test-glaciers.mjs check the result against those same rings
+                             by point-in-polygon. 30 kB for 29.1 km2 of ice, on the
+                             heightfield's own grid like the other two masks. No slope
+                             attenuation is baked in - unlike the canopy, an icefall is steep
+                             by definition - and the terrain shader keeps its own rock term for
+                             a cliff inside an outline
   fetch-landcover-osm.mjs, build-landcover-osm.mjs
                           Written 2026-08-12 and RETIRED the same day, kept as the
                              reproducible proof of a negative result: OSM's open-vegetation
@@ -1631,6 +1643,17 @@ pngp-viewer/
 │                              deliberately: a building cannot be buried, a cairn can, and
 │                              seating one on its highest corner put a 2.8 m pale plinth
 │                              under a 3 m cross. Re-seated with the height tier
+│   ├── glaciermask.js      the glacier mask holder and loader (2026-08-19), the twin of
+│                              forest.js: a coverage fraction on the heightfield's own grid,
+│                              downloaded separately (30 kB), read by terrain.js's shader.
+│                              It REPLACED 563,567 triangles of draped sheet in water.js -
+│                              see GLACIER_COLOR in terrain.js and the header note in
+│                              water.js for why a sheet could not be made to work. Reused
+│                              on the CPU through forest.js's own createCoverageSampler,
+│                              because the manifest carries the same grid fields: that is
+│                              what keeps the CPU-placed edelweiss off the ice, which the
+│                              landcover mask could not do (it is derived from imagery that
+│                              reads a glacier as bright bare ground)
 │   ├── huts.js             the 51 rifugi and bivacchi as BUILDINGS (2026-08-19), procedural
 │                              geometry authored in JS like every other model here. Two models
 │                              from three OSM tags, by the user's choice: a wood-and-stone
