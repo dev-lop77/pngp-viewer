@@ -371,5 +371,18 @@ of the park is accepted rather than levelled down.
   was `snowCover()` reading 1.0 on a glaciated summit - true on the Gran Paradiso, false
   at 3,100 m under a clear sky. Both the shader-side cover and the CPU-placed edelweiss
   now ask the ice directly.
+- **Distant trees stand where there is no wood, and the ice made it obvious.** Measured
+  2026-08-19 from the firn basin above the Gliairetta (45.52233N, 7.05259E, 3,315 m): three
+  conifers on the ice. They vanish when `vegetation-lod` alone is hidden, so they are the
+  DISTANT tree layer; the canopy mask reads **zero over a 3.2 km square** around that camera
+  and `vegetation.nearInfo()` reports an empty near set. So the fine layer is right and the
+  LOD layer is placing trees off the mask - most likely sampling it at a coarse mip, which
+  bleeds a wood a kilometre away across a boundary. Pre-existing, and invisible until the ice
+  became a white surface to stand them on.
+- **A terrain tile skirt shows at eye height on the ice.** Same session, standing at
+  45.51249N, 7.01452E (2,918 m): a hard-edged pale quadrilateral in the lower frame that
+  survives ground cover off and water hidden, and **disappears when the camera lifts 25 m** -
+  which is the signature of `SKIRT_DEPTH_M`'s curtain seen edge-on at a tile boundary. Also
+  pre-existing: the old glacier sheet was drawn 1 m above the ground and hid it.
 - **The 5 m tier is 51.03 MB** and the push warns about it. GitHub recommends under
   50, its hard limit is 100. Not a wall today; the next time that file grows it is.
