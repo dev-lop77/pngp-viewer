@@ -1643,6 +1643,15 @@ pngp-viewer/
 │                              deliberately: a building cannot be buried, a cairn can, and
 │                              seating one on its highest corner put a 2.8 m pale plinth
 │                              under a 3 m cross. Re-seated with the height tier
+│                              The ice is not one surface: terrain.js splits firn from live ice
+│                              at a MODELLED firn line (3,150 m, wobbled by the bands' own
+│                              noise) and reads a moraine band off the mask's own partial
+│                              coverage, both added 2026-08-19 at the user's go-ahead. Each is
+│                              colour and noise inside one branch - no geometry, no download.
+│                              MORAINE_MIX exists so the debris can be switched off and
+│                              measured: rock is warm and moraine is warm, so a test that
+│                              looks for the warmest pixel near a tongue's edge finds the rock
+│                              outside it and passes proving nothing
 │   ├── glaciermask.js      the glacier mask holder and loader (2026-08-19), the twin of
 │                              forest.js: a coverage fraction on the heightfield's own grid,
 │                              downloaded separately (30 kB), read by terrain.js's shader.

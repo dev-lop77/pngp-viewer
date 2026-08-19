@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
-import { loadTerrain, GLACIER_MIX } from './terrain.js';
+import { loadTerrain, GLACIER_MIX, MORAINE_MIX } from './terrain.js';
 import { SNOW_LEVEL } from './snow.js';
 import { loadTrails } from './trails.js';
 import { loadPOI, poiInfoHTML } from './poi.js';
@@ -325,6 +325,7 @@ let vegetation = null;
 let birds = null; // same, and they need the POI list too (see below)
 let groundcover = null; // the density knob has to reach it after the HUD changes
 let landcoverCoverAt = null; // dev handle only: the CPU twin of what the shader samples
+let glacierIceAt = null; // the same, for the ice - tools/test-glaciers.mjs needs to find a glacier
 let edelweiss = null; // patches are decided on the CPU, so the loop drives them
 
 // Trees need the terrain's height texture (they displace onto the same surface)
@@ -386,6 +387,7 @@ Promise.all([terrainPromise, forestPromise]).then(async ([terrain, forest]) => {
     const iceAt = glacierMask
       ? createCoverageSampler({ manifest: glacierMask.manifest, texture: glacierMask.texture })
       : () => 0;
+    glacierIceAt = iceAt; // dev handle only, see the __pngp block at the end
     // sampleRenderedHeight for the same reason the walking camera and the animals
     // use it: a flower has to sit on the surface that is actually drawn.
     edelweiss = createEdelweiss({ sampleGroundHeight: terrain.sampleRenderedHeight, coverAt, iceAt });
@@ -909,6 +911,13 @@ if (import.meta.env.DEV) {
     // The ice mix, so a probe can turn the ice off and photograph the ground underneath
     // it - which is the only honest way to show what the mask replaced.
     glacierMix: GLACIER_MIX,
+    // The debris band on its own, so a test can switch it off and measure the same pixel twice.
+    // Rock is warm and so is moraine: without this the only honest reading is impossible.
+    moraineMix: MORAINE_MIX,
+    // The CPU twin of the mask the terrain shader samples. A test that wants to stand ON a
+    // glacier has to be able to find one, and the alternative is coordinates copied into a
+    // tool - which is what went stale the one time this bbox was rebuilt.
+    iceAt: (x, z) => glacierIceAt?.(x, z) ?? 0,
     atmo: {
       hazeScale: HAZE_SCALE,
       uniforms: ATMO.uniforms,

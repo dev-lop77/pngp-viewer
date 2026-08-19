@@ -134,6 +134,38 @@ const FOREST_FLOOR_MIX = 0.9;
 // as a colour cast. The one thing lost is that white ice takes the light's own warmth on a
 // sunlit slope, which is why the neutral render reads a little like old snow.
 const GLACIER_COLOR = 0xffffff;
+
+// A GLACIER IS NOT ONE SURFACE, and this is the part of it the mask made cheap (2026-08-19,
+// at the user's go-ahead): every term below is colour and noise inside the ice branch, so it
+// costs no geometry, no download and no second texture.
+//
+// Firn above, live ice below. The accumulation zone is granular snow - white, bright, and
+// what GLACIER_COLOR already draws. The ablation zone below the firn line is exposed ice:
+// greyer, dustier, streaked with the season's melt, and visibly darker from a distance. It
+// is the single strongest cue that a white patch is a glacier and not a snowfield.
+//
+// THE FIRN LINE HERE IS MODELLED, NOT MEASURED. In these mountains it sits around
+// 3,100-3,300 m today and it moves every year; nothing in this project's data says where it
+// is, so this is a plausible band rather than a claim. It is wobbled by the same two-octave
+// noise the vegetation bands use, for the same reason: a real firn line is not a contour.
+const FIRN_LINE_M = 3150;
+const FIRN_BLEND_M = 220; // vertical softness of the transition
+const LIVE_ICE_COLOR = 0xc0c8cb; // #9aa0a2 on screen: grey ice, no blue - see GLACIER_COLOR
+// The debris margin. Where a tongue ends there is a band of moraine - rock the ice carried
+// and dropped - and the mask says exactly where that is, because a partly covered pixel IS
+// the edge. So the band comes from the mask's own value rather than from a distance field:
+// coverage between these two numbers is margin, and the colour there is the debris.
+const MORAINE_FROM = 0.12;
+const MORAINE_TO = 0.78;
+const MORAINE_COLOR = 0xb2a79b; // #8c8378 on screen: the grey-brown of fresh moraine
+const MORAINE_STRENGTH = 0.85; // how much of the ice the debris takes at the middle of the band
+// A holder for the debris alone, so it can be switched OFF and measured - the same arrangement
+// as GLACIER_MIX and for a sharper reason. Rock is warm and moraine is warm, so a test that
+// walks out to a tongue's edge and looks for the warmest point finds the rock OUTSIDE the ice
+// and passes without the debris existing at all: that is exactly what tools/test-glaciers.mjs
+// did before this holder, reporting its warmest sample at mask 0.00. Switching one term off and
+// measuring the same pixel twice is the only reading that isolates it.
+export const MORAINE_MIX = { value: 1 };
 // How much of the ground the ice takes at full mask coverage. 1.0 - it is not a tint, it
 // is a different surface, and half-painted ice reads as dirty snow. A holder rather than a
 // constant so it can be swept live in dev (main.js binds 'J' to it) - the same way the
@@ -307,6 +339,7 @@ ${heightTierGlsl()}
     uniform sampler2D uForestMask;
     uniform sampler2D uGlacierMask;
     uniform float uGlacierMix;
+    uniform float uMoraineMix;
 ${snowGlsl()}
 ${basemapGlsl()}
 ${outerRingGlsl({ worldWidth, worldDepth })}
@@ -379,10 +412,26 @@ ${bandMix}
       // The slope fade is the one thing that survives underneath: an icefall is steep by
       // definition, so it fades late and never to zero, and what it prevents is an outline
       // edge running up a rock wall and painting the wall white.
-      float ice = texture2D( uGlacierMask, fUv ).r * uGlacierMix;
+      float iceMask = texture2D( uGlacierMask, fUv ).r;
+      float ice = iceMask * uGlacierMix;
       float iceSlope = mix( ${glsl(ICE_ON_CLIFF)}, 1.0,
                             smoothstep( ${glsl(ICE_SLOPE_TO)}, ${glsl(ICE_SLOPE_FROM)}, n.y ) );
-      ground = mix( ground, ${glslRgb(GLACIER_COLOR)}, clamp( ice * iceSlope, 0.0, 1.0 ) );
+
+      // Firn above, live ice below, on the same wobbled elevation the bands use - h, the
+      // noise-shifted height, rather than vTerrainElev - so the firn line wanders with the
+      // same field the treeline does and the two never look drawn by different hands.
+      // (No backticks in here: this whole block is a JS template literal.)
+      vec3 iceColor = mix( ${glslRgb(LIVE_ICE_COLOR)}, ${glslRgb(GLACIER_COLOR)},
+                           smoothstep( ${glsl(FIRN_LINE_M - FIRN_BLEND_M)},
+                                       ${glsl(FIRN_LINE_M + FIRN_BLEND_M)}, h ) );
+      // The moraine at the margin. A partly covered mask pixel is the edge of the outline, so
+      // the band is read off the mask itself - highest in the middle of the ramp and zero at
+      // both ends, which puts debris on the rim and leaves the body of the glacier clean.
+      float rim = smoothstep( ${glsl(MORAINE_FROM)}, ${glsl((MORAINE_FROM + MORAINE_TO) / 2)}, iceMask )
+                * ( 1.0 - smoothstep( ${glsl((MORAINE_FROM + MORAINE_TO) / 2)}, ${glsl(MORAINE_TO)}, iceMask ) );
+      iceColor = mix( iceColor, ${glslRgb(MORAINE_COLOR)}, rim * ${glsl(MORAINE_STRENGTH)} * uMoraineMix );
+
+      ground = mix( ground, iceColor, clamp( ice * iceSlope, 0.0, 1.0 ) );
 
       // Weather snow goes on last, over rock and forest floor alike. WHERE it
       // lies is src/snow.js's business, not this file's - altitude, aspect and
@@ -405,6 +454,7 @@ ${bandMix}
     // texture until then, so the term multiplies out to nothing).
     shader.uniforms.uGlacierMask = GLACIER_MASK;
     shader.uniforms.uGlacierMix = GLACIER_MIX;
+    shader.uniforms.uMoraineMix = MORAINE_MIX;
     shader.uniforms.uSnow = SNOW_LEVEL; // declared by snowGlsl(), driven from main.js
     // Same arrangement again, for the same reason: the satellite texture is a
     // separate download and the mix stays 0 until it lands, so this material

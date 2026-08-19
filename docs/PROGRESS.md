@@ -230,6 +230,49 @@ binding - §13.1's silent shader patch is the same shape of lie.
 blue-ice/firn distinction, and it does not brighten with the weather snow (`snowCover()`
 goes on top of it). Nobody has asked for any of that.
 
+### DONE 2026-08-19: what the mask made possible - firn, live ice and moraine
+
+The user's *"facciamo una prova con cosa si puo' fare con il nuovo ghiaccio"*, and then
+*"accetto la tua proposta"* - which was the two terms that change the read from a distance,
+leaving crevasses for later. Both are colour and noise inside the existing ice branch of
+`src/terrain.js`: no geometry, no download, no second texture.
+
+- **Firn above, live ice below.** The accumulation zone stays white; below the firn line the
+  exposed ice is grey and visibly darker, which is the cue that separates a glacier from a
+  snowfield. `FIRN_LINE_M` is 3,150 with a 220 m blend, on the same wobbled height the
+  vegetation bands use so it is not a contour line. **It is modelled, not measured** - in
+  these mountains it sits around 3,100-3,300 m and moves every year, and nothing in this
+  project's data says where it is.
+- **Moraine at the margin.** A partly covered mask pixel IS the edge of the outline, so the
+  debris band is read off the mask's own value: highest in the middle of the ramp, zero at
+  both ends. Debris on the rim, clean ice in the body.
+
+**Three false measurements on the way, and the third is the one worth remembering.** The
+frame-level "the ice makes it brighter" assertion had to go: with a dark half the sign
+depends on which zone fills the frame. Then the debris check asked `iceAt` for a
+half-covered point and found nothing - `iceAt` is the mask **downscaled by two** for the CPU
+(41 m cells) while the shader reads the 20.5 m original, so a point that is half-covered to
+one is fully covered or bare to the other. Then it walked outward to the tongue's edge and
+took the warmest sample - **and passed, at mask 0.00, measuring the rock outside the ice**.
+Rock is warm and so is moraine. The only reading that isolates a term is the same pixel with
+it on and off, so `MORAINE_MIX` exists beside `GLACIER_MIX`, and the margin texel is now
+chosen in Node from the FULL-RESOLUTION mask the test has already decoded.
+
+What it measures now: firn luma 139.1 at 3,358 m against 125.3 at 2,581 m on one glacier;
+switching `MORAINE_MIX` off cools the margin texel by 6.7 of R-B and the body by 0.00.
+
+**And the test got three times faster while gaining those checks** - 219 s to 68. Most of it
+was a wait that waited for nothing: `glacierMix.value > 0` is a constant holder set before
+anything loads, followed by a 3 s sleep doing the real work. It now waits for `iceAt` to
+answer at a pixel the mask says is deep inside a glacier, which is what "the download landed"
+actually means. The rest was a bbox pre-filter on the containment sweep, a coarser scan that
+tests the cheap sampler before the costly one, and dropping a whole-frame render whose one
+claim is covered three other ways.
+
+**Still open:** crevasses (noise bands along the slope, which is the term that pays up close),
+a bergschrund shadow at the headwall, and any of it being where the real ones are - which
+needs data this project does not have.
+
 ### Before touching anything
 
 Read **`docs/ARCHITECTURE.md` §13 - Landmines** first. It is fifteen rules that have

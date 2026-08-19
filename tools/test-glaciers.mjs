@@ -107,21 +107,76 @@ check(insideMisses === 0,
 
 // And the other way: points well outside every outline must be bare. Sampled on a coarse
 // lattice over the whole bbox, so this is about the mask as a whole rather than one place.
+//
+// Each outline gets a bounding box first. Without it this sweep tests 4,834 lattice points
+// against 80 rings of up to 308 points twice over - once for containment and once for the
+// edge margin - and that arithmetic was a third of this test's runtime, which matters because
+// tools/dev/run-tests.sh drops a test out of the pre-publish set once it passes ~2 minutes.
+const boxes = water.glaciers.map((g) => {
+  const xs = g.ring.map((pt) => pt[0]);
+  const zs = g.ring.map((pt) => pt[2]);
+  return { g, x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs) };
+});
+const near = (b, x, z, pad) => x >= b.x0 - pad && x <= b.x1 + pad && z >= b.z0 - pad && z <= b.z1 + pad;
 let outsideChecked = 0;
 let outsideWrong = 0;
 const worldW = (height.bboxCrsUnits.xmax - xmin);
 const worldD = (ymax - height.bboxCrsUnits.ymin);
 for (let z = -worldD / 2 + 500; z < worldD / 2; z += 1000) {
   for (let x = -worldW / 2 + 500; x < worldW / 2; x += 1000) {
-    if (water.glaciers.some((g) => inRing(g.ring, x, z))) continue;
+    const candidates = boxes.filter((b) => near(b, x, z, 60));
+    if (candidates.some((b) => inRing(b.g.ring, x, z))) continue;
     // Skip anything within 60 m of an outline: an edge pixel is legitimately part ice.
-    const nearEdge = water.glaciers.some((g) => g.ring.some(([rx, , rz]) => Math.hypot(rx - x, rz - z) < 60));
+    const nearEdge = candidates.some((b) => b.g.ring.some(([rx, , rz]) => Math.hypot(rx - x, rz - z) < 60));
     if (nearEdge) continue;
     outsideChecked += 1;
     if (maskAt(x, z) > 0.05) outsideWrong += 1;
   }
 }
 check(outsideWrong === 0, `no ice outside the outlines (${outsideChecked} points sampled, ${outsideWrong} wrong)`);
+
+// ---- the margin pixel, chosen from the FULL-RESOLUTION mask ----
+//
+// This is where the shader's own partial coverage is, and picking it here rather than hunting
+// for it in the page is what makes the debris measurable at all. Two earlier attempts failed
+// for the same underlying reason: window.__pngp.iceAt is the mask DOWNSCALED BY TWO for the CPU
+// (41 m cells) while the shader samples the 20.5 m original, so a point that is half-covered to
+// one is fully covered or bare to the other. The first attempt asked iceAt for a half-covered
+// point and measured no debris; the second walked outward in 20 m steps and never left the ice;
+// the third walked to the edge and found the warm ROCK outside it, passing while proving
+// nothing. The mask itself has no such ambiguity: `values` above IS what the shader reads.
+//
+// Wanted: a pixel that is genuinely partial AND has a fully covered neighbour, so it is a margin
+// rather than an isolated speck of ice on a ridge.
+const pixelToLocal = (px, py) => ({
+  x: (xmin + (px + 0.5) * resX) - originX,
+  z: originY - (ymax - (py + 0.5) * resY),
+});
+let marginPixel = null;
+let bodyPixel = null;
+for (let py = 1; py < mh - 1 && !(marginPixel && bodyPixel); py += 1) {
+  for (let px = 1; px < width - 1; px += 1) {
+    const v = values[py * width + px] / 255;
+    if (!marginPixel && v > 0.3 && v < 0.7) {
+      const neighbours = [
+        values[py * width + px - 1], values[py * width + px + 1],
+        values[(py - 1) * width + px], values[(py + 1) * width + px],
+      ].map((n) => n / 255);
+      if (neighbours.some((n) => n > 0.95)) marginPixel = { ...pixelToLocal(px, py), mask: v };
+    }
+    if (!bodyPixel && v > 0.99) {
+      const neighbours = [
+        values[py * width + px - 1], values[py * width + px + 1],
+        values[(py - 1) * width + px], values[(py + 1) * width + px],
+      ].map((n) => n / 255);
+      if (neighbours.every((n) => n > 0.99)) bodyPixel = { ...pixelToLocal(px, py), mask: v };
+    }
+    if (marginPixel && bodyPixel) break;
+  }
+}
+check(Boolean(marginPixel) && Boolean(bodyPixel),
+  'the mask has a partially covered pixel next to a fully covered one, and a pixel deep inside'
+  + (marginPixel ? ` (margin ${marginPixel.mask.toFixed(2)} at ${marginPixel.x.toFixed(0)},${marginPixel.z.toFixed(0)})` : ''));
 
 // ---- 3. the page: no geometry, and the mask reached the shader ----
 const browser = await chromium.launch({
@@ -133,12 +188,16 @@ page.on('pageerror', (e) => problems.push(`[pageerror] ${e.message}`));
 page.on('console', (m) => { if (m.type() === 'error') problems.push(`[console.error] ${m.text()}`); });
 await page.goto(url, { waitUntil: 'load' });
 await page.waitForFunction(() => window.__pngp?.getGroundHeight?.(), null, { timeout: 180000 });
-// The mask is its own 30 kB download; wait for it rather than for a clock.
-await page
-  .waitForFunction(() => (window.__pngp.glacierMix?.value ?? 0) > 0
-    && (window.__pngp.terrain?.material?.userData ?? true), null, { timeout: 60000 })
-  .catch(() => {});
-await page.waitForTimeout(3000);
+// The mask is its own 30 kB download, so wait for THE MASK - at a point the mask itself says is
+// deep inside a glacier. The wait that used to be here tested `glacierMix.value > 0`, which is a
+// constant holder set to 1 before anything loads, and then a truthy expression: it waited for
+// nothing at all and was followed by a 3 s sleep doing the actual work. This reads the CPU twin
+// of the texture the shader samples, so when it answers, the download has landed and decoded.
+await page.waitForFunction(
+  (p) => (window.__pngp.iceAt?.(p.x, p.z) ?? 0) > 0.9,
+  { x: bodyPixel.x, z: bodyPixel.z },
+  { timeout: 120000 },
+);
 
 const scene = await page.evaluate(() => {
   let sheet = null;
@@ -158,62 +217,128 @@ check(scene.waterChildren.length > 0,
   `and the rest of the water layer is still there (${scene.waterChildren.join(', ')})`);
 check(scene.glacierMix === 1, `the ice is painted at full strength (uGlacierMix ${scene.glacierMix})`);
 
-// Does the mask actually reach the ground? Read the terrain material's own uniform, and then
-// prove it visually: the same pixel with the ice on and with it off must differ. Reading the
-// uniform alone would only prove the binding, not that anything is drawn (§13.1's silent
-// shader patch is the same shape of lie).
-const paint = await page.evaluate(async () => {
-  const { camera, controls, scene: sc, glacierMix } = window.__pngp;
-  // Stand above the biggest glacier - Gliairetta, from water.json - and look down at it.
+// A WHOLE-FRAME "with the ice on and off" measurement used to live here, over the Gliairetta
+// from 4,000 m. It is gone, and the trade is worth stating: it rendered the most expensive view
+// in the park twice and cost about 30 s of a test that has to stay under the ~2 minute line
+// tools/dev/run-tests.sh uses to decide what still runs before a publish - and what it proved,
+// that the mask reaches the shader, is now proved three more ways that cost almost nothing: the
+// firn/live-ice pair, the MORAINE_MIX pair, and the point-in-polygon sweep against the outlines
+// above. Its one unique claim was that the effect is visible in a WIDE view; the day that is in
+// doubt, tools/dev/probe-glaciers.mjs takes the picture.
+
+// ---- 4. a glacier is not one surface: firn above, live ice below, moraine at the margin ----
+//
+// Added 2026-08-19 with those three terms. Each is asserted as a RELATION between two points
+// the page finds for itself - lower ice darker than upper firn, margin warmer than the middle -
+// rather than against the constants in src/terrain.js. Comparing to the constants would only
+// prove the file was read; comparing two rendered points proves the ground looks different in
+// the two places, which is the whole claim.
+//
+// The points come from window.__pngp.iceAt, the CPU twin of the mask the shader samples, so the
+// test stands on a real glacier instead of on coordinates typed into a tool.
+const gliairetta = boxes.find((b) => b.g.name === 'Ghiacciaio di Gliairetta');
+const surfaces = await page.evaluate(async ({ box }) => {
+  const { camera, controls, iceAt, getGroundHeight } = window.__pngp;
+  const ground = getGroundHeight();
   controls.mode = 'fly';
-  camera.position.set(-25454, 4000, 16400);
-  camera.lookAt(-25454, 3050, 14843);
-  camera.updateMatrixWorld(true);
+
+  // The Gliairetta spans 2,534-3,656 m, which is the only glacier in the park that straddles a
+  // plausible firn line with room on both sides. Its bbox comes in from water.json rather than
+  // being typed here, and the step is 80 m: the ice is 3 km across, so a finer sweep only spends
+  // sampleRenderedHeight calls - the expensive part - to find the same two points.
+  const found = { low: null, high: null };
+  for (let z = box.z0; z < box.z1 && !(found.low && found.high); z += 80) {
+    for (let x = box.x0; x < box.x1; x += 80) {
+      const ice = iceAt(x, z);
+      if (ice < 0.95) continue; // cheap test first: the height sampler is the costly one
+      const h = ground(x, z);
+      if (!Number.isFinite(h)) continue;
+      if (h < 2900 && !found.low) found.low = { x, z, h };
+      if (h > 3350 && !found.high) found.high = { x, z, h };
+    }
+  }
+
+  // Straight down from 300 m, reading the middle of the frame - the same shape of measurement
+  // tools/test-basemap.mjs uses for its land covers, and it keeps the sun angle and the haze
+  // out of the comparison because every point is shot the same way.
   const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-  const read = async () => {
+  const sample = async (p) => {
+    if (!p) return null;
+    camera.position.set(p.x, p.h + 300, p.z);
+    camera.lookAt(p.x, p.h, p.z);
+    camera.updateMatrixWorld(true);
     await frame();
     const c = document.querySelector('canvas');
     const gl = c.getContext('webgl2');
-    const buf = new Uint8Array(c.width * c.height * 4);
-    gl.readPixels(0, 0, c.width, c.height, gl.RGBA, gl.UNSIGNED_BYTE, buf);
-    let sum = 0;
-    let blue = 0;
-    for (let i = 0; i < buf.length; i += 4) {
-      sum += (buf[i] + buf[i + 1] + buf[i + 2]) / 3;
-      blue += buf[i + 2] - buf[i];
-    }
+    const w = 16;
+    const buf = new Uint8Array(w * w * 4);
+    gl.readPixels((c.width - w) / 2, (c.height - w) / 2, w, w, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    for (let i = 0; i < buf.length; i += 4) { r += buf[i]; g += buf[i + 1]; b += buf[i + 2]; }
     const n = buf.length / 4;
-    return { luma: sum / n, blueBias: blue / n };
+    return { ...p, r: r / n, g: g / n, b: b / n, luma: (r * 0.299 + g * 0.587 + b * 0.114) / n };
   };
-  const on = await read();
-  glacierMix.value = 0;
-  const off = await read();
-  glacierMix.value = 1;
-  return { on, off };
-});
-// WHAT THE ICE CHANGES IS BRIGHTNESS, and the history of this check is worth keeping because
-// it was wrong twice in opposite directions.
-//
-// It first asserted "brighter" against an ice colour of 0xc3defb - the brightest ice that
-// keeps its blue without clipping - and failed: the frame came out 3.6 levels DARKER, because
-// the satellite photo already shows the Gliairetta at about rgb(190) and this renderer's
-// ceiling is rgb(195). That failure is what corrected the colour. It was then relaxed to
-// "changes, and changes toward blue", which fitted the cyan-white that replaced it. The user
-// then chose NEUTRAL WHITE from four renders ("mi piace neutral"), and a neutral ice moves
-// hue almost not at all - so the blue assertion had to go the way the brightness one had.
-//
-// What is asserted now is what the shipped ice actually does: the frame gets BRIGHTER, and
-// very slightly less warm, because white ice replaces a warm-tinted photograph. Measured 3.1
-// and 1.5 levels; the thresholds sit below that with margin. Both are switched-on-minus-off on
-// one camera, so nothing here is a per-run number.
-const lumaShift = paint.on.luma - paint.off.luma;
-const blueShift = paint.on.blueBias - paint.off.blueBias;
-check(lumaShift > 1.5,
-  `the ice really is painted: the frame is ${lumaShift.toFixed(1)} levels brighter with the`
-  + ' mask on than with it off');
-check(blueShift > 0.5,
-  `and slightly less warm (${paint.on.blueBias.toFixed(1)} vs ${paint.off.blueBias.toFixed(1)}),`
-  + ' which is white ice over a warm photograph');
+
+  return {
+    low: await sample(found.low),
+    high: await sample(found.high),
+  };
+}, { box: { x0: gliairetta.x0, x1: gliairetta.x1, z0: gliairetta.z0, z1: gliairetta.z1 } });
+
+check(Boolean(surfaces.low && surfaces.high),
+  'the page found ice both below 2,900 m and above 3,350 m on one glacier'
+  + (surfaces.low && surfaces.high ? ` (${surfaces.low.h.toFixed(0)} m and ${surfaces.high.h.toFixed(0)} m)` : ''));
+if (surfaces.low && surfaces.high) {
+  check(surfaces.high.luma - surfaces.low.luma > 6,
+    `the firn above is brighter than the live ice below: luma ${surfaces.high.luma.toFixed(1)}`
+    + ` at ${surfaces.high.h.toFixed(0)} m against ${surfaces.low.luma.toFixed(1)} at ${surfaces.low.h.toFixed(0)} m`);
+}
+// THE DEBRIS IS ISOLATED, NOT LOOKED FOR. Rock is warm and moraine is warm, so the warmest
+// sample near a tongue's edge is the rock OUTSIDE the ice - an earlier version of this check
+// reported exactly that and passed while proving nothing. The only reading that isolates the
+// term is the same pixel with it on and off, which is why src/terrain.js carries MORAINE_MIX
+// beside GLACIER_MIX. The two points come from the full-resolution mask above, so one really is
+// a margin texel and the other really is deep inside.
+const debris = await page.evaluate(async ({ margin, body }) => {
+  const { camera, controls, moraineMix, getGroundHeight } = window.__pngp;
+  const ground = getGroundHeight();
+  controls.mode = 'fly';
+  const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+  const warmthAt = async (p) => {
+    const h = ground(p.x, p.z);
+    camera.position.set(p.x, h + 300, p.z);
+    camera.lookAt(p.x, h, p.z);
+    camera.updateMatrixWorld(true);
+    await frame();
+    const c = document.querySelector('canvas');
+    const gl = c.getContext('webgl2');
+    const w = 16;
+    const buf = new Uint8Array(w * w * 4);
+    gl.readPixels((c.width - w) / 2, (c.height - w) / 2, w, w, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    let r = 0;
+    let b = 0;
+    for (let i = 0; i < buf.length; i += 4) { r += buf[i]; b += buf[i + 2]; }
+    const n = buf.length / 4;
+    return (r - b) / n; // warmth: red over blue, which is what rock and moraine have
+  };
+  const pair = async (p) => {
+    moraineMix.value = 1;
+    const on = await warmthAt(p);
+    moraineMix.value = 0;
+    const off = await warmthAt(p);
+    moraineMix.value = 1;
+    return { on, off, delta: on - off };
+  };
+  return { margin: await pair(margin), body: await pair(body) };
+}, { margin: marginPixel, body: bodyPixel });
+
+check(debris.margin.delta > 3,
+  'the debris band is the moraine term and not the rock beside it: switching MORAINE_MIX off'
+  + ` cools the margin texel by ${debris.margin.delta.toFixed(1)} of R-B`);
+check(Math.abs(debris.body.delta) < 1.5,
+  `and it leaves the body of the glacier alone (${debris.body.delta.toFixed(2)} of R-B there)`);
 
 check(problems.length === 0, `no page errors (${problems.length})`);
 if (problems.length) console.log(`    ${problems.join('\n    ')}`);
