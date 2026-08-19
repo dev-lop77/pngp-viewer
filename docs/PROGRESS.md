@@ -196,8 +196,14 @@ Three things it found that were not in the plan:
    0xc3defb, was the brightest ice that does not clip - and the frame over the Gliairetta
    came out **3.6 levels darker** with the ice painted than without it, because the photo
    shows that glacier at about rgb(190) and this renderer's ceiling is rgb(195). Ice darker
-   than a photo of ice is the wrong way round; 0xe9ffff lands at rgb(185,194,195), which is
-   as bright as this rig goes. The measurement came from the test, not from looking.
+   than a photo of ice is the wrong way round. The measurement came from the test, not from
+   looking. **The user then picked the colour from four renders of one camera: neutral
+   white** - *"mi piace neutral"* - over the cyan-white 0xe9ffff and the blue 0xc3defb. It
+   is the right answer for this rig rather than for a glacier: real ice takes its blue from
+   depth and from a sky filling half of what it reflects, and this renderer has neither an
+   aperture nor an environment map, so white against warm rock is what reads as ice. The
+   ice's signature in `tools/test-glaciers.mjs` is therefore BRIGHTNESS, not hue - which
+   that check has now been wrong about in both directions, once per colour.
 2. **The scree was standing on the glacier.** What had kept stones off the ice was
    `snowCover()` reading 1.0 on a glaciated summit - true on the Gran Paradiso, false on
    the Gliairetta tongue at 3,100 m under a clear sky, and a foot-level shot showed cones

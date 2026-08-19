@@ -114,16 +114,26 @@ const FOREST_FLOOR_MIX = 0.9;
 // sag into the rock between their seated corners. Here the ice IS the ground, so there is
 // nothing to sag, nothing to walk under, and nothing to offset.
 //
-// Solved backwards like every other colour here (§13.2), and it took a measurement to get
-// right. The pipeline's ceiling is rgb(195,195,195) on screen, so any bright bluish white
-// clips: #cfd9e2 and even #b9c2c9 come back unreachable. The first choice was 0xc3defb,
-// the brightest ice that keeps its blue WITHOUT clipping, at rgb(159,176,192) - and
-// tools/test-glaciers.mjs then measured the whole frame over the Gliairetta getting 3.6
-// levels DARKER with the ice painted than without it, because the satellite photo
-// underneath already shows that glacier at about rgb(190). Ice darker than the photo of
-// ice is the wrong way round. This value clips in the blue and lands at rgb(185,194,195):
-// as bright as this renderer goes, with what blue survives at that brightness.
-const GLACIER_COLOR = 0xe9ffff;
+// THE USER'S CHOICE, 2026-08-19, from four renders of the same camera: neutral white -
+// "mi piace neutral". Not the blue ice, twice.
+//
+// The road there is worth keeping, because both rejected values were rejected for reasons
+// rather than by taste alone. Solved backwards like every colour here (§13.2), the pipeline's
+// ceiling is rgb(195,195,195) on screen, so any bright bluish white clips - #cfd9e2 and even
+// #b9c2c9 come back unreachable. The first choice was 0xc3defb, the brightest ice that keeps
+// its blue WITHOUT clipping, at rgb(159,176,192), and tools/test-glaciers.mjs measured the
+// whole frame over the Gliairetta coming out 3.6 levels DARKER with the ice painted than
+// without, because the satellite photo already shows that glacier at about rgb(190). Ice
+// darker than a photo of ice is the wrong way round. The second was 0xe9ffff, which clips in
+// the blue and lands at rgb(185,194,195) - bright, and faintly cyan.
+//
+// White wins on this rig, and the reason is the rig: a real glacier's blue comes from depth
+// and from a sky that fills half of what it reflects, and this renderer has neither an
+// aperture for the first nor an environment map for the second. What it does have is warm
+// direct sun, which is what makes neutral white read as ice against the warm rock rather than
+// as a colour cast. The one thing lost is that white ice takes the light's own warmth on a
+// sunlit slope, which is why the neutral render reads a little like old snow.
+const GLACIER_COLOR = 0xffffff;
 // How much of the ground the ice takes at full mask coverage. 1.0 - it is not a tint, it
 // is a different surface, and half-painted ice reads as dirty snow. A holder rather than a
 // constant so it can be swept live in dev (main.js binds 'J' to it) - the same way the

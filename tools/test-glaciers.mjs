@@ -191,20 +191,29 @@ const paint = await page.evaluate(async () => {
   glacierMix.value = 1;
   return { on, off };
 });
-// What the ice changes is mostly HUE, not brightness, and that is worth stating because the
-// first version of this check asserted "brighter" and failed: the satellite photo underneath
-// already shows the Gliairetta at about rgb(190), so ice can barely out-brighten it under a
-// renderer whose ceiling is rgb(195). It measured 3.6 levels DARKER, which is how the ice
-// colour got corrected (see GLACIER_COLOR in src/terrain.js). So the assertion is that the
-// frame CHANGES, and that it changes toward blue - that is the ice, and it is what would go
-// silent if the mask never reached the shader.
+// WHAT THE ICE CHANGES IS BRIGHTNESS, and the history of this check is worth keeping because
+// it was wrong twice in opposite directions.
+//
+// It first asserted "brighter" against an ice colour of 0xc3defb - the brightest ice that
+// keeps its blue without clipping - and failed: the frame came out 3.6 levels DARKER, because
+// the satellite photo already shows the Gliairetta at about rgb(190) and this renderer's
+// ceiling is rgb(195). That failure is what corrected the colour. It was then relaxed to
+// "changes, and changes toward blue", which fitted the cyan-white that replaced it. The user
+// then chose NEUTRAL WHITE from four renders ("mi piace neutral"), and a neutral ice moves
+// hue almost not at all - so the blue assertion had to go the way the brightness one had.
+//
+// What is asserted now is what the shipped ice actually does: the frame gets BRIGHTER, and
+// very slightly less warm, because white ice replaces a warm-tinted photograph. Measured 3.1
+// and 1.5 levels; the thresholds sit below that with margin. Both are switched-on-minus-off on
+// one camera, so nothing here is a per-run number.
 const lumaShift = paint.on.luma - paint.off.luma;
 const blueShift = paint.on.blueBias - paint.off.blueBias;
-check(Math.abs(lumaShift) + blueShift > 6,
-  `the ice really is painted: the frame moves ${lumaShift.toFixed(1)} levels in luma and`
-  + ` ${blueShift.toFixed(1)} toward blue when the mask is switched on`);
-check(blueShift > 4,
-  `and the change is toward blue (${paint.on.blueBias.toFixed(1)} vs ${paint.off.blueBias.toFixed(1)}), which is the ice`);
+check(lumaShift > 1.5,
+  `the ice really is painted: the frame is ${lumaShift.toFixed(1)} levels brighter with the`
+  + ' mask on than with it off');
+check(blueShift > 0.5,
+  `and slightly less warm (${paint.on.blueBias.toFixed(1)} vs ${paint.off.blueBias.toFixed(1)}),`
+  + ' which is white ice over a warm photograph');
 
 check(problems.length === 0, `no page errors (${problems.length})`);
 if (problems.length) console.log(`    ${problems.join('\n    ')}`);
