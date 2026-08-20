@@ -142,6 +142,45 @@ then lit again by the app's own sun. It is obvious in the plan view (`oiso-plan.
 has been done about it yet; `tools/dev/solve-albedo.mjs` is the tool that de-shaded the
 Sentinel-2 basemap and the same treatment is what this needs.
 
+**2026-08-20, 2 m/px CHOSEN, and the park measured against the actual files.** *"Penso che i
+2m/px siano piu' adatti e ci fanno risparmiare un sacco di spazio. Proviamo ad stenderlo su
+tutto il parco? Ce la facciamo con github?"* `tools/dev/probe-ortho-coverage.mjs` answers it
+against the live services rather than against a coverage statement - one GetFeatureInfo per
+sheet cell to get its code, then one HEAD on the 2024 zip, because "the region says it covers
+its territory" and "these bytes are there" are different claims.
+
+**The method validates itself first:** counting the park on a 100 m grid inside
+`tools/park-boundary.geojson` gives **710.5 km2** against the official ~710.
+
+| | |
+|---|---|
+| sheets the park touches | 210 |
+| sheets that exist and answer 200 | **129** |
+| park covered | **449.4 km2 = 63.3%** |
+| NOT covered | 261.1 km2, the Piemonte side, in one contiguous block |
+| to FETCH | **42.7 GB** of zips, mean 331 MB, biggest 426 MB |
+| to SHIP at 2 m/px | **26 MB** over 129 files of ~202 kB |
+| measured throughput | 8.76 MB/s -> about **1h20 of downloading**, ~2h end to end |
+| free disk | 35 GB, so 42.7 GB does NOT fit - fetch, resample, DELETE, one sheet at a time |
+
+**So GitHub is the easy part and was never the constraint.** 26 MB takes the published site
+from 31.27 MB to about 57 MB against a 1 GB Pages limit, and 129 files of 202 kB is nothing.
+The constraints are somebody else's bandwidth, this machine's disk, and the code.
+
+**The code is the real work, and the current module cannot do it.** `orthotier.js` holds ONE
+rectangle and ONE texture. 129 sheets over 449 km2 need a moving ATLAS: one 2048 px texture at
+2 m/px covers 4.1 km for 17 MB of video memory, refilled from the nearby sheets as the walker
+moves - which is ample, since the overlay only shows within ~650 m of the camera anyway. A
+single texture for the whole covered area is not an option: at 2 m/px it would be 19,950 x
+15,700 px against a 16,384 limit, and 800 MB of video memory if it fitted.
+
+**And the missing 37% is a straight line through the middle of a national park**, because that
+is where the regional border runs. Two things make it liveable rather than fatal: the fade the
+module already applies at a rectangle's edge, and the standing decision that **asymmetric
+resolution between the two sides of this park is accepted rather than levelled down** - the DEM
+has done exactly that since phase 0. The Piemonte side has a 2024 AGEA orthophoto at 0.32 m on
+a CORS-open WMTS; only its licence is unresolved, and that is a letter, not a technical problem.
+
 **2026-08-20, THREE RESOLUTIONS, and the brightness is approved.** *"La luminosita' mi sembra
 ok. Pero' vorrei vedere anche una prova con una risoluzione minore, sia a 1m/px che a
 2m/px."* So `ORTHO_SCALE` stays at the measured 1.54, and `ortho.json` is now a **levels[]**
