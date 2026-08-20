@@ -33,9 +33,31 @@ const MAX_DEPTH = 7; // 84 km / (2^7 * 32) -> 20.5 m cells, i.e. the heightfield
 const SPLIT_FACTOR = 1.5; // subdivide while the camera is within tileSize * this
 // Tiles of differing depth meet with a T-junction, so the finer tile's extra
 // edge vertices leave a crack. A downward skirt on every tile border hides
-// them - far simpler than matching edge vertices to the coarser neighbour, and
-// invisible because it only ever shows through a gap it is filling.
+// them - far simpler than matching edge vertices to the coarser neighbour.
+//
+// "INVISIBLE BECAUSE IT ONLY EVER SHOWS THROUGH A GAP IT IS FILLING" is what this
+// comment used to claim, and it is false. A skirt is a vertical curtain hanging in
+// open air under the surface, and a heightfield is a sheet with nothing behind it:
+// wherever the line of sight passes below the surface at a border - looking across
+// any hollow, which on a glacier is most of the way you walk - the curtain's face
+// is in view. The user found one at eye height on the Gliairetta, 2026-08-19, and
+// tools/dev/probe-skirt-ab.mjs settled it by drawing the same frame with the skirt
+// indices dropped: the pale quadrilateral goes, and the surface behind it is
+// CONTINUOUS - there was no gap there to fill.
+//
+// There was no gap because a gap needs a T-JUNCTION, and a T-junction needs
+// neighbours of different depths. tools/dev/probe-lod-neighbours.mjs replays the
+// quadtree at that camera: 21 tiles within a kilometre and every one of them depth
+// 7. So every skirt the walker can see close up is filling nothing, which is why
+// this is now decided per tile - SKIRT_MIN_M where the neighbours match, the full
+// depth only where they do not.
 const SKIRT_DEPTH_M = 150;
+// What a border between two tiles of the SAME depth needs, which is not zero only
+// because their shared edge is reached by two different arithmetic paths (cx +
+// halfW against cxNeighbour - halfW) and float32 need not agree to the last bit.
+// A metre of insurance against a hairline, and short enough that a 1.7 m eye sees
+// a line rather than a wall.
+const SKIRT_MIN_M = 1;
 
 export { TILE_SEGMENTS, MAX_DEPTH };
 // Exported for tools/test-terrain-albedo.mjs, so the test asserts against this
@@ -600,37 +622,111 @@ ${bandMix}
   // only over a smaller rectangle - so the cap here is generous and the derived
   // value is what decides.
   const MAX_TIER_EXTRA_DEPTH = 2;
+  // Two per depth, differing only in how far the skirt hangs: the full curtain for a
+  // border that meets a coarser neighbour, and a 1 m hem for one that does not. Same
+  // vertex and index counts, so swapping between them is an assignment.
   const geometries = [];
+  const geometriesHemmed = [];
   for (let depth = 0; depth <= MAX_DEPTH + MAX_TIER_EXTRA_DEPTH; depth++) {
-    geometries.push(buildTileGeometry(TILE_SEGMENTS, worldWidth / 2 ** depth, worldDepth / 2 ** depth));
+    const w = worldWidth / 2 ** depth;
+    const d = worldDepth / 2 ** depth;
+    geometries.push(buildTileGeometry(TILE_SEGMENTS, w, d, SKIRT_DEPTH_M));
+    geometriesHemmed.push(buildTileGeometry(TILE_SEGMENTS, w, d, SKIRT_MIN_M));
   }
 
   const group = new THREE.Group();
   group.name = 'terrain';
   const pool = [];
-  const stats = { tiles: 0, deepest: 0 };
+  // skirted: how many drawn tiles still hang the full curtain, i.e. how many really
+  // border a neighbour of another depth. The rest get the 1 m hem. Reported because it
+  // is the number that says whether the neighbour test is doing anything at all.
+  const stats = { tiles: 0, deepest: 0, skirted: 0 };
 
   const frustum = new THREE.Frustum();
   const projScreen = new THREE.Matrix4();
   const nodeBox = new THREE.Box3();
+
+  // Does this node subdivide? Pulled out of walk() because leafDepthAt() below has to
+  // ask the SAME question about a node it never visits - a neighbour - and two copies
+  // of this rule drifting apart would put a skirt on the wrong tiles silently.
+  //
+  // It depends only on the node's own box and the camera, which is what makes the
+  // neighbour query below exact rather than approximate.
+  function splits(cx, cz, halfW, halfD, depth, camX, camZ) {
+    // The tier's rectangle, in the same local metres the traversal uses. A tile
+    // may refine one level further only if it lies ENTIRELY inside it - straddling
+    // the edge would put two different cell sizes on the same skirt.
+    const r = HEIGHT_TIER_RECT.value;
+    const insideTier = hasTier()
+      && cx - halfW >= r.x && cx + halfW <= r.x + r.z
+      && cz - halfD >= r.y && cz + halfD <= r.y + r.w;
+    const maxDepthHere = insideTier ? MAX_DEPTH + tierExtraDepth : MAX_DEPTH;
+    if (depth >= maxDepthHere) return false;
+    // Distance to the tile, not to its centre, so a large tile the camera
+    // stands on always refines (and the tile under the camera therefore
+    // always reaches MAX_DEPTH - which sampleRenderedHeight() relies on).
+    const dx = Math.max(0, Math.abs(camX - cx) - halfW);
+    const dz = Math.max(0, Math.abs(camZ - cz) - halfD);
+    return Math.hypot(dx, dz) < Math.max(halfW, halfD) * 2 * SPLIT_FACTOR;
+  }
+
+  // The depth of the leaf covering a point, without building it: descend from the root
+  // taking splits() at its word. About nine steps, and it is asked four times per drawn
+  // tile - a few thousand cheap tests a frame against the 268-node traversal beside it.
+  //
+  // -1 outside the park, which reads as "not my depth" and therefore keeps the full
+  // skirt along the outer border, where there is genuinely nothing on the other side.
+  function leafDepthAt(x, z, camX, camZ) {
+    let halfW = worldWidth / 2;
+    let halfD = worldDepth / 2;
+    if (Math.abs(x) > halfW || Math.abs(z) > halfD) return -1;
+    let cx = 0;
+    let cz = 0;
+    let depth = 0;
+    while (splits(cx, cz, halfW, halfD, depth, camX, camZ)) {
+      halfW /= 2;
+      halfD /= 2;
+      cx += x > cx ? halfW : -halfW;
+      cz += z > cz ? halfD : -halfD;
+      depth++;
+    }
+    return depth;
+  }
 
   function update(camera) {
     camera.updateMatrixWorld();
     projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     frustum.setFromProjectionMatrix(projScreen);
 
+    const camX = camera.position.x;
+    const camZ = camera.position.z;
     let used = 0;
     let deepest = 0;
+    let skirted = 0;
 
-    const place = (cx, cz, depth) => {
+    const place = (cx, cz, halfW, halfD, depth) => {
+      // THE SKIRT IS ONLY NEEDED WHERE THE DEPTHS DIFFER. Between two tiles of the
+      // same depth the shared edge is sampled at the same world points and there is
+      // no T-junction and no crack - so the curtain there hides nothing and merely
+      // hangs in the open, which is the defect this answers. A metre outside each
+      // edge midpoint is enough to identify the neighbour: the quadtree is regular,
+      // so one node faces the whole edge, and its leaf depth is the answer for all
+      // of it.
+      const eps = 1;
+      const wants = leafDepthAt(cx - halfW - eps, cz, camX, camZ) !== depth
+                 || leafDepthAt(cx + halfW + eps, cz, camX, camZ) !== depth
+                 || leafDepthAt(cx, cz - halfD - eps, camX, camZ) !== depth
+                 || leafDepthAt(cx, cz + halfD + eps, camX, camZ) !== depth;
+      if (wants) skirted++;
+      const geometry = (wants ? geometries : geometriesHemmed)[depth];
       let mesh = pool[used];
       if (!mesh) {
-        mesh = new THREE.Mesh(geometries[depth], material);
+        mesh = new THREE.Mesh(geometry, material);
         mesh.frustumCulled = false; // culled by the traversal below, against the real elevation range
         pool.push(mesh);
         group.add(mesh);
-      } else if (mesh.geometry !== geometries[depth]) {
-        mesh.geometry = geometries[depth];
+      } else if (mesh.geometry !== geometry) {
+        mesh.geometry = geometry;
       }
       mesh.position.set(cx, 0, cz);
       mesh.visible = true;
@@ -645,31 +741,16 @@ ${bandMix}
       nodeBox.max.set(cx + halfW, elevMax, cz + halfD);
       if (!frustum.intersectsBox(nodeBox)) return;
 
-      // The tier's rectangle, in the same local metres the traversal uses. A tile
-      // may refine one level further only if it lies ENTIRELY inside it - straddling
-      // the edge would put two different cell sizes on the same skirt.
-      const r = HEIGHT_TIER_RECT.value;
-      const insideTier = hasTier()
-        && cx - halfW >= r.x && cx + halfW <= r.x + r.z
-        && cz - halfD >= r.y && cz + halfD <= r.y + r.w;
-      const maxDepthHere = insideTier ? MAX_DEPTH + tierExtraDepth : MAX_DEPTH;
-      if (depth < maxDepthHere) {
-        // Distance to the tile, not to its centre, so a large tile the camera
-        // stands on always refines (and the tile under the camera therefore
-        // always reaches MAX_DEPTH - which sampleRenderedHeight() relies on).
-        const dx = Math.max(0, Math.abs(camera.position.x - cx) - halfW);
-        const dz = Math.max(0, Math.abs(camera.position.z - cz) - halfD);
-        if (Math.hypot(dx, dz) < Math.max(halfW, halfD) * 2 * SPLIT_FACTOR) {
-          const qw = halfW / 2;
-          const qd = halfD / 2;
-          walk(cx - qw, cz - qd, qw, qd, depth + 1);
-          walk(cx + qw, cz - qd, qw, qd, depth + 1);
-          walk(cx - qw, cz + qd, qw, qd, depth + 1);
-          walk(cx + qw, cz + qd, qw, qd, depth + 1);
-          return;
-        }
+      if (splits(cx, cz, halfW, halfD, depth, camX, camZ)) {
+        const qw = halfW / 2;
+        const qd = halfD / 2;
+        walk(cx - qw, cz - qd, qw, qd, depth + 1);
+        walk(cx + qw, cz - qd, qw, qd, depth + 1);
+        walk(cx - qw, cz + qd, qw, qd, depth + 1);
+        walk(cx + qw, cz + qd, qw, qd, depth + 1);
+        return;
       }
-      place(cx, cz, depth);
+      place(cx, cz, halfW, halfD, depth);
     };
 
     walk(0, 0, worldWidth / 2, worldDepth / 2, 0);
@@ -677,6 +758,7 @@ ${bandMix}
     for (let i = used; i < pool.length; i++) pool[i].visible = false;
     stats.tiles = used;
     stats.deepest = deepest;
+    stats.skirted = skirted;
   }
 
   // ---- the optional high-resolution tier -------------------------------------
@@ -797,7 +879,7 @@ ${bandMix}
 // A flat grid in XZ (displaced on the GPU) plus a skirt hanging off all four
 // borders. Winding for each skirt face was derived per edge so they face
 // outward rather than being backface-culled away.
-function buildTileGeometry(segments, sizeX, sizeZ) {
+function buildTileGeometry(segments, sizeX, sizeZ, skirtDepth) {
   const n = segments + 1;
   const gridCount = n * n;
   const total = gridCount + 4 * n;
@@ -837,10 +919,10 @@ function buildTileGeometry(segments, sizeX, sizeZ) {
   const MAX_X = gridCount + 3 * n;
   for (let k = 0; k <= segments; k++) {
     const t = k / segments;
-    put(MIN_Z + k, (t - 0.5) * sizeX, -SKIRT_DEPTH_M, -0.5 * sizeZ, t, 0);
-    put(MAX_Z + k, (t - 0.5) * sizeX, -SKIRT_DEPTH_M, 0.5 * sizeZ, t, 1);
-    put(MIN_X + k, -0.5 * sizeX, -SKIRT_DEPTH_M, (t - 0.5) * sizeZ, 0, t);
-    put(MAX_X + k, 0.5 * sizeX, -SKIRT_DEPTH_M, (t - 0.5) * sizeZ, 1, t);
+    put(MIN_Z + k, (t - 0.5) * sizeX, -skirtDepth, -0.5 * sizeZ, t, 0);
+    put(MAX_Z + k, (t - 0.5) * sizeX, -skirtDepth, 0.5 * sizeZ, t, 1);
+    put(MIN_X + k, -0.5 * sizeX, -skirtDepth, (t - 0.5) * sizeZ, 0, t);
+    put(MAX_X + k, 0.5 * sizeX, -skirtDepth, (t - 0.5) * sizeZ, 1, t);
   }
 
   const indices = [];
