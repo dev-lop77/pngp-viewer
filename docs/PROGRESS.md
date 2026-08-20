@@ -39,6 +39,62 @@ conversation, because it is what shapes every answer:
   halves of the park are in different regions - which is already why the DEM resolution is
   asymmetric.
 
+**2026-08-20, they said what they mean by it:** *"il caricamento, opzionale e solo sul terreno a
+breve distanza dall'avatar, dei til da sovrapporre al terreno gia' caricato. non ho intenzione
+di aggiungere peso locale con altre foto, quindi vanno prese in streaming."* So it is NOT a new
+asset - it is an optional overlay of streamed tiles around the walker, and the first load must
+not grow by a byte. That reframes it entirely, and a reconnaissance was done:
+`tools/dev/probe-orthophoto.mjs`, which asks the real services rather than their documentation.
+
+**What it found, and every line of it is measured:**
+
+| | covers | resolution | CORS | licence |
+|---|---|---|---|---|
+| **Ortofoto AGEA 2024**, MapProxy/WMTS at CSI Piemonte | **Piemonte only** | **0.322 m/px** (19 levels, 256 px PNG) | `*` | **ambiguous - the blocker** |
+| **Esri World Imagery**, XYZ | **both halves** | ~0.42 m/px | `*` | **not clearly permitted here** |
+| Valle d'Aosta SCT | - | - | - | no public tile or WMS service exists |
+| Geoportale Nazionale (PCN/MASE) | - | - | - | redirects to plain HTTP: dead for an HTTPS page |
+
+1. **CORS is the whole feasibility question and it passes.** Without
+   `Access-Control-Allow-Origin` a cross-origin image loads and then cannot become a WebGL
+   texture. Both live services send `*`, asked from the published origin.
+2. **A regional service does not 404 outside its region - it returns 200 and an 854-byte
+   blank PNG.** That is the trap this would have fallen into: the status code says yes and
+   the picture is empty. AGEA is real imagery over the Orco and blank over Cogne.
+3. **No public VdA orthophoto service.** Their 2024 flight covers the whole region and is
+   published as a DOWNLOAD, natively in **EPSG:23032** - this project's own CRS - under the
+   CC family (CC0 / CC-BY / CC-BY-NC per product). But the SCT catalogue's imagery category
+   holds five services and none of them is a photo. So the two halves of the park cannot be
+   covered by one open regional service today.
+4. **ED50 against WGS84 is 215 m in this park.** Same UTM zone number, different datum, so
+   the coordinates look interchangeable and are not - the §13.8 class of mistake, and it
+   would put every photo 215 m from its own mountain.
+5. **UTM32/WGS84 is EXACTLY affine against UTM32/ED50** - worst error 0.00 cm over an 82 m
+   tile and over a 4 km patch alike - so the AGEA tiles need ONE constant transform and no
+   per-fragment reprojection. **Web Mercator is not**: 23 cm over 1 km, 3.7 m over 4 km, so
+   the Esri route needs either small patches or the mercator formula in the shader.
+6. **The budget, as a moving atlas centred on the avatar** (which beats a set of loose tiles
+   because it is one texture and one uniform): **2048 px at 0.643 m/px covers 1.32 km for
+   17 MB of video memory and 64 tiles, about 2.6 MB of traffic per refill.** At 0.322 m/px
+   the same atlas covers 660 m. A 500 m ring of loose tiles at full resolution is 196 tiles
+   and 9.4 MB, which is where this stops being free.
+
+**Two problems nobody has solved yet, both worth raising before any code:**
+
+- **An orthophoto is already lit.** Every shadow of every boulder and larch is baked into it
+  at 0.3 m, and this renderer lights the ground itself - so the ground would carry two suns,
+  one of them frozen at the hour of the flight. The Sentinel-2 basemap only works because it
+  was **de-shaded to albedo offline** (`tools/dev/solve-albedo.mjs`, the `extra` phase row).
+  De-shading a tile that arrives at runtime is a different and unsolved problem.
+- **Politeness.** This would point a public site at a regional service that never agreed to
+  serve it. Caching, a hard cap on concurrent requests and an off-by-default switch are the
+  minimum, and the service can still say no by blocking us.
+
+**Where it would attach:** `terrain.js` already carries `BASEMAP_MIX` / `BASEMAP_SCALE` /
+`BASEMAP_GAIN` as live holders, and `terrainAlbedo()` already blends a ground texture. An
+overlay is a second sampler blended by distance from the camera, which is the same shape as
+what is there - not a new subsystem.
+
 Everything else below was the state before that request, and none of it has been asked for:
 
 - **In the ice:** crevasses - noise bands running across the slope, and the term that pays
