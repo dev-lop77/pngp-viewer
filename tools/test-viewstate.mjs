@@ -27,6 +27,7 @@
 // drive the UI instead - the HUD position readout, the copy-link and back-to-Le-Pont
 // buttons and a reload are enough to cover the whole contract without the handle.
 
+import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const url = process.argv[2] ?? 'http://localhost:5173';
@@ -41,11 +42,22 @@ page.on('console', (msg) => {
 });
 
 // The viewer is up once the spawn has replaced the 3,000 m placeholder.
+//
+// TEN MINUTES, and the number is measured rather than padded. This test opens a SECOND page
+// in the same context to follow a shared link, and two WebGL contexts on one software
+// rasteriser do not share it evenly: measured 2026-08-20, the first page spawns in 13 s and
+// the second in 528 - forty times slower, with the first still alive and drawing. The old
+// 120 s was fine when this test was written and had quietly stopped being fine; the test had
+// not run in long enough for anyone to notice, which is its own lesson about a slow list.
+//
+// bringToFront() on the second page does NOT help - it was tried, and timed out at 240 s - so
+// this is contention for the rasteriser and not tab priority. It is the §13.11 case: headless
+// is SwiftShader, and nothing here says anything about two tabs on a real GPU.
 async function waitForSpawn(target = page) {
   await target.waitForFunction(() => {
     const text = document.getElementById('nav-position')?.textContent ?? '';
     return /alt \d+ m/.test(text) && !text.includes('alt 3000 m');
-  }, null, { timeout: 120000 });
+  }, null, { timeout: 600000 });
   // One more frame so the HUD and the autosave baseline have both run.
   await target.waitForTimeout(300);
 }
@@ -245,8 +257,26 @@ const check = (ok, message) => {
   if (!ok) failures.push(message);
 };
 
-check(distXZ(results.firstVisit, { x: -11350 - 20, z: 17570 }) < 200,
-  'the first visit no longer opens at the Le Pont trailhead');
+// FROM poi.json, NOT FROM A NUMBER TYPED HERE. This read `{ x: -11370, z: 17570 }` until
+// 2026-08-20 and had been wrong by 4.9 km since the bbox moved south on 2026-08-18: local
+// metres are relative to the bbox centre, so every hardcoded pair in the tree went stale that
+// day and this one was not caught because the test is slow and slow tests stop being run.
+// The viewer spawns at this POI, so this is the same source it uses.
+const lePont = (() => {
+  const poi = JSON.parse(readFileSync('public/data/poi.json', 'utf8'));
+  const found = [];
+  (function walk(node) {
+    if (Array.isArray(node)) { node.forEach(walk); return; }
+    if (!node || typeof node !== 'object') return;
+    if (node.name === 'Le Pont' && node.local) found.push(node);
+    Object.values(node).forEach(walk);
+  }(poi));
+  if (!found.length) throw new Error('poi.json no longer has a POI called "Le Pont"');
+  return found[0].local;
+})();
+check(distXZ(results.firstVisit, lePont) < 200,
+  `the first visit no longer opens at the Le Pont trailhead`
+  + ` (it is ${distXZ(results.firstVisit, lePont).toFixed(0)} m away)`);
 check(distXZ(results.moved, results.restored) < 3,
   'the position was not restored to within the format\'s own precision');
 check(Math.abs(results.restored.y - results.moved.y) < 3,

@@ -457,6 +457,13 @@
            in its own corner: like time of day and weather it changes what the
            park is like, not how the app is used. It cannot actually make a sound
            until the first click anywhere (browser autoplay policy, src/audio.js). -->
+      <!-- The high-resolution orthophoto (2026-08-20, the user's own topic). Unlike Terrain
+           and Models it is NOT a quality preference: those change how fast the same view
+           runs, while this changes what the ground IS - so it travels in a shared link, the
+           way time of day and weather do, and the user asked for exactly that. Off by
+           default, and off costs nothing: the files are not fetched until it is switched on.
+           It covers part of the park only, which the title says rather than hiding. -->
+      <label class="env-check" title="A 2 m aerial photograph on the ground near you, downloaded only when you ask for it. Valle d'Aosta only - elsewhere the ground stays the 10 m satellite."><input id="env-ortho" type="checkbox" /> Orthophoto (O)</label>
       <label class="env-check"><input id="env-audio" type="checkbox" checked /> Ambient sound (M)</label>
     </div>
     <script type="module" src="/src/main.js"></script>

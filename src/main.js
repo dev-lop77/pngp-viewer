@@ -647,6 +647,8 @@ function captureViewState() {
     mode: controls.mode,
     time: lighting.fraction,
     sky: weather ? weather.current : null,
+    // A view property, not a preference: it is in the hash. See viewstate.js.
+    ortho: envOrtho ? envOrtho.checked : null,
     sound: audio.enabled,
     // Quality preferences. Read off the controls rather than off the holders they
     // drive, because the control is what the user chose - a holder can be mid-ramp
@@ -901,6 +903,10 @@ if (import.meta.env.DEV) {
     // in flight, so capturing terrainSurface here would publish a frozen null -
     // the same trap the comment above this block describes.
     get terrain() { return terrainSurface; },
+    // The share link and the state it is built from. Published so a test can ask what a
+    // link WOULD say, instead of clicking the button and then reading the clipboard - which
+    // needs a permission prompt headless browsers answer differently.
+    captureViewState, buildHash,
     getPoiIndex: () => poiIndex,
     // The buildings, for a probe that needs to ask where one was seated and which
     // level it is drawn at - a getter because they are created after this block runs.
@@ -1105,33 +1111,6 @@ if (import.meta.env.DEV) {
       + (GLACIER_MIX.value === 0 ? ' (off - this is the ground under the ice)' : '');
   });
 
-  // 'O' switches the optional orthophoto mosaic on and off (src/orthotier.js). The
-  // resolution is no longer a runtime choice - the user picked 2 m/px on 2026-08-20 and it is
-  // baked in at build time by tools/build-ortho.mjs - so this is a toggle plus a report of
-  // what the atlas is actually holding, which is the part that can go quietly wrong.
-  //
-  // On demand and nowhere else: the published first load must not know these files exist.
-  window.addEventListener('keydown', async (e) => {
-    if (e.code !== 'KeyO') return;
-    if (isTypingTarget(document.activeElement)) return;
-    if (ORTHO_MIX.value > 0) {
-      ORTHO_MIX.value = 0;
-      devNoteEl.textContent = 'orthophoto OFF - this is the 10.24 m satellite alone';
-      return;
-    }
-    devNoteEl.textContent = 'orthophoto: loading...';
-    const m = await loadOrtho(undefined, terrainSurface.manifest.localOrigin).catch(() => null);
-    if (!m) { devNoteEl.textContent = 'orthophoto: nothing published'; return; }
-    ORTHO_MIX.value = 1;
-    await updateOrtho(camera.position.x, camera.position.z);
-    const mb = m.sheets.reduce((a, sh) => a + sh.file.bytes, 0) / 1e6;
-    devNoteEl.textContent = `orthophoto ${m.resolutionMPerPx.x} m/px \u00b7 ${m.sheets.length} sheets`
-      + ` (${mb.toFixed(2)} MB) \u00b7 atlas holds ${ORTHO_STATS.cells} of`
-      + ` ${ORTHO_STATS.cells + ORTHO_STATS.empty} cells`
-      + `${ORTHO_STATS.empty ? `, ${ORTHO_STATS.empty} with no coverage` : ''}`
-      + ` \u00b7 refill ${ORTHO_STATS.lastRefillMs.toFixed(0)} ms`;
-  });
-
   const HAZE_STEPS = [0.6, 1, 1.5, 2.2, 3];
   let hazeStep = 1; // start on the shipped look, so the first press is a change
   window.addEventListener('keydown', (e) => {
@@ -1149,6 +1128,14 @@ if (import.meta.env.DEV) {
     });
   });
 }
+
+// 'O', beside 'M' for the sound: a shortcut for the checkbox rather than a second way of
+// doing it, so the two can never disagree.
+window.addEventListener('keydown', (event) => {
+  if (event.code !== 'KeyO' || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (isTypingTarget(document.activeElement)) return;
+  setOrthoEnabled(!envOrtho.checked);
+});
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -1338,6 +1325,27 @@ applyModelDetail();
 
 // Ambient sound: the checkbox and 'M' are two views of the same state, so both
 // paths go through here.
+// The orthophoto's one entry point: the checkbox, the 'O' key, a shared link and the stored
+// state all go through here, so there is exactly one place that knows how to turn it on and
+// exactly one place that can be wrong about it.
+const envOrtho = document.getElementById('env-ortho');
+let orthoManifest = null;
+async function setOrthoEnabled(on) {
+  envOrtho.checked = on;
+  if (!on) { ORTHO_MIX.value = 0; return; }
+  // Fetched on demand and only once - the whole proposition is that a viewer who never
+  // asks for this never downloads it.
+  orthoManifest = orthoManifest
+    ?? await loadOrtho(undefined, terrainSurface?.manifest?.localOrigin).catch(() => null);
+  if (!orthoManifest) { envOrtho.checked = false; return; }
+  ORTHO_MIX.value = 1;
+  await updateOrtho(camera.position.x, camera.position.z);
+}
+envOrtho.addEventListener('change', () => {
+  setOrthoEnabled(envOrtho.checked);
+  envOrtho.blur(); // Space is a movement key and also toggles a focused checkbox - see below
+});
+
 const envAudio = document.getElementById('env-audio');
 function setAudioEnabled(on) {
   audio.setEnabled(on);
@@ -1364,6 +1372,16 @@ window.addEventListener('keydown', (event) => {
 // storage even when a shared link decides everything else, and it deliberately
 // never travels in a link (src/viewstate.js).
 if (storedState && typeof storedState.sound === 'boolean') setAudioEnabled(storedState.sound);
+// The orthophoto, from the LINK first and the stored state second - the opposite priority to
+// the quality preferences, and for the same reason it is in the hash at all: a link that says
+// to show the photograph is describing the view it wants shown. Deferred until the terrain has
+// its manifest, because the atlas needs the local origin to place itself.
+{
+  const wanted = linkedView?.ortho ?? storedState?.ortho ?? false;
+  // terrainPromise, not a flag: setOrthoEnabled needs terrainSurface.manifest.localOrigin to
+  // place the atlas, and that only exists once loadTerrain() has resolved.
+  if (wanted) terrainPromise.then(() => setOrthoEnabled(true)).catch(() => {});
+}
 
 // Copy a link to exactly this view. It also puts the hash in the address bar, so
 // the link is available even if the clipboard is refused (permission, insecure

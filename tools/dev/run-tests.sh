@@ -17,10 +17,16 @@
 # 2026-08-17 (14:38-14:59, one test at a time, nothing else on the machine):
 #
 #     rendered-height     1 s     controls-focus    156 s
-#     wildlife           12 s     viewstate         167 s
+#     wildlife           12 s     viewstate         167 s*
 #     birds              14 s     height-tier       172 s
 #     mouselook          15 s     groundcover       334 s
 #     terrain-albedo     49 s     sky               356 s
+#     nowebgl             2 s     ortho-viewstate   207 s
+#
+# * viewstate's 167 s is from 2026-08-17 and it now needs ten minutes: it opens a second page
+#   and two WebGL contexts on one software rasteriser do not share it (13 s against 528 for
+#   the same spawn). It had stopped passing at all and nobody knew, because a slow test that
+#   is never asked for is a test that has stopped running.
 #     vegetation         59 s
 #     snow               64 s
 #     basemap            65 s
@@ -46,6 +52,12 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 # Over ~2 minutes on the reference run. These are the ones a publish check skips.
 SLOW=(test-sky test-groundcover test-height-tier test-viewstate test-controls-focus)
+# 207 s on 2026-08-20, so it crosses the line the moment it is written - three full page
+# loads, because "and it is still on when you come back" cannot be tested with fewer. Moved
+# here by the rule six lines up rather than left in the fast list because it is new and
+# convenient. The cost is real and worth stating: a publish check no longer covers the
+# orthophoto's switch. Acceptable while that switch is off by default and unpublished.
+SLOW+=(test-ortho-viewstate)
 # Not timed on the reference run, and audio alone holds 53 s of deliberate sleeps, so
 # it is treated as slow until it has a number of its own.
 SLOW+=(test-audio)

@@ -74,6 +74,15 @@ export function sanitize(raw) {
     mode: MODES.includes(raw.mode) ? raw.mode : 'walk',
     time: time == null ? null : clamp(time, 0, 1),
     sky: WEATHER_KEYS.includes(raw.sky) ? raw.sky : null,
+    // The orthophoto is a VIEW property and therefore hashed, which puts it on the other
+    // side of the line from Terrain and Models deliberately (the user asked for it in the
+    // link, 2026-08-20, and the reason it is not a contradiction is below): those two change
+    // how fast the same view runs and belong to the machine, while this changes what the
+    // ground IS - the same thing time of day and weather do, and those travel.
+    //
+    // null, not false, when absent: a link that never mentions it must not silently turn off
+    // what the recipient had on.
+    ortho: typeof raw.ortho === 'boolean' ? raw.ortho : null,
   };
   // PREFERENCES, not part of the view: present only in stored state, never in a
   // shared link. The distinction matters and `sound` set it - a link that carried
@@ -108,7 +117,8 @@ export function buildHash(state) {
   ];
   if (clean.time != null) parts.push(`time=${clean.time.toFixed(3)}`);
   if (clean.sky) parts.push(`sky=${clean.sky}`);
-  // Note: no sound. See the header.
+  if (clean.ortho != null) parts.push(`ortho=${clean.ortho ? 1 : 0}`);
+  // Note: no sound, no terrain, no models, no cover. See the header.
   return `#${parts.join('&')}`;
 }
 
@@ -127,6 +137,7 @@ export function parseHash(hash) {
     mode: params.get('mode') ?? 'walk',
     time: params.get('time'),
     sky: params.get('sky'),
+    ortho: params.has('ortho') ? params.get('ortho') === '1' : null,
   });
 }
 

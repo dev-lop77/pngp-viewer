@@ -16,6 +16,41 @@ scattered through it were promoted into ARCHITECTURE §13 first, so that the one
 part of the log you needed *before* making a mistake is no longer in a file you
 open *after*.
 
+## NEXT SESSION: the orthophoto mosaic is READY TO GENERATE. One command, ~2 hours.
+
+Everything the 129-sheet run needs is decided, built and tested. The run itself was not
+started because it is two hours of somebody else's bandwidth and the user closed the day:
+
+```
+node tools/build-ortho.mjs --sheets=tools/dev/logs/ortho-sheets.json --res=2
+```
+
+That list is the measured one - 129 sheets, 449.4 of the park's 710.5 km2, the 63.3% that is
+in Valle d'Aosta. It fetches, resamples and DELETES one sheet at a time (42.7 GB against 35 GB
+free, so the delete is not tidiness), prunes anything the manifest no longer names, and writes
+`public/data/ortho.json`. Expect **~1h20 of downloading at the measured 8.76 MB/s**, ~2 h in
+all, and **26 MB shipped**. Then: fast suite, look at it, publish.
+
+**Decided, so do not reopen:** 2 m/px; brightness `ORTHO_SCALE` 1.54; **the photograph wins
+over the OSM outline** where the two disagree about where the ice ends (`ICE_PHOTO_MIX` 1, so
+within 1,700 m the firn line, the live-ice grey and the moraine do not show - the photograph
+has all three); the switch lives in the HUD, in `localStorage` AND in shared links.
+
+**Open, and worth raising before publishing:**
+
+- **No NEAR fade.** At eye height the 2 m photograph is magnified far past use and the
+  procedural ground would do better for the last few tens of metres.
+- **The far edge is capped by the atlas, not by taste.** 1,700 m is all a 3x3 block can
+  promise. A 5x5 is ~100 MB of video memory; a second coarser level for the far field is the
+  usual answer and is not built.
+- **A publish check no longer covers the orthophoto's switch** - `test-ortho-viewstate` is
+  207 s and had to go in the slow list. Fine while the switch is off by default; not fine once
+  it ships.
+- **Coverage ends in a hard line** at the regional border. The rectangle fade does not help
+  there, because that edge is inside the atlas rather than at its rim.
+
+## The previous session's opening note, kept because its numbers are still the ones that matter
+
 ## NEXT SESSION: the user has asked for HIGH-RESOLUTION ORTHOPHOTOS. Start there.
 
 ***"Segnati che dopo parliamo delle ortofoto ad alta risoluzione"*** (2026-08-20). It is a
@@ -141,6 +176,43 @@ the sun was low: a third of this clip is in a hard shadow that is baked into the
 then lit again by the app's own sun. It is obvious in the plan view (`oiso-plan.png`). Nothing
 has been done about it yet; `tools/dev/solve-albedo.mjs` is the tool that de-shaded the
 Sentinel-2 basemap and the same treatment is what this needs.
+
+**2026-08-20, the switch reaches the HUD, the link and the browser - and two OLD failures fell
+out of a slow test.** The user: *"vince la foto, e' piu' recente. Puoi anche aggiungere
+l'abilitazione comando 'O' all'HUD e salvarla nei dati del browser e nel link generato."*
+
+- **`ICE_PHOTO_MIX` is 1.** The photograph takes the ice inside the outline too, not only the
+  ground outside it. Within 1,700 m the firn line, the live-ice grey and the moraine do not
+  show; beyond the fade they return; 0 restores exactly what shipped.
+- **`Orthophoto (O)` is in the env controls**, off by default, and the key is now a shortcut
+  FOR THE CHECKBOX rather than a second way in - four entry points, one piece of state.
+- **It travels in the link**, which puts it on the other side of a line this project drew
+  deliberately: Terrain, Models and ground cover are saved but never shared, because they
+  describe the sender's machine. This one describes what the ground IS, like time of day and
+  weather, and those already travel. Written into `viewstate.js` so the distinction survives.
+- **`tools/test-ortho-viewstate.mjs`** holds the four entry points together and checks the
+  part that matters most for an optional download: **off by default with ZERO network
+  requests** until it is asked for. 207 s, so it went straight into the slow list by the
+  runner's own rule - and the cost of that is stated there rather than discovered later.
+
+**Its first version passed by accident.** `page.goto()` to a URL that differs only in its hash
+is a same-document navigation: nothing re-runs, `window.__pngp` survives, and the two reload
+checks were measuring the previous page. One of them then failed for the right reason and I
+spent time hunting an app bug that was a test bug.
+
+**Then `test-viewstate` failed, and it was not today's work.** Proved rather than assumed:
+`git stash`, run at the previous commit, identical failure. Two things were wrong with it, both
+the same shape - **a slow test that is never asked for is a test that has stopped running**:
+
+1. **A 120 s timeout that had quietly become impossible.** It opens a SECOND page to follow a
+   shared link, and two WebGL contexts on one software rasteriser do not share it: measured,
+   the first page spawns in **13 s and the second in 528**. `bringToFront()` does not help
+   (240 s, still timed out), so it is contention and not tab priority - the §13.11 case, and it
+   says nothing about two tabs on a real GPU.
+2. **A hardcoded local coordinate 4.9 km stale.** It expected the first visit within 200 m of
+   `z = 17570`; Le Pont is at `z = 12682`. Local metres are relative to the bbox centre, and
+   the bbox moved south on 2026-08-18 - so that pair went stale that day and nobody knew. It
+   now reads the trailhead from `poi.json`, the same source the viewer spawns from.
 
 **2026-08-20, the overlay reaches further, and THREE WRONG DIAGNOSES about a blue glacier.**
 The user asked for two things: mix our ice with the photograph, and let the photograph start

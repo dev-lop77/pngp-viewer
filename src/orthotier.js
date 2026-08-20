@@ -47,12 +47,17 @@ export const ORTHO_FAR_M = { value: 1700 };
 
 // How much of the photograph shows through on a GLACIER, where this project draws its own ice.
 //
-// The ice is applied after the photograph in terrain.js and used to win outright, because a
-// glacier is a surface and not a tint. But the photograph has what a flat colour cannot: the
-// crevasses, the debris and the melt streaks of one real August. So on ice the two are mixed
-// rather than one replacing the other, at the user's request, and 0.5 is a starting point to
-// be looked at rather than a measurement.
-export const ICE_PHOTO_MIX = { value: 0.5 };
+// 1.0 - THE PHOTOGRAPH WINS, decided by the user on 2026-08-20 ("vince la foto, e' piu'
+// recente") after the marker test showed the 2024 flight and the OSM outline disagreeing about
+// where the ice ends. The photograph is fifteen years the newer claim, so it takes the ice too
+// and not merely the ground outside the outline.
+//
+// The consequence is worth stating rather than discovering later: within the overlay's reach
+// the firn line, the live-ice grey and the moraine band do not show, because the photograph
+// has all three from the day it was flown. Beyond the fade they come back. Setting this to 0
+// restores exactly what shipped before the photograph existed, which is what makes it a knob
+// rather than a rewrite.
+export const ICE_PHOTO_MIX = { value: 1 };
 
 // Multiplies the sampled texel to reach albedo, exactly as BASEMAP_SCALE does - and it has to
 // exist for the same reason: "albedo is not appearance" (the warning in terrain.js, §13.2).
