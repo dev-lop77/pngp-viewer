@@ -1,5 +1,6 @@
 import {
-  loadOrtho, updateOrtho, ORTHO, ORTHO_MIX, ORTHO_RECT, ORTHO_NEAR_M, ORTHO_FAR_M, ORTHO_SCALE, ORTHO_STATS,
+  loadOrtho, updateOrtho, ORTHO, ORTHO_MIX, ORTHO_RECT, ORTHO_NEAR_M, ORTHO_FAR_M, ORTHO_SCALE,
+  ORTHO_STATS, ICE_PHOTO_MIX,
 } from './orthotier.js';
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
@@ -937,6 +938,7 @@ if (import.meta.env.DEV) {
       texture: () => ORTHO.value,
       stats: ORTHO_STATS,
       update: updateOrtho,
+      icePhotoMix: ICE_PHOTO_MIX,
     },
     basemap: {
       mix: BASEMAP_MIX,

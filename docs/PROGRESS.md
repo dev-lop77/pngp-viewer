@@ -142,6 +142,52 @@ then lit again by the app's own sun. It is obvious in the plan view (`oiso-plan.
 has been done about it yet; `tools/dev/solve-albedo.mjs` is the tool that de-shaded the
 Sentinel-2 basemap and the same treatment is what this needs.
 
+**2026-08-20, the overlay reaches further, and THREE WRONG DIAGNOSES about a blue glacier.**
+The user asked for two things: mix our ice with the photograph, and let the photograph start
+further out. The second is done. The first turned out to be aimed at something that was not
+happening, and the finding underneath it is more interesting than the request.
+
+**The reach: 300/650 m becomes 900/1,700 m.** The ceiling is not taste, it is the atlas - a 3x3
+block guarantees the camera only ONE ring of margin, 2,000 m, so a fade finishing beyond that
+would show the atlas's own edge. Going further wants a 5x5 block (5,020 px, ~100 MB of video
+memory) or a second coarser level for the far field, which is the usual answer and is not
+built. Resolution is NOT the limit: a 2 m texel shrinks to one screen pixel only at ~2,300 m,
+and the 10.24 m satellite it replaces not until 11,800 m.
+
+**`orthoSample()` replaces `orthoAlbedo()` + `orthoAmount()`** - they were two functions
+fetching the same texel, which is pure waste on every ground fragment.
+
+**Now the three wrong diagnoses, in order, because the sequence is the lesson.**
+
+1. *"The photograph repaints the glaciers."* **False, and structurally impossible**: the ice is
+   applied AFTER the overlay in `terrain.js` and wins outright. The screenshot that prompted it
+   came from the atlas while it was still mis-centred by 2 km - the right photograph on the
+   wrong ground. Said before reading the order of operations.
+2. *"It leaks through the ice's slope fade."* Plausible - `iceHere` carries `iceSlope`, which
+   holds back to `ICE_ON_CLIFF` on steep ground - and wrong. Gating the photograph by
+   `1 - iceHere` changed nothing visible.
+3. *"Then gate on the mask instead of on `iceHere`."* Also nothing. What that DID produce is a
+   number worth keeping: over the ground the camera sees on that glacier, **only 42% of the icy
+   cells read 1.0** - 627 at full coverage against 709 spread from 0.05 to 0.95. The mask is
+   20.5 m and stores COVERAGE, so most of a ragged glacier is partial, and any gate weighted by
+   the mask's value lets most of the photograph in anyway.
+
+**What settled it was a marker, not another theory.** Painting the ground magenta wherever
+`icePresence > 0.5` showed the ice mask covering only the LEFT of the frame while the blue sat
+in the CENTRE. **The blue is not on our glacier at all**: it is the 2024 photograph showing ice
+and firn where the OSM outline says there is none. The outline and the photograph disagree
+about where the ice ends, and the photograph is fifteen years newer.
+
+So `ICE_PHOTO_MIX` exists, works, and has one door - `terrain.js` holds the photograph out
+wherever the outline claims ice at all (`icePresence`, a smoothstep so the moraine band is not
+special-cased) and lets it back in at the knob, with **0 restoring exactly what ships today**.
+It just does not address what the user was looking at. That question is open: accept the
+photograph as the more current claim, hold the outline and suppress the photograph beyond it
+too, or leave both and only damp the colour - the cyan is partly `ORTHO_SCALE` 1.54
+multiplying an already-bright subject.
+
+Fast suite 14/14.
+
 **2026-08-20, THE ATLAS IS BUILT AND PROVEN on a 3x3 block around Le Pont** - the user's own
 order, atlas before data: *"Prima l'atlante, poi i dati"*, so that 42.7 GB is not spent on a
 mosaic that turns out not to work. It works. `tools/build-ortho.mjs` and the rewritten

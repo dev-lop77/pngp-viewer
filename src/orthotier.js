@@ -33,8 +33,26 @@ export const ORTHO_MIX = { value: 0 };
 // band between them is what keeps the changeover from being a circle drawn on the ground.
 // Holders rather than constants so they can be swept live - a looking decision, like the haze
 // and the ice before it (docs/PROGRESS.md).
-export const ORTHO_NEAR_M = { value: 300 };
-export const ORTHO_FAR_M = { value: 650 };
+// 900 and 1,700, raised from 300/650 on 2026-08-20 at the user's own reading - "E' carino che
+// si comincia a vedere da piu' lontano". The ceiling is not taste, it is the atlas: with a 3x3
+// block the camera is guaranteed only ONE ring of margin, 2,000 m, so a fade that finished
+// beyond that would show the atlas's own edge. Going further needs a 5x5 block, which at
+// 2 m/px is 5,020 px and about 100 MB of video memory - or a second, coarser level for the far
+// field, which is the usual answer and is not built.
+//
+// It is not the resolution that stops us either: a 2 m texel only shrinks to one screen pixel
+// at about 2,300 m here, and the satellite it replaces does not until 11,800 m.
+export const ORTHO_NEAR_M = { value: 900 };
+export const ORTHO_FAR_M = { value: 1700 };
+
+// How much of the photograph shows through on a GLACIER, where this project draws its own ice.
+//
+// The ice is applied after the photograph in terrain.js and used to win outright, because a
+// glacier is a surface and not a tint. But the photograph has what a flat colour cannot: the
+// crevasses, the debris and the melt streaks of one real August. So on ice the two are mixed
+// rather than one replacing the other, at the user's request, and 0.5 is a starting point to
+// be looked at rather than a measurement.
+export const ICE_PHOTO_MIX = { value: 0.5 };
 
 // Multiplies the sampled texel to reach albedo, exactly as BASEMAP_SCALE does - and it has to
 // exist for the same reason: "albedo is not appearance" (the warning in terrain.js, §13.2).
@@ -77,34 +95,32 @@ export function orthoGlsl() {
       return ( wxz - uOrthoRect.xy ) / max( uOrthoRect.zw, vec2( 1e-6 ) );
     }
 
-    // How much of the ground this photograph should carry here: inside the rectangle, away
-    // from its edge, and near the camera. Zero everywhere else, and zero with nothing
-    // loaded (size 0 -> the step below fails), all without a branch.
-    float orthoAmount( vec2 wxz ) {
+    // ONE FETCH, both answers: rgb is the photograph's albedo, a is how much of the ground it
+    // should carry here. They were two functions and therefore two texture fetches of the same
+    // texel, which is pure waste in a shader that runs on every ground fragment.
+    //
+    // The amount is: inside the atlas, away from its edge, covered, and near the camera.
+    //   - COVERAGE IS THE ALPHA. A cell of the atlas with no sheet behind it - across the
+    //     regional border, or off the flown area - is left transparent when the atlas is
+    //     drawn, so that one multiply is the whole missing-data mask and there is no second
+    //     texture to keep in step with the first.
+    //   - 1.0 - uv.y, and it is not decoration: the rectangle's z grows SOUTHWARD (§6) while
+    //     the image's row 0 is its north edge and three flips loaded images on upload, so
+    //     v = 0 is the south edge. Sampling with uv.y would mirror the valley about its own
+    //     middle - which on this terrain looks almost right, and is the reason to say so.
+    vec4 orthoSample( vec2 wxz ) {
       vec2 uv = orthoUv( wxz );
       float inside = step( 0.0, uv.x ) * step( uv.x, 1.0 )
                    * step( 0.0, uv.y ) * step( uv.y, 1.0 )
                    * step( 1.0, uOrthoRect.z );
       float edge = min( min( uv.x, 1.0 - uv.x ), min( uv.y, 1.0 - uv.y ) );
       inside *= smoothstep( 0.0, ${EDGE_FADE.toPrecision(4)}, edge );
-      // COVERAGE IS THE ALPHA. A cell of the atlas with no sheet behind it - across the
-      // regional border, or off the flown area - is left transparent when the atlas is
-      // drawn, so this one multiply is the whole missing-data mask and there is no second
-      // texture to keep in step with the first.
-      float cover = texture2D( uOrtho, vec2( uv.x, 1.0 - uv.y ) ).a;
+      vec4 texel = texture2D( uOrtho, vec2( uv.x, 1.0 - uv.y ) );
       float d = distance( cameraPosition.xz, wxz );
-      return inside * cover * uOrthoMix * ( 1.0 - smoothstep( uOrthoNearM, uOrthoFarM, d ) );
-    }
-
-    // The texture is tagged SRGBColorSpace, so this sample is already linear.
-    //
-    // 1.0 - uv.y, and it is not decoration: the rectangle's z grows SOUTHWARD (§6) while the
-    // image's row 0 is its north edge and three flips loaded images on upload, so v = 0 is
-    // the south edge. Sampling with uv.y would mirror the valley about its own middle -
-    // which on this terrain looks almost right, and is the reason to say so here.
-    vec3 orthoAlbedo( vec2 wxz ) {
-      vec2 uv = orthoUv( wxz );
-      return texture2D( uOrtho, vec2( uv.x, 1.0 - uv.y ) ).rgb * uOrthoScale;
+      float amount = inside * texel.a * uOrthoMix
+                   * ( 1.0 - smoothstep( uOrthoNearM, uOrthoFarM, d ) );
+      // The texture is tagged SRGBColorSpace, so rgb is already linear here.
+      return vec4( texel.rgb * uOrthoScale, amount );
     }
   `;
 }
@@ -130,7 +146,7 @@ export function orthoGlsl() {
 //     meaning "the atlas", and everything downstream of it already worked.
 //
 // Cells with no sheet - across the regional border, or off the flown area - are left
-// TRANSPARENT, and orthoAmount() multiplies by that alpha. So missing coverage costs nothing
+// TRANSPARENT, and orthoSample()'s alpha carries that through. So missing coverage costs nothing
 // and needs no second mask. Its edge is currently hard; feathering it is the obvious next
 // refinement and is not done.
 const RINGS = 1; // 1 -> 3x3. The margin argument above is what makes 1 enough.
@@ -246,7 +262,7 @@ export async function updateOrtho(camX, camZ, dataUrl = `${import.meta.env.BASE_
   }
   const images = await Promise.all(wanted.map((w) => loadImage(dataUrl, w.sh.file.name).catch(() => null)));
 
-  // Transparent first, so a cell with no sheet stays transparent and orthoAmount() reads 0
+  // Transparent first, so a cell with no sheet stays transparent and orthoSample() reads 0
   // there. clearRect, not fillRect: an opaque fill would paint grey ground.
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   let drawn = 0;

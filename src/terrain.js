@@ -11,7 +11,9 @@ import { FOREST_MASK } from './forest.js';
 import { GLACIER_MASK } from './glaciermask.js';
 import { SNOW_LEVEL, snowGlsl, snowColorGlsl } from './snow.js';
 import { BASEMAP, BASEMAP_MIX, BASEMAP_SCALE, basemapGlsl } from './basemap.js';
-import { ORTHO, ORTHO_RECT, ORTHO_MIX, ORTHO_NEAR_M, ORTHO_FAR_M, ORTHO_SCALE, orthoGlsl } from './orthotier.js';
+import {
+  ORTHO, ORTHO_RECT, ORTHO_MIX, ORTHO_NEAR_M, ORTHO_FAR_M, ORTHO_SCALE, ICE_PHOTO_MIX, orthoGlsl,
+} from './orthotier.js';
 import {
   OUTER_RING, OUTER_RING_FADE_M, OUTER_RING_MAX_M, EDGE_FADE_M, outerRingGlsl,
 } from './outerring.js';
@@ -384,6 +386,7 @@ ${heightTierGlsl()}
     uniform sampler2D uGlacierMask;
     uniform float uGlacierMix;
     uniform float uMoraineMix;
+    uniform float uIcePhotoMix;
     uniform float uIceSunMix;
     uniform float uIceSunPower; // src/lighting.js's SUN_POWER: 1 at midday, ~0.1 at night
     // The sun's direction, bound to the SAME holder lighting.js writes every frame for the
@@ -448,13 +451,50 @@ ${bandMix}
       // either: see the two terms below, both of which still apply over it.
       albedo = mix( albedo, basemapAlbedo( fUv, wobble ), uBasemapMix );
 
-      // The optional 0.5 m photograph over one rectangle, near the camera only
-      // (src/orthotier.js). It goes ON TOP of the satellite for the same reason the
-      // satellite goes on top of the elevation bands: where it exists it knows this
-      // hillside better than anything under it. It is off - amount 0 - everywhere
-      // outside its rectangle, beyond a few hundred metres, and always until something
-      // asks for the download, so this line costs one texture fetch and nothing else.
-      albedo = mix( albedo, orthoAlbedo( vTerrainXZ ), orthoAmount( vTerrainXZ ) );
+      // The optional high-resolution photograph, near the camera only (src/orthotier.js).
+      // It goes ON TOP of the satellite for the same reason the satellite goes on top of the
+      // elevation bands: where it exists it knows this hillside better than anything under
+      // it. Sampled ONCE here and reused by the ice below - rgb is its albedo, a is how much
+      // of the ground it should carry. Zero outside the atlas, beyond the fade, over a cell
+      // with no coverage, and always until something asks for the download, so a viewer that
+      // never turns it on pays one texture fetch and nothing else.
+      vec4 photo = orthoSample( vTerrainXZ );
+
+      // THE ICE IS DECIDED BEFORE THE PHOTOGRAPH IS APPLIED, and that ordering is the whole
+      // point rather than housekeeping. The obvious arrangement - photograph first, ice over
+      // it - leaves a second, uncontrolled path: iceHere is not 1 on steep ground, because
+      // the slope fade below deliberately holds back to ICE_ON_CLIFF so an outline edge
+      // cannot paint a rock wall white. Whatever the ice does not cover, the photograph
+      // fills. On a glacier that gap is exactly the steep, crevassed part, so the ice came
+      // out vivid blue with uIcePhotoMix at ZERO - the photograph arriving through a door
+      // nobody meant to leave open.
+      //
+      // So: the photograph is held OUT of the ice here, and let back in below at exactly
+      // uIcePhotoMix. One knob, and 0 restores what shipped.
+      float iceMask = texture2D( uGlacierMask, fUv ).r;
+      float iceSlope = mix( ${glsl(ICE_ON_CLIFF)}, 1.0,
+                            smoothstep( ${glsl(ICE_SLOPE_TO)}, ${glsl(ICE_SLOPE_FROM)}, n.y ) );
+      // THE MASK, NOT iceHere, is what closes the door. Weighting the photograph by
+      // 1 - iceHere looks like the same thing and is not: iceHere carries the slope fade, so
+      // on an icefall it is 0.25 and three quarters of the photograph still arrived - which
+      // is exactly the vivid blue this was written to stop, unchanged, at uIcePhotoMix 0.
+      // The slope fade's job is how much ICE covers the rock, not whether a photograph may
+      // enter. So the outline decides that, and uIcePhotoMix is then the only door.
+      // AND IT IS "IS THERE ICE HERE AT ALL", not "how much". Gating on the mask's own value
+      // looked right and was not: measured over the ground the camera sees on the Grand Etret,
+      // only 42% of the icy cells read 1.0 - the mask is 20.5 m and stores COVERAGE, so most
+      // of a ragged glacier is partial (histogram: 627 cells at 1.0, 709 spread from 0.05 to
+      // 0.95). Weighting by 1 - iceMask therefore let most of the photograph in anyway, and
+      // the vivid blue survived every attempt to close the door.
+      //
+      // So the door is binary-ish: anywhere the outline claims ice at all, the photograph is
+      // held out, and uIcePhotoMix is the only way back in. The moraine band pays for this -
+      // it is partial by definition - and that is the trade: a predictable knob over a free
+      // dose of real debris.
+      float icePresence = smoothstep( 0.02, 0.35, iceMask ) * uGlacierMix;
+      float iceHere = clamp( iceMask * uGlacierMix * iceSlope, 0.0, 1.0 );
+
+      albedo = mix( albedo, photo.rgb, photo.a * ( 1.0 - icePresence ) );
 
       // Steep ground is bare whatever its altitude - nothing roots on a cliff,
       // and snow doesn't sit on one either. It survives the satellite mix above
@@ -477,10 +517,6 @@ ${bandMix}
       // The slope fade is the one thing that survives underneath: an icefall is steep by
       // definition, so it fades late and never to zero, and what it prevents is an outline
       // edge running up a rock wall and painting the wall white.
-      float iceMask = texture2D( uGlacierMask, fUv ).r;
-      float ice = iceMask * uGlacierMix;
-      float iceSlope = mix( ${glsl(ICE_ON_CLIFF)}, 1.0,
-                            smoothstep( ${glsl(ICE_SLOPE_TO)}, ${glsl(ICE_SLOPE_FROM)}, n.y ) );
 
       // Firn above, live ice below, on the same wobbled elevation the bands use - h, the
       // noise-shifted height, rather than vTerrainElev - so the firn line wanders with the
@@ -496,10 +532,22 @@ ${bandMix}
                 * ( 1.0 - smoothstep( ${glsl((MORAINE_FROM + MORAINE_TO) / 2)}, ${glsl(MORAINE_TO)}, iceMask ) );
       iceColor = mix( iceColor, ${glslRgb(MORAINE_COLOR)}, rim * ${glsl(MORAINE_STRENGTH)} * uMoraineMix );
 
-      float iceHere = clamp( ice * iceSlope, 0.0, 1.0 );
+      // AND THE PHOTOGRAPH GOES INTO THE ICE, rather than the ice cancelling it (the user,
+      // 2026-08-20: "prova a miscelare il nostro ghiacciaio con la foto"). The comment above
+      // is still the reason the ice wins by default - the outline is the claim this project
+      // makes - but a flat colour has no crevasses, no debris fans and no melt streaks, and
+      // the photograph has all three from one real August. So on ice the two are mixed at
+      // uIcePhotoMix instead of one replacing the other.
+      //
+      // Note this is NOT the same as letting the photo through: it happens after the firn,
+      // live-ice and moraine terms, so what mixes in is the photograph over OUR ice, and
+      // switching uIcePhotoMix to 0 restores exactly what shipped before.
+      iceColor = mix( iceColor, photo.rgb, photo.a * uIcePhotoMix );
+
       ground = mix( ground, iceColor, iceHere );
       // Handed to the emissive patch below - see ICE_SUN_GAIN. The moraine is deliberately
-      // included in iceColor here, so a debris-covered margin does not glare.
+      // included in iceColor here, so a debris-covered margin does not glare - and so is the
+      // photograph now, so a shadowed crevasse does not glare either.
       terrainIceAmount = iceHere;
       terrainIceColor = iceColor;
       terrainIceNormal = n;
@@ -544,6 +592,7 @@ ${bandMix}
     shader.uniforms.uOrthoNearM = ORTHO_NEAR_M;
     shader.uniforms.uOrthoFarM = ORTHO_FAR_M;
     shader.uniforms.uOrthoScale = ORTHO_SCALE;
+    shader.uniforms.uIcePhotoMix = ICE_PHOTO_MIX;
     // The optional high-resolution tier, bound the same way and for the same
     // reason: it is downloaded only if the quality control asks, and binding the
     // holder now means turning it on later costs no recompile. Its mix stays 0
