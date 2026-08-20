@@ -16,26 +16,23 @@ scattered through it were promoted into ARCHITECTURE §13 first, so that the one
 part of the log you needed *before* making a mistake is no longer in a file you
 open *after*.
 
-## NEXT SESSION: PUBLISH FIRST. That is the user's own instruction.
+## NEXT SESSION: everything the user has named is DONE and PUBLIC. So ask.
 
-***"Domani pubblichiamo, per ora chiudiamo qui."*** (2026-08-19, end of day.) So the first
-action is `tools/dev/deploy.sh`, then verify against the CDN the way the 2026-08-19 entry
-below does - `glacier.json` from the site, `tools/verify.mjs`, and a shot of the LIVE build
-over the Gliairetta.
+The ice was published on 2026-08-20 and there is nothing queued behind it. What is left,
+none of it requested:
 
-**What is committed and NOT yet public:** firn/live ice, the moraine margin, and the sunlit-ice
-term. The published build has the glaciers as a flat white mask (that much IS live), plus the
-buildings, the monuments and the 15 m fly-to.
+- **In the ice:** crevasses - noise bands running across the slope, and the term that pays
+  up close, where the firn/live-ice split pays from a distance. A bergschrund shadow at the
+  headwall. Putting any of it where the real ones are needs data this project does not have.
+- **The two defects the white ice exposed**, both in the open debts at the end of this file,
+  both older than the ice and neither touched: the LOD trees standing where there is no wood,
+  and a terrain tile skirt visible at eye height. These are DEFECTS, not topics - they are
+  the honest answer to "what should we do next" if the user has no preference.
+- **The refuge has no High level of its own.** The tricolour on the bivouac is the only thing
+  the Models control adds today.
 
-Run the FAST suite before pushing - the user's standing rule - and expect 13 tests, about
-11 minutes. Everything passed at the close of 2026-08-19.
-
-**Then ask.** Every topic the user has named is done. What is left in the ice, if they want it:
-crevasses (noise bands along the slope - the term that pays up close), a bergschrund shadow at
-the headwall, and a brighter LIVE ice on the tongue, which they have seen and not asked for.
-The two defects the white ice exposed are in the open debts at the end of this file, both older
-than the ice and neither touched: the LOD trees standing where there is no wood, and a terrain
-tile skirt visible at eye height.
+Run the FAST suite before any publish - the user's standing rule - and expect 13 tests, about
+11 minutes.
 
 ### The DEPTH topic is finished - do not reopen it
 
@@ -305,6 +302,45 @@ only keeps the tail of each run, and reading back a value the render loop had no
 consumed.
 
 Open debts are at the end of this file.
+
+## PUBLISHED (2026-08-20): firn, live ice, moraine and the sunlit ice
+
+Fast suite **13/13 in 677 s**, then `tools/dev/deploy.sh`. The push carried **the JS bundle and
+nothing else** - `assets/index-Bi7qX3KI.js -> index-CoTSuToM.js` plus `index.html`. That is the
+whole diff, and it is the right one: all three terms are colour and noise inside the existing
+ice branch of the shader, so there was no new data to ship. **First load 31.27 MB over 21
+requests, unchanged to the hundredth from the 2026-08-19 build.**
+
+**Verified against the CDN four ways**, because "Pages says built" is not one of them:
+
+1. `node tools/verify.mjs <site>` - WebGL2 context, no console or page errors.
+2. **The published bundle really contains the new shader.** `uMoraineMix`, `uIceSunMix`,
+   `uIceSunPower` and `terrainIceNormal` are all in `index-CoTSuToM.js`, and so is the
+   constant-folded `3370` - `FIRN_LINE_M + FIRN_BLEND_M`, the top of the firn blend. A deploy
+   that pushed a stale build would be invisible in a screenshot and obvious here.
+3. **A shot of the LIVE site over the Gliairetta**, `tools/dev/logs/live-glacier-firn.png`:
+   white firn in the upper basin, grey live ice down the tongue, and the warm debris band
+   along the margin.
+4. **The frame measured against yesterday's**, which is the part a picture cannot do. Same
+   camera, same hour, one box over the ice: **R-B falls from 5.1 on the old published build to
+   2.8 on this one**, landing on the dev bench's 2.9 - the grey of live ice replacing flat
+   white. Luma 118.4 against 116.5. The old build and the old bench agree with each other
+   (5.1 / 5.2) and the new build and the new bench agree with each other, which is what makes
+   this a measurement of the deploy rather than of the weather.
+
+**Two things about share links, both learned here and neither obvious:**
+
+- **The time-of-day slot in a hash is a fraction of the five-preset cycle, not a clock.** The
+  presets are dawn, Midday, golden, dusk, night, so `time=0.200` is midday and `time=0.500` is
+  the dark side of golden hour. The app's own default is **0.150** - mid-morning, between dawn
+  and Midday - and that is the number to use when comparing a live shot to a dev bench, because
+  `tools/dev/probe-glaciers.mjs` leaves the default alone.
+- **A hash with no `time=` is NOT the default hour**, it is dawn. The first live shot of the day
+  came back at luma 53 against the bench's 117, which looks exactly like a regression and is
+  not one.
+
+Not re-fetched today, because the push did not touch them: `data/glacier.json` (80 outlines,
+69,008 full pixels, 29.07 km2, ODbL) and the 30,729-byte mask.
 
 ## PUBLISHED (2026-08-19)
 
