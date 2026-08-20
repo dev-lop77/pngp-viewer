@@ -335,7 +335,17 @@ ${snowGlsl()}
     float draw = vegHash( vegCell );
     // Coverage as a probability: 40% canopy keeps 40% of slots, so margins thin
     // out. A threshold test would give hard edges at the mask's own resolution.
-    float exists = step( draw, wood );
+    //
+    // STRICTLY GREATER, and the strictness is the whole point. This was
+    // step( draw, wood ), which is wood >= draw - so a slot whose draw is
+    // EXACTLY 0.0 grew a tree on ground with no canopy at all, anywhere in the
+    // park. That is not a freak value: vegHash loses most of its range to float32
+    // at world coordinates of tens of kilometres, and over the 16,997 slots inside
+    // the draw radius above the Gliairetta it takes only 5,220 distinct values,
+    // NINE of them exactly zero (tools/dev/probe-treeline.mjs). Nine conifers on a
+    // glacier, which is how the user found it. Reversing the test costs nothing and
+    // makes "no wood here" mean it: 0.0 > 0.0 is false.
+    float exists = 1.0 - step( wood, draw );
 
     float dist = length( cameraPosition.xz - slot );
     float near = 1.0 - smoothstep( ${glsl(FADE_START_M)}, ${glsl(VISIBLE_M)}, dist );

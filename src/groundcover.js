@@ -771,7 +771,15 @@ ${
     // Coverage as a probability, exactly as the forest does it: 40% cover keeps
     // 40% of slots, so a margin thins out instead of ending on the mask's own
     // texel grid.
-    float exists = step( coverHash( coverCell ), mine );
+    //
+    // And strictly greater for the same reason src/vegetation.js is - this file had
+    // the identical defect, and a worse one to look at. step( hash, mine ) is
+    // mine >= hash, so a cell whose hash is exactly 0.0 exists where mine is
+    // exactly 0.0 - and mine carries the ( 1.0 - onIce ) factor, so that is a
+    // blade of grass or a scree cone standing ON THE GLACIER. The ice was cleared of
+    // stones once already, on 2026-08-19, by making both this shader and the CPU
+    // edelweiss ask the ice mask; this is the leak that survived it.
+    float exists = 1.0 - step( mine, coverHash( coverCell ) );
 
     float dist = length( cameraPosition.xz - slot );
     float near = 1.0 - smoothstep( ${glsl(layer.fadeStartM)}, ${glsl(layer.visibleM)}, dist );
