@@ -95,6 +95,53 @@ not grow by a byte. That reframes it entirely, and a reconnaissance was done:
 overlay is a second sampler blended by distance from the camera, which is the same shape as
 what is there - not a new subsystem.
 
+**2026-08-20, BUILT AND LOOKED AT: 0.5 m/px over Le Pont.** *"Mi piacerebbe vedere la
+risoluzione 0,5m/px in una porzione non grande come ad esempio i dintorni di Le Pont."* It is
+in the tree, off by default, and **not published**.
+
+- **The clip.** Sheet `ORTO2024_ED50_005_5943` - Le Pont's own 1:5.000 element - is
+  **10,200 x 10,201 px at 20 cm, 2.04 x 2.04 km, RGB + alpha, EPSG:23032**, 419 MB of TIF
+  inside a 407 MB zip, with `CC_BY_Ortofoto_2024.pdf` shipped in the same zip. Averaged down
+  to 0.5 m (4,080 x 4,080), alpha dropped, WebP q75: **2.92 MB, 0.175 bytes/px** - which
+  makes the whole park at 0.5 m about **500 MB**, against the 602 MB the earlier JPEG-based
+  estimate gave.
+- **`src/orthotier.js`**, deliberately shaped like `heighttier.js`: holders bound at compile
+  time, a rectangle in local metres, and **nothing fetched until something asks**. `terrain.js`
+  applies it one line after the satellite mix, faded out by distance from the camera
+  (`ORTHO_NEAR_M` 300, `ORTHO_FAR_M` 650) and by a margin fade so the rectangle's own edge is
+  not a straight line on the hillside. Dev key **'O'** downloads it on first press and then
+  cycles the mix.
+- **Registration is right, and that is the thing that could most easily have been silently
+  wrong.** From 250 m the photographed hairpins of the Valsavarenche road sit under the road
+  vectors drawn from OSM (`ortho-air-on-lepont.png`). No reprojection was needed anywhere:
+  the source is published in EPSG:23032.
+- **The gain is measured, not chosen.** Over this clip's own rectangle the basemap means
+  rgb(118.2, 118.5, 95.3) and the photograph rgb(129.4, 123.9, 106.2), so `ORTHO_SCALE` is
+  1.87 / 1.22 = **1.54**. It still comes out brighter in practice - the lower half of the
+  frame gains **23.7 levels of luma** at eye height - so this wants the user's eye on it.
+
+**What it is worth, measured on the same camera with the term on and off:** the ground's
+contrast in the lower half of the frame goes from **13.1 to 23.4** standing at the trailhead
+and from **23.5 to 37.2** from 250 m up, and 60-67% of the frame's pixels change.
+
+**Where it pays and where it does not, which is the real finding.** At 40 m up looking down
+45 degrees Le Pont is *readable* - road, roofs, car park, the bridge over the torrent,
+individual larches, the long shadows of the buildings (`osweep-40m-45.png`). **At 1.7 m eye
+height it is a smooth blur**, and that is arithmetic rather than a defect: a screen pixel
+subtends about 0.00087 rad here, so it covers 0.5 m of ground - one texel - only at **574 m**.
+At 3 m it covers 2.6 mm, so the photograph is magnified about 190x and you are looking at two
+texels blended across the whole lower frame. The grazing angle then finishes the job.
+
+So the overlay wants a NEAR fade as well as a far one - off where its own texels are magnified
+past use, letting the procedural ground and the grass keep the last few metres - and that knob
+does not exist yet.
+
+**And the double shading is real and visible.** The flight ran 21 August to 2 November 2024, so
+the sun was low: a third of this clip is in a hard shadow that is baked into the photograph and
+then lit again by the app's own sun. It is obvious in the plan view (`oiso-plan.png`). Nothing
+has been done about it yet; `tools/dev/solve-albedo.mjs` is the tool that de-shaded the
+Sentinel-2 basemap and the same treatment is what this needs.
+
 **2026-08-20, they chose the route: HOST A CLIP OURSELVES**, as an optional on-demand tier
 rather than weight in the first load - the same arrangement the 5 m terrain tier already has.
 It is the only route with a clean licence AND the native CRS, and the reconnaissance was

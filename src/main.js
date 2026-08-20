@@ -1,3 +1,4 @@
+import { loadOrtho, ORTHO, ORTHO_MIX, ORTHO_RECT, ORTHO_NEAR_M, ORTHO_FAR_M, ORTHO_SCALE } from './orthotier.js';
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
@@ -854,6 +855,14 @@ if (import.meta.env.DEV) {
     // `/src/basemap.js?t=<stamp>` and a bare-path import gets a SECOND instance,
     // with its own untouched holders. Pinning that one changes nothing on screen
     // and reads back exactly the value it just wrote.
+    // The orthophoto overlay's holders, published for the same reason the basemap's are:
+    // a probe has to be able to switch ONE term off and measure the same pixels twice,
+    // and this one has four terms that can each be wrong on their own.
+    ortho: {
+      mix: ORTHO_MIX, rect: ORTHO_RECT, scale: ORTHO_SCALE,
+      nearM: ORTHO_NEAR_M, farM: ORTHO_FAR_M,
+      texture: () => ORTHO.value,
+    },
     basemap: {
       mix: BASEMAP_MIX,
       scale: BASEMAP_SCALE,
@@ -1017,6 +1026,31 @@ if (import.meta.env.DEV) {
     GLACIER_MIX.value = ICE_STEPS[iceStep];
     devNoteEl.textContent = `glacier ice x${GLACIER_MIX.value}`
       + (GLACIER_MIX.value === 0 ? ' (off - this is the ground under the ice)' : '');
+  });
+
+  // 'O' brings in the optional 0.5 m orthophoto over Le Pont (src/orthotier.js): first press
+  // downloads it, later presses cycle the mix so the same ground can be seen with and without
+  // it. On demand and nowhere else, because that is the whole proposition - the published
+  // first load must not know this file exists.
+  const ORTHO_STEPS = [1, 0.5, 0];
+  let orthoStep = -1;
+  let orthoManifest;
+  window.addEventListener('keydown', async (e) => {
+    if (e.code !== 'KeyO') return;
+    if (isTypingTarget(document.activeElement)) return;
+    if (orthoManifest === undefined) {
+      devNoteEl.textContent = 'orthophoto: downloading...';
+      orthoManifest = await loadOrtho(undefined, terrainSurface.manifest.localOrigin).catch(() => null);
+      if (!orthoManifest) { devNoteEl.textContent = 'orthophoto: nothing published'; return; }
+    }
+    orthoStep = (orthoStep + 1) % ORTHO_STEPS.length;
+    ORTHO_MIX.value = ORTHO_STEPS[orthoStep];
+    const r = ORTHO_RECT.value;
+    const d = Math.hypot(camera.position.x - (r.x + r.z / 2), camera.position.z - (r.y + r.w / 2));
+    devNoteEl.textContent = `orthophoto x${ORTHO_MIX.value} \u00b7 ${orthoManifest.place}`
+      + ` \u00b7 ${orthoManifest.resolutionMPerPx.x} m/px \u00b7 ${(orthoManifest.file.bytes / 1e6).toFixed(1)} MB`
+      + ` \u00b7 ${(d / 1000).toFixed(1)} km from its centre`
+      + ` \u00b7 fades ${ORTHO_NEAR_M.value}-${ORTHO_FAR_M.value} m`;
   });
 
   const HAZE_STEPS = [0.6, 1, 1.5, 2.2, 3];

@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "purpose": "OPTIONAL high-resolution ground photograph over one rectangle, drawn only near the camera. Not part of the first load: nothing fetches this until the viewer asks for it.",
+  "crs": "EPSG:23032",
+  "note": "Same CRS as heightfield.json, because the source is published in it - so there is no reprojection anywhere in this path and none of the 215 m ED50/WGS84 datum shift.",
+  "bboxCrsUnits": {
+    "xmin": 357980.3119431024,
+    "ymin": 5041979.371613291,
+    "xmax": 360020.3119431024,
+    "ymax": 5044019.371613291
+  },
+  "resolutionMPerPx": {
+    "x": 0.5,
+    "y": 0.5
+  },
+  "dimensions": {
+    "width": 4080,
+    "height": 4080
+  },
+  "place": "Le Pont, Valsavarenche - 2.04 x 2.04 km",
+  "file": {
+    "name": "ortho.ff59f56a.webp",
+    "bytes": 2917692,
+    "sha256Prefix": "ff59f56a"
+  },
+  "source": {
+    "name": "Regione Autonoma Valle d'Aosta - Ortofoto 2024",
+    "attribution": "Ortofoto 2024 (c) Regione Autonoma Valle d'Aosta",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "licenseVerifiedVia": "https://sct-outil.regione.vda.it/SCTProfessional/static/pdf/CC_BY_Ortofoto_2024.pdf, shipped inside the sheet's own zip",
+    "sheet": "ORTO2024_ED50_005_5943 (1:5.000 element, 2.04 x 2.04 km, GSD 20 cm, RGBI, Leica DMC4, flown 21/08-02/11/2024)",
+    "modifications": "Derived product: resampled 20 cm -> 50 cm by averaging, alpha band dropped, encoded WebP q75."
+  },
+  "generatedBy": "gdal_translate -b 1 -b 2 -b 3 -tr 0.5 0.5 -r average, then -of WEBP -co QUALITY=75"
+}

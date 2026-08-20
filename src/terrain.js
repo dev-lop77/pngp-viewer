@@ -11,6 +11,7 @@ import { FOREST_MASK } from './forest.js';
 import { GLACIER_MASK } from './glaciermask.js';
 import { SNOW_LEVEL, snowGlsl, snowColorGlsl } from './snow.js';
 import { BASEMAP, BASEMAP_MIX, BASEMAP_SCALE, basemapGlsl } from './basemap.js';
+import { ORTHO, ORTHO_RECT, ORTHO_MIX, ORTHO_NEAR_M, ORTHO_FAR_M, ORTHO_SCALE, orthoGlsl } from './orthotier.js';
 import {
   OUTER_RING, OUTER_RING_FADE_M, OUTER_RING_MAX_M, EDGE_FADE_M, outerRingGlsl,
 } from './outerring.js';
@@ -397,6 +398,7 @@ ${heightTierGlsl()}
     vec3 terrainIceNormal = vec3( 0.0, 1.0, 0.0 );
 ${snowGlsl()}
 ${basemapGlsl()}
+${orthoGlsl()}
 ${outerRingGlsl({ worldWidth, worldDepth })}
 
     float terrainHash( vec2 p ) {
@@ -445,6 +447,14 @@ ${bandMix}
       // it does NOT know is anything the elevation bands were never doing
       // either: see the two terms below, both of which still apply over it.
       albedo = mix( albedo, basemapAlbedo( fUv, wobble ), uBasemapMix );
+
+      // The optional 0.5 m photograph over one rectangle, near the camera only
+      // (src/orthotier.js). It goes ON TOP of the satellite for the same reason the
+      // satellite goes on top of the elevation bands: where it exists it knows this
+      // hillside better than anything under it. It is off - amount 0 - everywhere
+      // outside its rectangle, beyond a few hundred metres, and always until something
+      // asks for the download, so this line costs one texture fetch and nothing else.
+      albedo = mix( albedo, orthoAlbedo( vTerrainXZ ), orthoAmount( vTerrainXZ ) );
 
       // Steep ground is bare whatever its altitude - nothing roots on a cliff,
       // and snow doesn't sit on one either. It survives the satellite mix above
@@ -528,6 +538,12 @@ ${bandMix}
     shader.uniforms.uBasemap = BASEMAP;
     shader.uniforms.uBasemapMix = BASEMAP_MIX;
     shader.uniforms.uBasemapScale = BASEMAP_SCALE;
+    shader.uniforms.uOrtho = ORTHO;
+    shader.uniforms.uOrthoRect = ORTHO_RECT;
+    shader.uniforms.uOrthoMix = ORTHO_MIX;
+    shader.uniforms.uOrthoNearM = ORTHO_NEAR_M;
+    shader.uniforms.uOrthoFarM = ORTHO_FAR_M;
+    shader.uniforms.uOrthoScale = ORTHO_SCALE;
     // The optional high-resolution tier, bound the same way and for the same
     // reason: it is downloaded only if the quality control asks, and binding the
     // holder now means turning it on later costs no recompile. Its mix stays 0

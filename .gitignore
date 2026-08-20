@@ -42,3 +42,21 @@ DEM/*.tif
 # A pattern, not three names: the filenames carry a content hash, so every rebuild
 # invents a new one and a list would go stale on the next run.
 public/data/*.bin
+
+# The orthophoto sheets, as they come from the region. One 1:5.000 element of the
+# Valle d'Aosta Ortofoto 2024 is ~400 MB of zipped 20 cm TIF - a build INPUT, on the
+# same footing as the DTM mosaic above: derived output ships, the source does not.
+# tools/dev/probe-orthophoto.mjs documents where each sheet comes from, and the two
+# public endpoints that turn a coordinate into a download.
+tools/ortho-source/
+
+# The orthophoto CLIPS the viewer downloads. Derived, reproducible from the sheets and the
+# one gdal_translate line in ortho.json's generatedBy, and - this is the point - a TRIAL:
+# resolution and extent are exactly what is still being decided, so every attempt would
+# otherwise leave another few megabytes in a history that can never give them back. That
+# lesson was paid for once already, with the .bin files above.
+#
+# The MANIFEST stays tracked: it is 1.6 kB, it carries the licence and the attribution, and
+# it is what says which clip a build expects. If a clip is ever settled on and shipped, this
+# line is the one to delete.
+public/data/ortho.*.webp
