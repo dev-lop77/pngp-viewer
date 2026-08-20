@@ -1,4 +1,6 @@
-import { loadOrtho, ORTHO, ORTHO_MIX, ORTHO_RECT, ORTHO_NEAR_M, ORTHO_FAR_M, ORTHO_SCALE } from './orthotier.js';
+import {
+  loadOrtho, updateOrtho, ORTHO, ORTHO_MIX, ORTHO_RECT, ORTHO_NEAR_M, ORTHO_FAR_M, ORTHO_SCALE, ORTHO_STATS,
+} from './orthotier.js';
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
@@ -933,6 +935,8 @@ if (import.meta.env.DEV) {
       mix: ORTHO_MIX, rect: ORTHO_RECT, scale: ORTHO_SCALE,
       nearM: ORTHO_NEAR_M, farM: ORTHO_FAR_M,
       texture: () => ORTHO.value,
+      stats: ORTHO_STATS,
+      update: updateOrtho,
     },
     basemap: {
       mix: BASEMAP_MIX,
@@ -1099,44 +1103,31 @@ if (import.meta.env.DEV) {
       + (GLACIER_MIX.value === 0 ? ' (off - this is the ground under the ice)' : '');
   });
 
-  // 'O' steps through the optional orthophoto over Le Pont (src/orthotier.js): finest first,
-  // then coarser, then off - and back. Each press downloads that level once and keeps it, so
-  // the comparison the user asked for on 2026-08-20 ("vorrei vedere anche una prova con una
-  // risoluzione minore, sia a 1m/px che a 2m/px") is four keypresses at one camera, which is
-  // the only honest way to compare two looks: one session, one scene (docs/PROGRESS-ARCHIVE
-  // 2026-08-10, "a separate render is not the same scene").
+  // 'O' switches the optional orthophoto mosaic on and off (src/orthotier.js). The
+  // resolution is no longer a runtime choice - the user picked 2 m/px on 2026-08-20 and it is
+  // baked in at build time by tools/build-ortho.mjs - so this is a toggle plus a report of
+  // what the atlas is actually holding, which is the part that can go quietly wrong.
   //
-  // On demand and nowhere else, because that is the whole proposition - the published first
-  // load must not know these files exist.
-  let orthoStep = -1;
+  // On demand and nowhere else: the published first load must not know these files exist.
   window.addEventListener('keydown', async (e) => {
     if (e.code !== 'KeyO') return;
     if (isTypingTarget(document.activeElement)) return;
-    // The manifest's levels are coarsest first, so walking it backwards is finest first.
-    // The extra step past the end is "off", which is what makes this a comparison.
-    orthoStep += 1;
-    devNoteEl.textContent = 'orthophoto: loading...';
-    const loaded = await loadOrtho(undefined, terrainSurface.manifest.localOrigin, -1).catch(() => null);
-    if (!loaded) { devNoteEl.textContent = 'orthophoto: nothing published'; return; }
-    const count = loaded.manifest.levels.length;
-    if (orthoStep >= count) { // off
-      orthoStep = -1;
+    if (ORTHO_MIX.value > 0) {
       ORTHO_MIX.value = 0;
       devNoteEl.textContent = 'orthophoto OFF - this is the 10.24 m satellite alone';
       return;
     }
-    const wanted = count - 1 - orthoStep; // finest first
-    const now = await loadOrtho(undefined, terrainSurface.manifest.localOrigin, wanted).catch(() => null);
-    if (!now) { devNoteEl.textContent = 'orthophoto: that level failed to load'; return; }
+    devNoteEl.textContent = 'orthophoto: loading...';
+    const m = await loadOrtho(undefined, terrainSurface.manifest.localOrigin).catch(() => null);
+    if (!m) { devNoteEl.textContent = 'orthophoto: nothing published'; return; }
     ORTHO_MIX.value = 1;
-    const res = now.level.resolutionMPerPx.x;
-    const mb = now.level.file.bytes / 1e6;
-    // What this level would cost over real ground, since that is the decision behind the
-    // look: the clip is 2.04 x 2.04 km = 4.162 km2, and the park is 710 km2.
-    const park = (mb * 710) / 4.162;
-    devNoteEl.textContent = `orthophoto ${res} m/px \u00b7 ${now.level.dimensions.width}px`
-      + ` \u00b7 ${mb.toFixed(2)} MB here \u00b7 ~${Math.round(park)} MB for the whole park`
-      + ` \u00b7 ${now.manifest.place} \u00b7 press O again for the next level`;
+    await updateOrtho(camera.position.x, camera.position.z);
+    const mb = m.sheets.reduce((a, sh) => a + sh.file.bytes, 0) / 1e6;
+    devNoteEl.textContent = `orthophoto ${m.resolutionMPerPx.x} m/px \u00b7 ${m.sheets.length} sheets`
+      + ` (${mb.toFixed(2)} MB) \u00b7 atlas holds ${ORTHO_STATS.cells} of`
+      + ` ${ORTHO_STATS.cells + ORTHO_STATS.empty} cells`
+      + `${ORTHO_STATS.empty ? `, ${ORTHO_STATS.empty} with no coverage` : ''}`
+      + ` \u00b7 refill ${ORTHO_STATS.lastRefillMs.toFixed(0)} ms`;
   });
 
   const HAZE_STEPS = [0.6, 1, 1.5, 2.2, 3];
@@ -1630,6 +1621,10 @@ renderer.setAnimationLoop(() => {
   // After controls, before render: the tile set must match where the camera
   // actually ended up this frame, or a fast move shows a hole at its edge.
   terrainUpdate?.(camera);
+  // The orthophoto atlas follows the camera between sheets. One comparison a frame until it
+  // crosses a 2 km boundary, and it only runs at all once something has switched the overlay
+  // on - so a viewer that never asks for it never pays for this line either.
+  if (ORTHO_MIX.value > 0) updateOrtho(camera.position.x, camera.position.z);
   renderer.render(scene, camera);
   labelRenderer.render(scene, camera);
 });

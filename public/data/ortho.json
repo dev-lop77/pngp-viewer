@@ -1,71 +1,227 @@
 {
-  "schemaVersion": 2,
-  "purpose": "OPTIONAL high-resolution ground photograph over one rectangle, drawn only near the camera. Not part of the first load: nothing fetches this until the viewer asks.",
+  "schemaVersion": 3,
+  "purpose": "OPTIONAL high-resolution ground photograph, a grid of 1:5.000 sheets drawn only near the camera. Not part of the first load: nothing fetches any of it until the viewer asks.",
   "crs": "EPSG:23032",
   "note": "Same CRS as heightfield.json, because the source is published in it - so there is no reprojection anywhere in this path and none of the 215 m ED50/WGS84 datum shift.",
-  "bboxCrsUnits": {
-    "xmin": 357980.3119431024,
-    "ymin": 5041979.371613291,
-    "xmax": 360020.3119431024,
-    "ymax": 5044019.371613291
+  "grid": {
+    "originE": 357980.3119431024,
+    "originN": 5044019.371613291,
+    "stepM": 2000,
+    "sheetM": 2040,
+    "note": "sheet (i, j) has its upper-left corner at E = originE + i*stepM, N = originN - j*stepM, and covers sheetM metres each way - so neighbours OVERLAP by sheetM - stepM = 40 m, 20 m a side. The overlap is the same ground twice and needs no blending."
   },
-  "place": "Le Pont, Valsavarenche - 2.04 x 2.04 km",
-  "levels": [
+  "resolutionMPerPx": {
+    "x": 2,
+    "y": 2
+  },
+  "sheets": [
     {
-      "resolutionMPerPx": {
-        "x": 2,
-        "y": 2
+      "tavola": "5745",
+      "bboxCrsUnits": {
+        "xmin": 355980.323,
+        "ymin": 5043979.227,
+        "xmax": 358020.323,
+        "ymax": 5046019.427
       },
       "dimensions": {
         "width": 1020,
         "height": 1020
       },
       "file": {
-        "name": "ortho-2.f972e8ad.webp",
+        "name": "o5745-2.bd91abe0.webp",
+        "bytes": 140818,
+        "sha256Prefix": "bd91abe0"
+      },
+      "cell": [
+        -1,
+        -1
+      ]
+    },
+    {
+      "tavola": "5945",
+      "bboxCrsUnits": {
+        "xmin": 357980.312,
+        "ymin": 5043979.193,
+        "xmax": 360020.312,
+        "ymax": 5046019.393
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5945-2.a571eb8c.webp",
+        "bytes": 190602,
+        "sha256Prefix": "a571eb8c"
+      },
+      "cell": [
+        0,
+        -1
+      ]
+    },
+    {
+      "tavola": "6145",
+      "bboxCrsUnits": {
+        "xmin": 359980.296,
+        "ymin": 5043979.162,
+        "xmax": 362020.296,
+        "ymax": 5046019.362
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6145-2.351c8c74.webp",
+        "bytes": 301974,
+        "sha256Prefix": "351c8c74"
+      },
+      "cell": [
+        1,
+        -1
+      ]
+    },
+    {
+      "tavola": "5743",
+      "bboxCrsUnits": {
+        "xmin": 355980.321,
+        "ymin": 5041979.207,
+        "xmax": 358020.321,
+        "ymax": 5044019.407
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5743-2.90c3dc55.webp",
+        "bytes": 180500,
+        "sha256Prefix": "90c3dc55"
+      },
+      "cell": [
+        -1,
+        0
+      ]
+    },
+    {
+      "tavola": "5943",
+      "bboxCrsUnits": {
+        "xmin": 357980.312,
+        "ymin": 5041979.172,
+        "xmax": 360020.312,
+        "ymax": 5044019.372
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5943-2.f972e8ad.webp",
         "bytes": 241742,
         "sha256Prefix": "f972e8ad"
-      }
+      },
+      "cell": [
+        0,
+        0
+      ]
     },
     {
-      "resolutionMPerPx": {
-        "x": 1,
-        "y": 1
+      "tavola": "6143",
+      "bboxCrsUnits": {
+        "xmin": 359980.298,
+        "ymin": 5041979.141,
+        "xmax": 362020.298,
+        "ymax": 5044019.341
       },
       "dimensions": {
-        "width": 2040,
-        "height": 2040
+        "width": 1020,
+        "height": 1020
       },
       "file": {
-        "name": "ortho-1.bc3e2dd4.webp",
-        "bytes": 887422,
-        "sha256Prefix": "bc3e2dd4"
-      }
+        "name": "o6143-2.1937b07c.webp",
+        "bytes": 235356,
+        "sha256Prefix": "1937b07c"
+      },
+      "cell": [
+        1,
+        0
+      ]
     },
     {
-      "resolutionMPerPx": {
-        "x": 0.5,
-        "y": 0.5
+      "tavola": "5741",
+      "bboxCrsUnits": {
+        "xmin": 355980.319,
+        "ymin": 5039979.186,
+        "xmax": 358020.319,
+        "ymax": 5042019.386
       },
       "dimensions": {
-        "width": 4080,
-        "height": 4080
+        "width": 1020,
+        "height": 1020
       },
       "file": {
-        "name": "ortho-05.ff59f56a.webp",
-        "bytes": 2917692,
-        "sha256Prefix": "ff59f56a"
-      }
+        "name": "o5741-2.10543b3f.webp",
+        "bytes": 221694,
+        "sha256Prefix": "10543b3f"
+      },
+      "cell": [
+        -1,
+        1
+      ]
+    },
+    {
+      "tavola": "5941",
+      "bboxCrsUnits": {
+        "xmin": 357980.312,
+        "ymin": 5039979.15,
+        "xmax": 360020.312,
+        "ymax": 5042019.35
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5941-2.c9d6dab2.webp",
+        "bytes": 257954,
+        "sha256Prefix": "c9d6dab2"
+      },
+      "cell": [
+        0,
+        1
+      ]
+    },
+    {
+      "tavola": "6141",
+      "bboxCrsUnits": {
+        "xmin": 359980.299,
+        "ymin": 5039979.12,
+        "xmax": 362020.299,
+        "ymax": 5042019.32
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6141-2.2725c867.webp",
+        "bytes": 274146,
+        "sha256Prefix": "2725c867"
+      },
+      "cell": [
+        1,
+        1
+      ]
     }
   ],
-  "levelOrder": "coarsest first, like basemap.json and heighttier.json - so a viewer that walks the list forwards and stops when it has had enough lands on the coarsest affordable one.",
   "source": {
     "name": "Regione Autonoma Valle d'Aosta - Ortofoto 2024",
     "attribution": "Ortofoto 2024 (c) Regione Autonoma Valle d'Aosta",
     "license": "CC BY 4.0",
     "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
-    "licenseVerifiedVia": "https://sct-outil.regione.vda.it/SCTProfessional/static/pdf/CC_BY_Ortofoto_2024.pdf, shipped inside the sheet's own zip",
-    "sheet": "ORTO2024_ED50_005_5943 (1:5.000 element, 2.04 x 2.04 km, GSD 20 cm, RGBI, Leica DMC4, flown 21/08-02/11/2024)",
-    "modifications": "Derived product: EACH level resampled from the 20 cm original by averaging (not from the level above it), alpha band dropped, encoded WebP q75."
+    "licenseFile": "data/ortho/CC_BY_Ortofoto_2024.pdf",
+    "sheetSpec": "1:5.000 elements, 2.04 x 2.04 km, GSD 20 cm, RGBI, Leica DMC4, flown 21/08-02/11/2024",
+    "modifications": "Derived product: resampled from the 20 cm original to 2 m by averaging, alpha band dropped, encoded WebP q75."
   },
-  "generatedBy": "gdal_translate -b 1 -b 2 -b 3 -tr <res> <res> -r average, then -of WEBP -co QUALITY=75"
+  "generatedBy": "tools/build-ortho.mjs"
 }

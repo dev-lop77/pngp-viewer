@@ -142,6 +142,51 @@ then lit again by the app's own sun. It is obvious in the plan view (`oiso-plan.
 has been done about it yet; `tools/dev/solve-albedo.mjs` is the tool that de-shaded the
 Sentinel-2 basemap and the same treatment is what this needs.
 
+**2026-08-20, THE ATLAS IS BUILT AND PROVEN on a 3x3 block around Le Pont** - the user's own
+order, atlas before data: *"Prima l'atlante, poi i dati"*, so that 42.7 GB is not spent on a
+mosaic that turns out not to work. It works. `tools/build-ortho.mjs` and the rewritten
+`src/orthotier.js`, fast suite **14/14**, still off by default and still not published.
+
+- **The pipeline fetches, resamples and DELETES, one sheet at a time.** Nine sheets: 4.2 GB
+  fetched across two runs, **2.04 MB shipped**, and the disk ended exactly where it started.
+  That is not tidiness, it is the only way this can run at all - 42.7 GB against 35 GB free.
+- **The atlas is a 3x3 block of sheets around whichever sheet the camera stands on**: 6,040 m
+  square, 3,020 px at 2 m/px, ~36 MB of video memory, **redrawn in 29 ms** and only when the
+  camera crosses a sheet boundary - about every 2 km of walking. The shader did not change:
+  `uOrthoRect` stopped meaning "the clip" and started meaning "the atlas".
+- **Missing coverage costs nothing and needs no second mask.** A cell with no sheet is left
+  TRANSPARENT when the atlas is drawn, and `orthoAmount()` multiplies by that alpha. Walking
+  west off the built block took the atlas from 9 cells to 6 with 3 empty, and the ground
+  simply went back to the satellite.
+- **No seams.** A 900 m view spanning several sheets shows the torrent, the trail and the road
+  hairpins sitting on their photographed counterparts with no line anywhere
+  (`atlas-multisheet.png`).
+
+**TWO BUGS FOUND BY MEASURING, both the same mistake in different clothes.**
+
+1. **The sheets are 2,040 m wide and 2,000 m APART** - they overlap by 20 m a side, which is
+   ordinary in an orthophoto delivery and was not in my assumption. Taking the spacing to be
+   the width put several sheets in one cell and the atlas found **four of nine**. The overlap
+   itself needs no blending: those 20 m are the same ground twice, so sheets are laid at
+   `stepM` and drawn at `sheetM`, one over another.
+2. **A sheet's index and a point's index are DIFFERENT QUESTIONS.** A sheet is indexed by its
+   upper-left corner, where the offset is an exact multiple of `stepM`; a point belongs to the
+   nearest sheet CENTRE, which is half a sheet away. One function answered both, and 0.864
+   rounded to 1: Le Pont was assigned to the sheet next door and the whole block was built
+   2 km east of the camera. **It still looked like a photograph**, which is why it needed a
+   number - the camera now sits 62% across its own atlas instead of 29%.
+
+`build-ortho.mjs` asserts every sheet onto the grid to within a metre, so if that assumption
+is ever wrong again it stops there rather than in a shader drawing ground 2 km from where it
+is. And it PRUNES files the manifest no longer names: three orphans survived the grid fix, and
+everything under `public/` is published, so an orphan is not clutter on a disk - it is a file
+on the site that nothing fetches.
+
+**One thing the photograph does that nobody asked it to: it repaints the glaciers.** At 20 cm
+the real ice is vivid blue, and the overlay replaces the ground colour outright - so where it
+covers a glacier it overrides the **neutral white the user chose from four renders** on
+2026-08-19. Visible in `atlas-seam-lepont.png`. Nothing has been decided about it.
+
 **2026-08-20, 2 m/px CHOSEN, and the park measured against the actual files.** *"Penso che i
 2m/px siano piu' adatti e ci fanno risparmiare un sacco di spazio. Proviamo ad stenderlo su
 tutto il parco? Ce la facciamo con github?"* `tools/dev/probe-ortho-coverage.mjs` answers it

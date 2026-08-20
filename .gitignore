@@ -63,3 +63,5 @@ tools/ortho-source/
 # `ortho.*.webp` and the levels are named `ortho-05.<hash>.webp`, so renaming them silently
 # un-ignored all three. Caught by looking, one commit before it mattered.
 public/data/ortho*.webp
+public/data/ortho/*.webp
+public/data/ortho/.done-*
