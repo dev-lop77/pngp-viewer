@@ -144,3 +144,39 @@ for (const px of [1024, 2048, 4096]) {
     console.log(`${String(px).padStart(5)}  ${res.toFixed(3)}  ${((px * res) / 1000).toFixed(2)} km  ${((px * px * 4) / 1e6).toFixed(0).padStart(5)} MB  ${(px / 256) ** 2}`);
   }
 }
+
+// --- 5: the route the user chose - host a clip ourselves ------------------------------
+// Valle d'Aosta Ortofoto 2024: GSD 20 cm, 4 bands RGBI (Leica DMC4), flown 21/08-02/11/2024,
+// whole region, delivered as TIF on the 1:5.000 cartographic cut, and republished by SCT in
+// EPSG:23032 - THIS PROJECT'S OWN CRS, so no reprojection and no datum shift at all.
+// Licence CC-BY (sct-outil.regione.vda.it/SCTProfessional/static/pdf/CC_BY_Ortofoto_2024.pdf).
+//
+// And it is scriptable, which was the open question. Two public endpoints, no token:
+//   sheet code:  the QDU WMS, GetFeatureInfo on Quadri_dUnione__Ortofoto_2012_scala_5000
+//                (the 2012 index, because 2024 has none published yet - same 1:5.000 cut)
+//   the file:    https://geoprodotti.regione.vda.it/download/ORTO2024_ED50_005/ORTO2024_ED50_005_<tavola>.zip
+// Measured: sheet 7153, over Cogne, is 397,640,763 bytes. A 1:5.000 element is 3 x 2 km, so
+// the source runs about 66 MB per km2 - the whole VdA side of the park is tens of gigabytes
+// to fetch ONCE, and none of it ships.
+const SOURCE_MB_PER_KM2 = 397.64 / 6;
+// Bytes per pixel, MEASURED on six real orthophoto tiles of mixed terrain (valley floor,
+// forest, rock, meadow) re-encoded at JPEG q80: mean 0.212, range 0.10 to 0.30. WebP would
+// be smaller and this project already ships WebP for the basemap, so treat 0.212 as the
+// pessimistic figure rather than the target.
+const BYTES_PER_PX = 0.212;
+const PARK_KM2 = 710; // Parco Nazionale del Gran Paradiso, both regions
+
+console.log('\n=== hosting it ourselves: what would SHIP ===');
+console.log(`source is ${SOURCE_MB_PER_KM2.toFixed(0)} MB/km2 at 20 cm - fetched once, never shipped\n`);
+console.log('area                 m/px   shipped   1024 px tiles  per tile');
+for (const [label, km2] of [['whole park', PARK_KM2], ['VdA half only', 350], ['one valley (10x10 km)', 100]]) {
+  for (const res of [0.2, 0.5, 1, 2]) {
+    const px = (km2 * 1e6) / (res * res);
+    const mb = (px * BYTES_PER_PX) / 1e6;
+    const tiles = Math.ceil(px / (1024 * 1024));
+    console.log(`${label.padEnd(21)}  ${res.toFixed(1)}  ${mb.toFixed(0).padStart(6)} MB  ${String(tiles).padStart(11)}  ${((1024 * 1024 * BYTES_PER_PX) / 1e3).toFixed(0)} kB`);
+  }
+}
+console.log('\nGitHub Pages publishes at most 1 GB, and tools/dev/deploy.sh rewrites the whole');
+console.log('site on every push - so the FILE COUNT matters as much as the total. 1024 px tiles');
+console.log('are 16x fewer files than 256 px ones at the same coverage, and still only ~222 kB.');

@@ -95,6 +95,48 @@ not grow by a byte. That reframes it entirely, and a reconnaissance was done:
 overlay is a second sampler blended by distance from the camera, which is the same shape as
 what is there - not a new subsystem.
 
+**2026-08-20, they chose the route: HOST A CLIP OURSELVES**, as an optional on-demand tier
+rather than weight in the first load - the same arrangement the 5 m terrain tier already has.
+It is the only route with a clean licence AND the native CRS, and the reconnaissance was
+carried to the point where the acquisition is proved scriptable:
+
+- **Valle d'Aosta Ortofoto 2024.** GSD **20 cm**, 4 bands RGBI (Leica DMC4, CGR for RAVdA
+  under the AGEA framework), flown 21/08-02/11/2024, **whole region**, TIF on the 1:5.000
+  cut, and republished by SCT in **EPSG:23032 - this project's own CRS**, so there is no
+  reprojection and none of the 215 m datum shift at all. Licence **CC-BY**
+  (`CC_BY_Ortofoto_2024.pdf`), which is the same footing as the DTM this project already
+  ships (ARCHITECTURE §3).
+- **Two public endpoints, no token, and the second one was the open question.** The sheet
+  code comes from the QDU WMS by GetFeatureInfo on
+  `Quadri_dUnione__Ortofoto_2012_scala_5000` - the 2012 index, because 2024 has none
+  published yet and the 1:5.000 cut is the same - and the file is at
+  `geoprodotti.regione.vda.it/download/ORTO2024_ED50_005/ORTO2024_ED50_005_<tavola>.zip`.
+  Verified end to end: Cogne is sheet **7153**, and that URL answers **200 with
+  397,640,763 bytes**. A 1:5.000 element is 3 x 2 km, so the source runs **~66 MB/km2** -
+  the VdA side of the park is tens of gigabytes to fetch ONCE, and none of it ships.
+- **What would ship, at 0.212 bytes/px** (measured on six real orthophoto tiles of mixed
+  terrain re-encoded at JPEG q80; range 0.10-0.30, and WebP would be smaller):
+
+  | | 2 m/px | 1 m/px | 0.5 m/px | 0.2 m/px |
+  |---|---|---|---|---|
+  | whole park, 710 km2 | 38 MB | **151 MB** | 602 MB | 3.8 GB |
+  | VdA half, 350 km2 | 19 MB | **74 MB** | 297 MB | 1.9 GB |
+  | one valley, 100 km2 | 5 MB | 21 MB | **85 MB** | 530 MB |
+
+  GitHub Pages publishes at most 1 GB and `deploy.sh` rewrites the whole site on every push,
+  so the FILE COUNT matters as much as the total: **1024 px tiles are 16x fewer files than
+  256 px ones** at the same coverage and still only ~222 kB each.
+
+**The one thing self-hosting fixes for free**: the double-shading problem above. A streamed
+tile arrives lit and there is nothing to be done about it at runtime, but a clip we process
+ourselves can be de-shaded to albedo offline - which is exactly what was done to the
+Sentinel-2 basemap, with a tool that already exists (`tools/dev/solve-albedo.mjs`).
+
+**The one thing it does not fix: the Piemonte half of the park.** The VdA product stops at
+the regional border, and the only Piemonte source found is AGEA with its ambiguous licence.
+So a decision is still owed on whether the ground changes resolution at the watershed - which
+would not be a first here, since the DEM already does.
+
 Everything else below was the state before that request, and none of it has been asked for:
 
 - **In the ice:** crevasses - noise bands running across the slope, and the term that pays
