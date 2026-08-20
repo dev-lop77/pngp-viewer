@@ -406,6 +406,25 @@ consumed.
 
 Open debts are at the end of this file.
 
+## PUBLISHED (2026-08-20, second push): both defect fixes
+
+The user ran `tools/dev/deploy.sh` themselves after the fast suite went 13/13 and
+`test-groundcover` / `test-height-tier` passed out of the fast set. The push was the JS
+bundle and `index.html` again - `index-CoTSuToM.js -> index-B2lVGrR9.js` - and **first load
+is still 31.27 MB over 21 requests**, unchanged for the third build running.
+
+Verified against the CDN:
+
+- `tools/verify.mjs`: WebGL2, no console or page errors.
+- **Both new rules are in the published bundle** and neither old one survives: one occurrence
+  each of `1.0 - step( wood, draw )` and `1.0 - step( mine, ...`, and the single remaining
+  `step( draw, wood )` in the file is inside the comment that explains why it went. Grepping
+  the bundle is the check that a screenshot cannot do (§13.17).
+- **The two defect cameras, on the live site.** `live-treeline.png` at 45.52233N 7.05259E:
+  no conifers on the firn. `live-skirt.png` at 45.51249N 7.01452E looking east at eye height:
+  no pale quadrilateral, and the ice reads as one continuous surface - so removing the
+  curtain did not open a crack in its place, which was the only real risk in that change.
+
 ## PUBLISHED (2026-08-20): firn, live ice, moraine and the sunlit ice
 
 Fast suite **13/13 in 677 s**, then `tools/dev/deploy.sh`. The push carried **the JS bundle and
