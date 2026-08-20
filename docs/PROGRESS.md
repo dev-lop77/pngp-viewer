@@ -49,6 +49,12 @@ has all three); the switch lives in the HUD, in `localStorage` AND in shared lin
 - **Coverage ends in a hard line** at the regional border. The rectangle fade does not help
   there, because that edge is inside the atlas rather than at its rim.
 
+**Do not be misled by `tools/dev/logs/test-times.tsv`**: its last `test-viewstate` row says
+FAIL. That is the run that found the two stale things; both were fixed after it and the test
+passes in full, but the two verification runs were `node tools/test-viewstate.mjs` directly and
+only the runner writes to that log. Run it through `tools/dev/run-tests.sh test-viewstate` once
+to put a PASS on the record.
+
 ## The previous session's opening note, kept because its numbers are still the ones that matter
 
 ## NEXT SESSION: the user has asked for HIGH-RESOLUTION ORTHOPHOTOS. Start there.
