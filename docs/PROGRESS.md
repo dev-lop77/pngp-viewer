@@ -16,10 +16,30 @@ scattered through it were promoted into ARCHITECTURE §13 first, so that the one
 part of the log you needed *before* making a mistake is no longer in a file you
 open *after*.
 
-## NEXT SESSION: everything the user has named is DONE and PUBLIC. So ask.
+## NEXT SESSION: the user has asked for HIGH-RESOLUTION ORTHOPHOTOS. Start there.
 
-The ice was published on 2026-08-20 and there is nothing queued behind it. What is left,
-none of it requested:
+***"Segnati che dopo parliamo delle ortofoto ad alta risoluzione"*** (2026-08-20). It is a
+TOPIC THEY RAISED, not a decision they took, so the session opens by asking what they want
+from it rather than by fetching anything. What is worth having in hand before that
+conversation, because it is what shapes every answer:
+
+- The ground today is **Sentinel-2 at 8192 px over the whole 84 x 48 km bbox** - about
+  10 m per pixel, de-shaded to albedo (the `extra` row in the phase table). It is
+  **7.07 MB of the 31.27 MB first load**, the third largest asset.
+- A real orthophoto for this area is **0.2-0.5 m**. At 0.5 m the same bbox is **167,768 px
+  wide - 20.5x the width and 420x the pixels** of what ships now; at 0.2 m it is 419,420 px,
+  51x the width and 2,621x the pixels. Either way it cannot be one texture and cannot be a
+  single download: it is a tiling and streaming question first and a picture question
+  second, which is a different shape of work from anything here so far - every asset today
+  is fetched once, whole, up front. (For scale, the basemap is 7.07 MB at 8192 px, so 420x
+  the pixels is measured in gigabytes before anyone argues about compression.)
+- The licensing has to be settled before the pixels: the project is published publicly and
+  asset licence is decided up front rather than retrofitted (one of the four standing
+  decisions). Valle d'Aosta and Piemonte both publish regional orthophotos, and the two
+  halves of the park are in different regions - which is already why the DEM resolution is
+  asymmetric.
+
+Everything else below was the state before that request, and none of it has been asked for:
 
 - **In the ice:** crevasses - noise bands running across the slope, and the term that pays
   up close, where the firn/live-ice split pays from a distance. A bergschrund shadow at the
@@ -33,6 +53,89 @@ none of it requested:
 
 Run the FAST suite before any publish - the user's standing rule - and expect 13 tests, about
 11 minutes.
+
+### DONE 2026-08-20: the two defects the white ice exposed, and neither was what it said
+
+Both were pre-existing and both were mis-attributed in the 2026-08-19 note that listed them.
+Recorded here because the *diagnoses* are the reusable part - the fixes are one line each.
+
+**1. Trees standing where there is no wood. The mask was innocent; `step()` was not.**
+
+The note guessed a coarse mip bleeding a wood across a boundary. It is not: the rule was
+
+    float exists = step( draw, wood );
+
+and `step(edge, x)` is **`x >= edge`**, so a slot whose own random draw is EXACTLY 0.0 grows
+a tree where the canopy mask reads 0.0 - which is anywhere. And exact zero is not rare here.
+`vegHash` was written to avoid `sin()` because world coordinates reach +/-42 km (the comment
+above it says so), but it still loses most of its range to float32 at that scale:
+`tools/dev/probe-treeline.mjs` measures **5,220 distinct values over the 16,997 slots inside
+the draw radius above the Gliairetta, nine of them exactly zero**, with the nearest wood
+**3.08 km** away. Nine conifers on a glacier, of which the user saw three.
+
+The fix is the exclusive form, `1.0 - step( wood, draw )`. On screen, the two conifers in the
+frame go and nothing else in it moves (`treeline-before.png` / `treeline-after.png`).
+
+**The same defect was in `src/groundcover.js`**, `step( coverHash( coverCell ), mine )`, and
+worse: `mine` carries the `(1.0 - onIce)` factor, so a zero hash puts a blade of grass or a
+scree cone ON THE GLACIER. That is the same class the ice was cleared of on 2026-08-19 by
+making the shader ask the ice mask - this was the leak that survived it, because it never
+consulted the mask at all.
+
+**Two false starts worth not repeating.** The CPU replication that found it first reported
+**zero trees drawn**, which is precisely what a clean glacier would report: `fast-png` does
+not unpack a depth-4 PNG (5,799,936 bytes for 11,599,872 pixels, two samples to a byte), so
+every sample past the first row was `undefined`, and NaN fails every comparison. And the
+comment written to explain the fix contained a BACKTICK, inside a GLSL block that is a JS
+template literal - the page died with `Unexpected identifier 'wood'`, which reads like a
+shader error and is not one. Both are now landmines (ARCHITECTURE §13.18, §13.19).
+
+**2. The tile skirt at eye height. It IS the skirt, and it was filling nothing.**
+
+The note called it "`SKIRT_DEPTH_M`'s curtain seen edge-on at a tile boundary", which is the
+right object and the wrong mechanism, and the difference is the whole fix.
+
+- `tools/dev/probe-skirt-ab.mjs` draws the same frame twice, with and without the skirt
+  INDICES - every tile geometry lists its 6,144 surface indices before its 768 skirt ones, so
+  a draw range is a free A/B with no reload and no rebuild. The pale quadrilateral goes, and
+  **the surface behind it is continuous**: there was no gap there.
+- A gap needs a T-junction, and a T-junction needs neighbours of different depths.
+  `tools/dev/probe-lod-neighbours.mjs` replays the quadtree at that camera: **268 tiles, 21
+  within a kilometre, every one of them depth 7.**
+
+So the comment on `SKIRT_DEPTH_M` was wrong where it mattered: *"invisible because it only
+ever shows through a gap it is filling."* A skirt is a vertical curtain hanging in open air
+under a sheet with nothing behind it. Wherever the line of sight passes below the surface at
+a border - across any hollow, which on a glacier is most of the way you walk - its face is in
+view, 150 m of it.
+
+**Shrinking it was measured and rejected before it was written.**
+`tools/dev/probe-skirt-depth.mjs` computes the sag a straight coarse edge leaves against the
+real surface, per level, over the whole heightfield:
+
+| depth | tile cell | worst sag | 99.99th |
+|---|---|---|---|
+| 7 | 20.5 m | 171.7 m | 47 m |
+| 5 | 81.9 m | 299.5 m | 128 m |
+| 3 | 327.7 m | 579.2 m | 372 m |
+| 0 | 2,621 m | 1,603.4 m | 1,604 m |
+
+150 m is not over-sized at the fine end - it is slightly SHORT - and it is short by an order
+of magnitude at the coarse end. So the answer is not a smaller curtain, it is **fewer of
+them**: a skirt is only ever needed where the depths differ.
+
+`splits()` is now one function shared by the descent and by a new `leafDepthAt()`, which
+walks the same rule down to a neighbour it never visits - so the two cannot drift apart. A
+tile whose four neighbours are all its own depth gets `SKIRT_MIN_M`, a 1 m hem (not zero: the
+shared edge is reached by two different arithmetic paths and float32 need not agree to the
+last bit). Measured: **the full curtain still goes on 56% of drawn tiles at eye height on the
+ice, 62% from 4,000 m and 74% from 8,000 m** - so the test is doing real work rather than
+switching everything off - and the three standing glacier vantages come back **identical to
+the pixel** against the 2026-08-19 build (mean |dR| 0.00, 0.03, 0.02).
+
+Fast suite 13/13, and `test-groundcover` and `test-height-tier` were run out of the fast set
+on purpose: this touched what both of them cover, which is the "esigenza di (pre) debug" case
+in the standing rule.
 
 ### The DEPTH topic is finished - do not reopen it
 
@@ -430,7 +533,11 @@ of the park is accepted rather than levelled down.
   was `snowCover()` reading 1.0 on a glaciated summit - true on the Gran Paradiso, false
   at 3,100 m under a clear sky. Both the shader-side cover and the CPU-placed edelweiss
   now ask the ice directly.
-- **Distant trees stand where there is no wood, and the ice made it obvious.** Measured
+- ~~**Distant trees stand where there is no wood.**~~ **DONE 2026-08-20**, and it was
+  not the LOD mip the entry below guessed - it was `step()`'s inclusive comparison against a
+  float32 hash that is sometimes exactly zero. See the 2026-08-20 entry at the top. The
+  original report, kept because its measurements were right even where its diagnosis was not:
+  **Distant trees stand where there is no wood, and the ice made it obvious.** Measured
   2026-08-19 from the firn basin above the Gliairetta (45.52233N, 7.05259E, 3,315 m): three
   conifers on the ice. They vanish when `vegetation-lod` alone is hidden, so they are the
   DISTANT tree layer; the canopy mask reads **zero over a 3.2 km square** around that camera
@@ -438,7 +545,10 @@ of the park is accepted rather than levelled down.
   LOD layer is placing trees off the mask - most likely sampling it at a coarse mip, which
   bleeds a wood a kilometre away across a boundary. Pre-existing, and invisible until the ice
   became a white surface to stand them on.
-- **A terrain tile skirt shows at eye height on the ice.** Same session, standing at
+- ~~**A terrain tile skirt shows at eye height on the ice.**~~ **DONE 2026-08-20** - the
+  skirt was real and it was filling nothing; skirts are now drawn only where a neighbour's
+  depth differs. The original report:
+  **A terrain tile skirt shows at eye height on the ice.** Same session, standing at
   45.51249N, 7.01452E (2,918 m): a hard-edged pale quadrilateral in the lower frame that
   survives ground cover off and water hidden, and **disappears when the camera lifts 25 m** -
   which is the signature of `SKIRT_DEPTH_M`'s curtain seen edge-on at a tile boundary. Also

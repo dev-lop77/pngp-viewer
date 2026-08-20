@@ -2219,4 +2219,38 @@ pointers say where.
     SwiftShader draws slower than 1 fps, and two shots were labelled with a haze
     they were not taken at. `tools/dev/probe-haze.mjs` waits for the uniform to
     change and then for three presented frames.
+16. **`step(edge, x)` is `x >= edge`, and a float32 hash CAN be exactly zero.**
+    `step(draw, wood)` was how both `vegetation.js` and `groundcover.js` decided
+    whether a slot holds anything - and it draws when the mask reads 0.0 and the
+    slot's own random draw is 0.0 too. That is not a freak: `vegHash` loses most of
+    its range to float32 at world coordinates of tens of kilometres - **5,220
+    distinct values over 16,997 slots, nine of them exactly zero** - so it happens
+    about once in two thousand slots, everywhere in the park. Nine conifers on a
+    glacier, and grass and scree on it too, since `mine` there carries the
+    `(1 - onIce)` factor. Write the exclusive form, `1.0 - step( wood, draw )`.
+    Measured by `tools/dev/probe-treeline.mjs`.
+17. **A skirt is NOT invisible, and "it only shows through the gap it fills" is
+    false.** A tile skirt is a vertical curtain hanging in open air under a sheet
+    with nothing behind it, so wherever the line of sight passes below the surface
+    at a tile border - across any hollow - its face is in view. `SKIRT_DEPTH_M` is
+    150 m, and the user found one at eye height on the Gliairetta. The gap it exists
+    for needs a T-JUNCTION, and there was none within a kilometre of that camera:
+    every tile there was the same depth. Skirt only where the neighbour's depth
+    differs (`leafDepthAt()`), and prove which term you are looking at by dropping
+    the skirt INDICES rather than by reasoning - the surface indices come first in
+    every tile geometry, so a draw range is a free A/B
+    (`tools/dev/probe-skirt-ab.mjs`, `probe-lod-neighbours.mjs`).
+18. **`fast-png` does not unpack sub-byte sample depths, and a bad decode looks like
+    the answer you wanted.** `forest.<hash>.png` is depth 4: 5,799,936 bytes for
+    11,599,872 pixels, two samples to a byte, high nibble first. Indexing it one
+    byte per pixel runs off the end of the array, `undefined` becomes `NaN`, and
+    every comparison against NaN is false - so the first run of a probe looking for
+    trees on bare ground reported **zero trees**, which is exactly what a clean
+    glacier would report. Assert the byte count against the pixel count before
+    reading a single sample.
+19. **No backticks inside the GLSL blocks.** Every shader in this project is a JS
+    template literal, so a backtick in a *comment* ends the string: the page dies
+    with `Unexpected identifier` naming a GLSL variable, which reads like a shader
+    error and is not one. `terrain.js` carries the warning inline and it still cost
+    a dev server serving a broken build (§13.14 for why that matters).
 
