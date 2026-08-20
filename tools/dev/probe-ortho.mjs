@@ -28,9 +28,11 @@ await page.waitForTimeout(3000);
 // Le Pont, from the project's own poi.json - trailhead, Valsavarenche, 1,949.6 m.
 const LE_PONT = { x: -11349.9, z: 12682.6 };
 const shots = [
-  { file: 'foot', lift: 1.7, heading: 262, pitch: -6 },
-  { file: 'air', lift: 250, heading: 262, pitch: -32 },
+  // 40 m up looking down 45 degrees: the vantage where the photograph reads best, so it is
+  // also the one where a drop in resolution shows first.
+  { file: 'air40', lift: 40, heading: 262, pitch: -45 },
 ];
+let lastNote = '';
 async function place(s) {
   return page.evaluate(({ LE_PONT, s }) => {
     const cam = window.__pngp.camera;
@@ -50,24 +52,30 @@ async function place(s) {
 
 await page.addStyleTag({ content: '#top-left,#nav-hud,#env-controls,#credits-box,#fps,#controls-hint,#poi-info,#look-diag,#audio-diag,#compass,#view-actions,#poi-search,.poi-label{display:none!important}' });
 
-for (const s of shots) {
-  const info = await place(s);
-  await page.waitForTimeout(4000);
-  await captureCanvas(page, `tools/dev/logs/ortho-${s.file}-off-${tag}.png`);
-  console.log(`${s.file}: ground ${info.ground} m, eye ${info.y} m - shot WITHOUT`);
-}
-
-// First press downloads and switches it on. The dev note is the receipt.
-await page.keyboard.press('o');
-await page.waitForFunction(() => /orthophoto x1/.test(document.getElementById('dev-note')?.textContent ?? ''), null, { timeout: 120000 });
-console.log('note:', await page.evaluate(() => document.getElementById('dev-note')?.textContent));
-await page.addStyleTag({ content: '#dev-note{display:none!important}' });
-
-for (const s of shots) {
-  await place(s);
-  await page.waitForTimeout(4000);
-  await captureCanvas(page, `tools/dev/logs/ortho-${s.file}-on-${tag}.png`);
-  console.log(`${s.file}: shot WITH`);
+// The LADDER. Press 'O' once per level - finest first, then off - and shoot each, so the
+// three resolutions and the bare satellite are four frames of ONE scene rather than four
+// runs that also differ in the light, the animals and the gust (docs/PROGRESS-ARCHIVE.md
+// 2026-08-10: "a separate render is not the same scene").
+for (let step = 0; step < 4; step++) {
+  await page.keyboard.press('o');
+  await page.waitForFunction(
+    (n) => {
+      const t = document.getElementById('dev-note')?.textContent ?? '';
+      return /m\/px|OFF/.test(t) && !/loading/.test(t) && t !== n;
+    },
+    lastNote,
+    { timeout: 120000 },
+  );
+  lastNote = await page.evaluate(() => document.getElementById('dev-note')?.textContent ?? '');
+  const label = /OFF/.test(lastNote) ? 'off' : lastNote.match(/orthophoto ([\d.]+) m/)[1].replace('.', '');
+  console.log(`  ${lastNote}`);
+  await page.addStyleTag({ content: '#dev-note{display:none!important}' });
+  for (const s of shots) {
+    await place(s);
+    await page.waitForTimeout(4000);
+    await captureCanvas(page, `tools/dev/logs/ortho-${s.file}-${label}-${tag}.png`);
+  }
+  await page.evaluate(() => { const n = document.getElementById('dev-note'); if (n) n.style.display = ''; });
 }
 if (problems.length) console.log(`\n${problems.length} problem(s):\n  ${problems.join('\n  ')}`);
 await browser.close();

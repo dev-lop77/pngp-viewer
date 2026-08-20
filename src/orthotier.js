@@ -104,13 +104,30 @@ export function orthoGlsl() {
   `;
 }
 
-// Fetch the manifest and the image, and place the rectangle in local scene metres. Returns
-// the manifest, or null if there is nothing published - a viewer without a clip must keep
-// working, since this is the optional half of the ground.
-export async function loadOrtho(dataUrl = `${import.meta.env.BASE_URL}data`, localOrigin) {
-  const manifest = await fetch(`${dataUrl}/ortho.json`).then((r) => (r.ok ? r.json() : null));
-  if (!manifest) return null;
-  const texture = await new THREE.TextureLoader().loadAsync(`${dataUrl}/${manifest.file.name}`);
+// One texture per level, kept once fetched. Switching resolution back and forth to compare
+// them must not re-download: that is exactly what the height tier learned (src/terrain.js,
+// "a knob that costs 25 MB every time it is touched is a knob people learn not to touch"),
+// and here the whole point of having three levels is to flip between them.
+const cache = new Map();
+let manifestPromise = null;
+
+// Fetch the manifest and one level's image, and place the rectangle in local scene metres.
+// Returns { manifest, level }, or null if there is nothing published - a viewer without a
+// clip must keep working, since this is the optional half of the ground.
+//
+// levelIndex follows the manifest's own order, which is COARSEST FIRST.
+export async function loadOrtho(dataUrl = `${import.meta.env.BASE_URL}data`, localOrigin, levelIndex = -1) {
+  manifestPromise = manifestPromise ?? fetch(`${dataUrl}/ortho.json`).then((r) => (r.ok ? r.json() : null));
+  const manifest = await manifestPromise;
+  if (!manifest?.levels?.length) return null;
+  const index = levelIndex < 0 ? manifest.levels.length - 1 : Math.min(levelIndex, manifest.levels.length - 1);
+  const level = manifest.levels[index];
+  if (cache.has(level.file.name)) {
+    ORTHO.value = cache.get(level.file.name);
+    placeRect(manifest, localOrigin);
+    return { manifest, level, index };
+  }
+  const texture = await new THREE.TextureLoader().loadAsync(`${dataUrl}/${level.file.name}`);
   // A photograph, so sRGB - three undoes the transfer and the shader samples linear.
   texture.colorSpace = THREE.SRGBColorSpace;
   // ClampToEdge, because orthoAmount() has already faded to nothing before the border: any
@@ -122,10 +139,16 @@ export async function loadOrtho(dataUrl = `${import.meta.env.BASE_URL}data`, loc
   texture.generateMipmaps = true;
   texture.anisotropy = 8; // the ground is seen at a grazing angle almost everywhere
   texture.needsUpdate = true;
+  cache.set(level.file.name, texture);
   ORTHO.value = texture;
+  placeRect(manifest, localOrigin);
+  return { manifest, level, index };
+}
 
-  // World (EPSG:23032) -> local scene metres, the one conversion in §6: X = E - originX,
-  // Z = originY - N. So the rectangle's local zMin comes from its NORTH edge.
+// World (EPSG:23032) -> local scene metres, the one conversion in ARCHITECTURE §6:
+// X = E - originX, Z = originY - N. So the rectangle's local zMin comes from its NORTH edge.
+// Every level covers the same ground, so this is the same rectangle for all of them.
+function placeRect(manifest, localOrigin) {
   const b = manifest.bboxCrsUnits;
   ORTHO_RECT.value.set(
     b.xmin - localOrigin.x,
@@ -133,5 +156,4 @@ export async function loadOrtho(dataUrl = `${import.meta.env.BASE_URL}data`, loc
     b.xmax - b.xmin,
     b.ymax - b.ymin,
   );
-  return manifest;
 }

@@ -142,6 +142,44 @@ then lit again by the app's own sun. It is obvious in the plan view (`oiso-plan.
 has been done about it yet; `tools/dev/solve-albedo.mjs` is the tool that de-shaded the
 Sentinel-2 basemap and the same treatment is what this needs.
 
+**2026-08-20, THREE RESOLUTIONS, and the brightness is approved.** *"La luminosita' mi sembra
+ok. Pero' vorrei vedere anche una prova con una risoluzione minore, sia a 1m/px che a
+2m/px."* So `ORTHO_SCALE` stays at the measured 1.54, and `ortho.json` is now a **levels[]**
+manifest - coarsest first, the same convention `basemap.json` and `heighttier.json` use. Each
+level is resampled **from the 20 cm original**, not from the level above it, so none of them
+carries another level's blur.
+
+| m/px | pixels | this clip | whole park (710 km2) | one valley (100 km2) |
+|---|---|---|---|---|
+| 2 | 1,020 | **0.24 MB** | 41 MB | 6 MB |
+| 1 | 2,040 | **0.89 MB** | 151 MB | 21 MB |
+| 0.5 | 4,080 | **2.92 MB** | 498 MB | 70 MB |
+
+Bytes per pixel RISES as the resolution coarsens - 0.175, 0.213, 0.232 - because averaging
+concentrates detail and leaves the encoder less redundancy to find. The total still falls
+fourfold per halving, which is what matters.
+
+**'O' now steps through them at one camera**: 0.5, then 1, then 2, then off, and back. One
+session and one scene, because two renders of "the same" view differ in the light, the animals
+and the gust as well (PROGRESS-ARCHIVE 2026-08-10). Each level downloads once and is kept - the
+height tier's own lesson, that a knob costing a download every time it is touched is a knob
+nobody touches.
+
+**What each level actually buys, measured** at 40 m over Le Pont as the mean absolute Laplacian
+of the frame - detail, as something countable, which unlike contrast is not moved by exposure:
+
+| level | detail | gain over the satellite | contrast |
+|---|---|---|---|
+| off, the 10.24 m satellite | 2.20 | - | 15.3 |
+| 2 m/px | 3.06 | **+0.86 (51% of the total)** | 26.2 |
+| 1 m/px | 3.36 | +1.16 (69%) | 29.6 |
+| 0.5 m/px | 3.88 | +1.68 (100%) | 31.5 |
+
+So **the first step is the one that pays**: 2 m/px buys half the improvement for **8% of the
+bytes**, and 0.5 m costs 12x more than 2 m for twice the gain. Read those ratios as a floor
+rather than the truth, though: the ground cover's sprites contribute the same high-frequency
+energy to all four frames, so the photograph's own share is larger than the numbers show.
+
 **2026-08-20, they chose the route: HOST A CLIP OURSELVES**, as an optional on-demand tier
 rather than weight in the first load - the same arrangement the 5 m terrain tier already has.
 It is the only route with a clean licence AND the native CRS, and the reconnaissance was
@@ -196,8 +234,34 @@ Everything else below was the state before that request, and none of it has been
 - **The refuge has no High level of its own.** The tricolour on the bivouac is the only thing
   the Models control adds today.
 
-Run the FAST suite before any publish - the user's standing rule - and expect 13 tests, about
+Run the FAST suite before any publish - the user's standing rule - and expect 14 tests, about
 11 minutes.
+
+### DONE 2026-08-20: a black screen that said nothing
+
+The user opened the viewer, saw black, and sent the console: Firefox had lost its GL driver
+(`FEATURE_FAILURE_EGL_NO_CONFIG`, "Exhausted GL driver options"). Restarting the browser fixed
+it - but the first thing the silence cost was the assumption that the change under test had
+broken something, and the second was my own time proving it had not.
+
+**A black screen is the one failure this app could have that said nothing at all.** Everything
+else degrades and announces it: no tier, no satellite, no orthophoto, no audio. So
+`new THREE.WebGLRenderer()` is now wrapped, and a failure paints a message over the page:
+what is needed (WebGL 2), what usually causes it, that restarting the browser fixes it more
+often than anything else, and the reason in a box you can copy.
+
+**Getting the REASON took a second look.** three throws `Error creating WebGL context.` and
+stops there - the useful text is on a `webglcontextcreationerror` event that nobody listens
+for. So `webglFailureReason()` asks for a context on a canvas of its own purely to catch that
+string. With a plain WebGL2 context obtainable it says so instead, because then the failure is
+in what the renderer asked for ON TOP (antialias, logarithmic depth buffer) and that is a
+different hunt.
+
+`tools/test-nowebgl.mjs` is in the fast suite and costs **1 second**, because nothing renders:
+Chromium is launched with the 3D APIs disabled and the test asserts the page SAYS so - a box
+really on screen, opaque, naming WebGL, and carrying the browser's own reason. The message is
+styled inline on purpose; a stylesheet is one more thing that can be missing on the day
+something has already gone wrong.
 
 ### DONE 2026-08-20: the two defects the white ice exposed, and neither was what it said
 

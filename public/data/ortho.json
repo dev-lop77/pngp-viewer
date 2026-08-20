@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 1,
-  "purpose": "OPTIONAL high-resolution ground photograph over one rectangle, drawn only near the camera. Not part of the first load: nothing fetches this until the viewer asks for it.",
+  "schemaVersion": 2,
+  "purpose": "OPTIONAL high-resolution ground photograph over one rectangle, drawn only near the camera. Not part of the first load: nothing fetches this until the viewer asks.",
   "crs": "EPSG:23032",
   "note": "Same CRS as heightfield.json, because the source is published in it - so there is no reprojection anywhere in this path and none of the 215 m ED50/WGS84 datum shift.",
   "bboxCrsUnits": {
@@ -9,20 +9,55 @@
     "xmax": 360020.3119431024,
     "ymax": 5044019.371613291
   },
-  "resolutionMPerPx": {
-    "x": 0.5,
-    "y": 0.5
-  },
-  "dimensions": {
-    "width": 4080,
-    "height": 4080
-  },
   "place": "Le Pont, Valsavarenche - 2.04 x 2.04 km",
-  "file": {
-    "name": "ortho.ff59f56a.webp",
-    "bytes": 2917692,
-    "sha256Prefix": "ff59f56a"
-  },
+  "levels": [
+    {
+      "resolutionMPerPx": {
+        "x": 2,
+        "y": 2
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "ortho-2.f972e8ad.webp",
+        "bytes": 241742,
+        "sha256Prefix": "f972e8ad"
+      }
+    },
+    {
+      "resolutionMPerPx": {
+        "x": 1,
+        "y": 1
+      },
+      "dimensions": {
+        "width": 2040,
+        "height": 2040
+      },
+      "file": {
+        "name": "ortho-1.bc3e2dd4.webp",
+        "bytes": 887422,
+        "sha256Prefix": "bc3e2dd4"
+      }
+    },
+    {
+      "resolutionMPerPx": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "dimensions": {
+        "width": 4080,
+        "height": 4080
+      },
+      "file": {
+        "name": "ortho-05.ff59f56a.webp",
+        "bytes": 2917692,
+        "sha256Prefix": "ff59f56a"
+      }
+    }
+  ],
+  "levelOrder": "coarsest first, like basemap.json and heighttier.json - so a viewer that walks the list forwards and stops when it has had enough lands on the coarsest affordable one.",
   "source": {
     "name": "Regione Autonoma Valle d'Aosta - Ortofoto 2024",
     "attribution": "Ortofoto 2024 (c) Regione Autonoma Valle d'Aosta",
@@ -30,7 +65,7 @@
     "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
     "licenseVerifiedVia": "https://sct-outil.regione.vda.it/SCTProfessional/static/pdf/CC_BY_Ortofoto_2024.pdf, shipped inside the sheet's own zip",
     "sheet": "ORTO2024_ED50_005_5943 (1:5.000 element, 2.04 x 2.04 km, GSD 20 cm, RGBI, Leica DMC4, flown 21/08-02/11/2024)",
-    "modifications": "Derived product: resampled 20 cm -> 50 cm by averaging, alpha band dropped, encoded WebP q75."
+    "modifications": "Derived product: EACH level resampled from the 20 cm original by averaging (not from the level above it), alpha band dropped, encoded WebP q75."
   },
-  "generatedBy": "gdal_translate -b 1 -b 2 -b 3 -tr 0.5 0.5 -r average, then -of WEBP -co QUALITY=75"
+  "generatedBy": "gdal_translate -b 1 -b 2 -b 3 -tr <res> <res> -r average, then -of WEBP -co QUALITY=75"
 }

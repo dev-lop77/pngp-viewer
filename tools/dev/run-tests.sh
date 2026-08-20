@@ -9,7 +9,7 @@
 # WHY the suite is slow at all, since it is worth not misdiagnosing: headless Chromium
 # here is SwiftShader at about 1 frame per second, so every browser test pays for a
 # software rasteriser. The deliberate waitForTimeout calls add up to only ~2.5 min
-# across all 14, so trimming sleeps would not fix it.
+# across the suite, so trimming sleeps would not fix it.
 #
 # THE SPLIT IS MEASURED, NOT GUESSED, and guessing would have got it wrong: test-sky
 # has almost no deliberate waits and still takes six minutes, while test-groundcover's
@@ -36,7 +36,7 @@
 #
 # Usage:
 #   tools/dev/run-tests.sh              # fast subset (the default)
-#   tools/dev/run-tests.sh --all        # all 14
+#   tools/dev/run-tests.sh --all        # every test
 #   tools/dev/run-tests.sh --slow       # only the slow ones
 #   tools/dev/run-tests.sh test-sky     # any explicit list
 #

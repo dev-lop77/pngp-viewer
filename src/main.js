@@ -47,6 +47,58 @@ import {
 installAtmosphere(); // patch the fog chunks before any material compiles (phase 4, docs/ARCHITECTURE.md §7)
 installSkyAltitude(); // before `new Sky()` below - the constructor CLONES the uniforms, so a later addition never reaches the material (src/sky.js)
 
+// The only error this file reports to the SCREEN rather than to the console. Styled inline
+// on purpose: a stylesheet is one more thing that can be missing on the day something has
+// already gone wrong, and this has to work when nothing else does.
+function showFatal(headline, detail) {
+  const box = document.createElement('div');
+  box.id = 'fatal';
+  box.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;'
+    + 'justify-content:center;background:#12161c;color:#e8eaed;'
+    + 'font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:32px';
+  const inner = document.createElement('div');
+  inner.style.cssText = 'max-width:46em';
+  const h = document.createElement('p');
+  h.style.cssText = 'font-size:1.25em;font-weight:600;margin:0 0 .6em';
+  h.textContent = headline;
+  const p = document.createElement('p');
+  p.style.cssText = 'margin:0 0 1em;color:#aab2bd';
+  p.textContent = 'Hardware acceleration is usually the cause: it may be switched off, the'
+    + ' graphics driver may have failed, or the browser may be running without access to a'
+    + ' GPU. Restarting the browser fixes it more often than anything else.';
+  const pre = document.createElement('pre');
+  pre.style.cssText = 'margin:0;padding:.8em 1em;background:#0b0e12;border-radius:6px;'
+    + 'color:#8b94a3;font-size:.85em;white-space:pre-wrap;overflow:auto;max-height:12em';
+  pre.textContent = detail;
+  inner.append(h, p, pre);
+  box.append(inner);
+  document.body.append(box);
+}
+
+// The BROWSER'S own reason, which is the only actionable half and is not in the error three
+// throws - that one says "Error creating WebGL context." and stops. Firefox puts the useful
+// text on a `webglcontextcreationerror` event ("tryANGLE (FEATURE_FAILURE_EGL_NO_CONFIG)",
+// which is exactly what the user's console showed on 2026-08-20), and Chrome does the same.
+// So ask for a context here, on a canvas of our own, purely to catch that string.
+function webglFailureReason() {
+  const canvas = document.createElement('canvas');
+  let reason = '';
+  canvas.addEventListener('webglcontextcreationerror', (event) => { reason = event.statusMessage ?? ''; });
+  let gl = null;
+  try {
+    gl = canvas.getContext('webgl2');
+  } catch (probeError) {
+    reason = reason || String(probeError?.message ?? probeError);
+  }
+  if (gl) {
+    // Worth saying rather than hiding: a bare context CAN be made, so what failed is
+    // something the renderer asked for on top of it, and that is a different hunt.
+    return 'A plain WebGL 2 context can be created on this browser, so the failure is in what'
+      + ' the renderer asked for on top of it (antialias, or a logarithmic depth buffer).';
+  }
+  return reason || 'The browser gave no reason for the failure.';
+}
+
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x9fc9e8, 20000, 140000);
 
@@ -61,7 +113,26 @@ const camera = new THREE.PerspectiveCamera(
 );
 camera.position.set(0, 3000, 0); // placeholder - real spawn set once terrain+POI load, below
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+// WHY THIS IS WRAPPED. When a browser cannot give three a WebGL2 context, the constructor
+// throws, main.js stops on its first statement, and the page stays BLACK with the reason
+// only in the console - which is where nobody looks. That happened to the user on
+// 2026-08-20 ("Vedo tutto nero"), on a machine whose Firefox had lost its GL driver
+// (FEATURE_FAILURE_EGL_NO_CONFIG), and the first thing it cost was the assumption that the
+// change being tested had broken something.
+//
+// A black screen is the one failure this app can have that says nothing at all, so it is
+// worth the fifteen lines: everything else here degrades - no tier, no satellite, no
+// orthophoto, no audio - and says so.
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+} catch (error) {
+  showFatal(
+    'This viewer needs WebGL 2, and this browser could not start it.',
+    `${String(error?.message ?? error)}\n\n${webglFailureReason()}`,
+  );
+  throw error; // nothing below can run without a renderer, and the message is now on screen
+}
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1028,29 +1099,44 @@ if (import.meta.env.DEV) {
       + (GLACIER_MIX.value === 0 ? ' (off - this is the ground under the ice)' : '');
   });
 
-  // 'O' brings in the optional 0.5 m orthophoto over Le Pont (src/orthotier.js): first press
-  // downloads it, later presses cycle the mix so the same ground can be seen with and without
-  // it. On demand and nowhere else, because that is the whole proposition - the published
-  // first load must not know this file exists.
-  const ORTHO_STEPS = [1, 0.5, 0];
+  // 'O' steps through the optional orthophoto over Le Pont (src/orthotier.js): finest first,
+  // then coarser, then off - and back. Each press downloads that level once and keeps it, so
+  // the comparison the user asked for on 2026-08-20 ("vorrei vedere anche una prova con una
+  // risoluzione minore, sia a 1m/px che a 2m/px") is four keypresses at one camera, which is
+  // the only honest way to compare two looks: one session, one scene (docs/PROGRESS-ARCHIVE
+  // 2026-08-10, "a separate render is not the same scene").
+  //
+  // On demand and nowhere else, because that is the whole proposition - the published first
+  // load must not know these files exist.
   let orthoStep = -1;
-  let orthoManifest;
   window.addEventListener('keydown', async (e) => {
     if (e.code !== 'KeyO') return;
     if (isTypingTarget(document.activeElement)) return;
-    if (orthoManifest === undefined) {
-      devNoteEl.textContent = 'orthophoto: downloading...';
-      orthoManifest = await loadOrtho(undefined, terrainSurface.manifest.localOrigin).catch(() => null);
-      if (!orthoManifest) { devNoteEl.textContent = 'orthophoto: nothing published'; return; }
+    // The manifest's levels are coarsest first, so walking it backwards is finest first.
+    // The extra step past the end is "off", which is what makes this a comparison.
+    orthoStep += 1;
+    devNoteEl.textContent = 'orthophoto: loading...';
+    const loaded = await loadOrtho(undefined, terrainSurface.manifest.localOrigin, -1).catch(() => null);
+    if (!loaded) { devNoteEl.textContent = 'orthophoto: nothing published'; return; }
+    const count = loaded.manifest.levels.length;
+    if (orthoStep >= count) { // off
+      orthoStep = -1;
+      ORTHO_MIX.value = 0;
+      devNoteEl.textContent = 'orthophoto OFF - this is the 10.24 m satellite alone';
+      return;
     }
-    orthoStep = (orthoStep + 1) % ORTHO_STEPS.length;
-    ORTHO_MIX.value = ORTHO_STEPS[orthoStep];
-    const r = ORTHO_RECT.value;
-    const d = Math.hypot(camera.position.x - (r.x + r.z / 2), camera.position.z - (r.y + r.w / 2));
-    devNoteEl.textContent = `orthophoto x${ORTHO_MIX.value} \u00b7 ${orthoManifest.place}`
-      + ` \u00b7 ${orthoManifest.resolutionMPerPx.x} m/px \u00b7 ${(orthoManifest.file.bytes / 1e6).toFixed(1)} MB`
-      + ` \u00b7 ${(d / 1000).toFixed(1)} km from its centre`
-      + ` \u00b7 fades ${ORTHO_NEAR_M.value}-${ORTHO_FAR_M.value} m`;
+    const wanted = count - 1 - orthoStep; // finest first
+    const now = await loadOrtho(undefined, terrainSurface.manifest.localOrigin, wanted).catch(() => null);
+    if (!now) { devNoteEl.textContent = 'orthophoto: that level failed to load'; return; }
+    ORTHO_MIX.value = 1;
+    const res = now.level.resolutionMPerPx.x;
+    const mb = now.level.file.bytes / 1e6;
+    // What this level would cost over real ground, since that is the decision behind the
+    // look: the clip is 2.04 x 2.04 km = 4.162 km2, and the park is 710 km2.
+    const park = (mb * 710) / 4.162;
+    devNoteEl.textContent = `orthophoto ${res} m/px \u00b7 ${now.level.dimensions.width}px`
+      + ` \u00b7 ${mb.toFixed(2)} MB here \u00b7 ~${Math.round(park)} MB for the whole park`
+      + ` \u00b7 ${now.manifest.place} \u00b7 press O again for the next level`;
   });
 
   const HAZE_STEPS = [0.6, 1, 1.5, 2.2, 3];

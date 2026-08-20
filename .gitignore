@@ -59,4 +59,7 @@ tools/ortho-source/
 # The MANIFEST stays tracked: it is 1.6 kB, it carries the licence and the attribution, and
 # it is what says which clip a build expects. If a clip is ever settled on and shipped, this
 # line is the one to delete.
-public/data/ortho.*.webp
+# A pattern loose enough to survive a rename, which the first version was not: it read
+# `ortho.*.webp` and the levels are named `ortho-05.<hash>.webp`, so renaming them silently
+# un-ignored all three. Caught by looking, one commit before it mattered.
+public/data/ortho*.webp
