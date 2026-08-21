@@ -16,6 +16,28 @@ scattered through it were promoted into ARCHITECTURE §13 first, so that the one
 part of the log you needed *before* making a mistake is no longer in a file you
 open *after*.
 
+## RELEASED 2026-08-21: **1.0.0**, the first official public version.
+
+The user's call at the end of the day, with the orthophoto published and extended and the
+credits fixed. Tagged `v1.0.0`, live and verified against the site itself: **version 1.0.0,
+8/8 attributions, switch on, nine sheets all 200, no page errors**, fast suite 14/14.
+
+**From here on, every change carries a `CHANGELOG.md` entry and moves the version.** That is
+part of finishing the work, not a release chore. The rules are in ARCHITECTURE §9 - one source
+of truth (`package.json`), the entry written in the same commit as the change, and
+`tools/verify.mjs` failing a publish where the page and `package.json` disagree. Semantic
+versioning read for a viewer: major for a change to what it is, minor for a new layer, control
+or data source, patch for fixes and data corrections.
+
+The name and version show above the search box, plain text with a black halo rather than a
+pill - the user's preference, *"fa lo stesso se si perde un po'"*. Legible over pale sky,
+which in that corner is the brightest background there is.
+
+`CHANGELOG.md` states the three known limitations rather than burying them: the photograph is
+not de-shaded, it has no near fade, and its coverage ends at the regional border. It lives on
+`main` only; publishing it would mean widening `deploy.sh`'s whitelist and that is the user's
+call to make.
+
 ## 2026-08-21, after the extension: the orthophoto had no credit line, and now it does.
 
 The user asked whether the README and the credits were up to date. The README was stale in a
