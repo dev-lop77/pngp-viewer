@@ -16,7 +16,7 @@ scattered through it were promoted into ARCHITECTURE §13 first, so that the one
 part of the log you needed *before* making a mistake is no longer in a file you
 open *after*.
 
-## NEXT SESSION: the mosaic is BUILT and verified, and NOT YET PUBLISHED.
+## PUBLISHED 2026-08-21: the 2 m orthophoto mosaic, 129 sheets over the park's VdA side.
 
 `node tools/build-ortho.mjs --sheets=tools/dev/logs/ortho-sheets.json --res=2` ran on
 2026-08-21: **129 sheets, 22.16 MB shipped, 38.1 GB fetched and deleted, no sheet skipped**,
@@ -44,7 +44,22 @@ ARCHITECTURE §13.20 and §13.21 for the full statement:
 
 **Both open questions were decided by the user on 2026-08-21, so do not reopen either:**
 **publish as it is, with the shadow debt on the record**, and **the 22 MB stays gitignored**
-(after a deploy the gh-pages branch holds all 129 sheets, which is the off-machine copy).
+(the gh-pages branch now holds all 129 sheets, which is the off-machine copy).
+
+**It is live.** Checked against the site itself, not the build: all 129 sheets return 200
+(one 503 on the first sweep was rate limiting from 129 requests in a burst, and answered 200
+on retry), the licence PDF is served, and no build marker is - `.done-5943-2` is a 404, which
+is the right answer. Clicking the HUD switch on the published page turns the photograph on
+and fetches exactly the nine sheets of the block, all 200, with nothing fetched before the
+click. `tools/dev/logs/published-ortho-midday.png` is what it looks like at Le Pont at
+midday - and the dark band across the valley floor there is the flight's own shadow, drawn at
+noon. That is the debt, in one frame.
+
+**The publish check covers the switch again.** `tools/verify.mjs` now clicks `#env-ortho` and
+asserts three things: nothing fetched before the click (the whole premise is that it is
+opt-in), the switch stays on, and every sheet comes back 200. That closes the gap left when
+`test-ortho-viewstate` had to go in the slow list - the suite still has the deeper test, but
+a publish no longer goes out with the switch unexercised.
 
 Both viewstate tests were put on the record on 2026-08-21: `test-viewstate` PASS 357 s (slow
 because a mosaic build was running against it; the 167 s reference still stands) and
@@ -104,9 +119,6 @@ has all three); the switch lives in the HUD, in `localStorage` AND in shared lin
 - **The far edge is capped by the atlas, not by taste.** 1,700 m is all a 3x3 block can
   promise. A 5x5 is ~100 MB of video memory; a second coarser level for the far field is the
   usual answer and is not built.
-- **A publish check no longer covers the orthophoto's switch** - `test-ortho-viewstate` is
-  207 s and had to go in the slow list. That was fine while the switch was off by default and
-  unpublished; it stops being fine the moment this ships.
 - **Coverage ends in a hard line** at the regional border. The rectangle fade does not help
   there, because that edge is inside the atlas rather than at its rim. The mosaic is 13 rows
   deep, the widest 19 cells (38 km) and contiguous, so the line is long.
