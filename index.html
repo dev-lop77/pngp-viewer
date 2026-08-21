@@ -75,6 +75,25 @@
         gap: 8px;
         max-width: 20em;
       }
+      /* Plain text rather than a pill, at the user's request (2026-08-21): "preferirei
+         vederlo non come etichetta ma come testo normale, fa lo stesso se si perde un po'".
+         So it may sit over snow or bright rock with nothing behind it, and the halo is what
+         keeps it readable there - two shadows, a wide soft one for the glow and a tight one
+         for the edge, which holds up over both a white glacier and a dark wood. The left
+         padding is 10px to line the text up with the search box's text below it, not with
+         the box's edge. */
+      #app-id {
+        align-self: flex-start;
+        padding: 0 2px 0 10px;
+        color: rgba(255, 255, 255, 0.92);
+        font: 11px/1.4 -apple-system, system-ui, sans-serif;
+        letter-spacing: 0.02em;
+        text-shadow: 0 0 5px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.95);
+        user-select: none;
+      }
+      #app-version {
+        color: rgba(255, 255, 255, 0.65);
+      }
       #poi-search input {
         width: 100%;
         box-sizing: border-box;
@@ -369,7 +388,7 @@
         text-align: center;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-B0Rpd80n.js"></script>
+    <script type="module" crossorigin src="./assets/index-DpWgj4Q2.js"></script>
   </head>
   <body>
     <div id="credits-box">
@@ -377,6 +396,12 @@
       <div id="credits" hidden></div>
     </div>
     <div id="top-left">
+      <!-- Name and version, above the search box at the user's request (2026-08-21, the
+           1.0.0 release). A label, not a control: it deliberately has no hover state and no
+           pointer cursor, because everything else in this corner is clickable and a pill that
+           looks like a button but does nothing is worse than no pill. The version text is
+           written by main.js from __APP_VERSION__, which the build takes from package.json. -->
+      <div id="app-id">PNGP Viewer <span id="app-version"></span></div>
       <div id="poi-search">
         <input type="text" id="poi-search-input" list="poi-search-list" placeholder="Search for a place…" autocomplete="off" />
         <datalist id="poi-search-list"></datalist>
