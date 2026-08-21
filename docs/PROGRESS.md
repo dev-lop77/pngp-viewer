@@ -42,22 +42,21 @@ ARCHITECTURE §13.20 and §13.21 for the full statement:
 3. `build-ortho.mjs` trusted a "done" marker whose output the prune step had deleted - three
    sheets were in the manifest and not on disk, which would have been three 404s on the site.
 
-**Still to do, in order:** decide what to do about the baked shadows (below), decide whether
-the 22 MB goes into git (below), then publish with `tools/dev/deploy.sh`, then
-`node tools/verify.mjs <site>`. Nothing is published yet.
+**Both open questions were decided by the user on 2026-08-21, so do not reopen either:**
+**publish as it is, with the shadow debt on the record**, and **the 22 MB stays gitignored**
+(after a deploy the gh-pages branch holds all 129 sheets, which is the off-machine copy).
 
 Both viewstate tests were put on the record on 2026-08-21: `test-viewstate` PASS 357 s (slow
 because a mosaic build was running against it; the 167 s reference still stands) and
 `test-ortho-viewstate` PASS 201 s. The standing note about a stale FAIL in `test-times.tsv`
 is retired.
 
-**THE ONE OPEN DECISION: the 22 MB is gitignored.** `.gitignore` says the clips are ignored
-because they were "a TRIAL", and that "if a clip is ever settled on and shipped, this line is
-the one to delete". It is now settled and about to ship, so the line is due either way:
-delete it and the mosaic is permanent repository weight (the .bin purge of 2026-08-17 is what
-that costs to undo), keep it and the only off-machine copy is the gh-pages branch itself,
-which after a deploy does hold all 129 files. Rebuilding from scratch is 38 GB of the
-Region's bandwidth and ~1h50.
+**The 22 MB stays gitignored** (decided 2026-08-21). `.gitignore` used to say the clips were
+ignored because they were "a TRIAL" and that the line was due for deletion once a clip was
+settled and shipped. It is settled and shipping, and the answer is still to keep it ignored:
+the deployed gh-pages branch holds all 129 sheets, so an off-machine copy exists without
+putting permanent weight in the history - and the .bin purge of 2026-08-17 is what undoing
+that costs. Rebuilding from scratch is 38 GB of the Region's bandwidth and ~1h50.
 
 **THE FINDING THAT MATTERS MOST, and it came from the user's own remark** (2026-08-21,
 *"alcune parti blu a volte potrebbe essere il terreno roccioso in ombra, esaltato dalle
@@ -67,6 +66,12 @@ DEM. ARCHITECTURE §5 already records what that costs, for the Sentinel basemap:
 every north face would be dark twice and every sunset would have the shadows pointing
 south-east". The basemap is de-shaded; the photograph that overlays it is not, so the ground
 changes contract across the 900-1,700 m fade.
+
+**The user's decision (2026-08-21): ship it as it is and keep the debt on the record.** The
+brightness had already been approved while looking at these very sheets, and the two ways
+forward both cost more than they are worth right now - a render-side heuristic (lean back on
+the de-shaded basemap wherever the photograph is much darker than it) is cheap but not
+physically true, and a real de-shading needs a sun estimate this data will not reliably give.
 
 Measured, not argued (`tools/dev/probe-ortho-source.mjs`, `probe-ortho-sun.mjs`):
 - **13.79%** of one block's ground is in shadow (L<64) in the source itself.

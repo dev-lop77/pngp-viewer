@@ -55,11 +55,12 @@ tools/ortho-source/
 # out of a history that can never give the megabytes back - resolution and extent were what
 # was being decided, and that lesson was paid for once already with the .bin files above.
 #
-# THAT IS NO LONGER WHY IT IS HERE. The mosaic was settled on 2026-08-21 - 129 sheets at
-# 2 m/px, 22.16 MB - so this line is now a live decision rather than a holding position, and
-# docs/PROGRESS.md states it: permanent repository weight on one side, and on the other an
-# off-machine copy that exists only as the deployed gh-pages branch, with a rebuild costing
-# 38 GB of the Region's bandwidth and about two hours.
+# THAT IS NO LONGER WHY IT IS HERE. The mosaic was settled and shipped on 2026-08-21 - 129
+# sheets at 2 m/px, 22.16 MB - and the user's decision that day was to KEEP it ignored anyway:
+# the deployed gh-pages branch carries all 129 sheets, so a copy exists off this machine
+# without putting permanent weight in a history that can never give it back. Rebuilding from
+# scratch is 38 GB of the Region's bandwidth and about two hours, which is the cost of being
+# wrong about that.
 #
 # The MANIFEST stays tracked either way: 56 kB for 129 sheets, and it carries the licence,
 # the attribution and the grid the atlas places itself from.
