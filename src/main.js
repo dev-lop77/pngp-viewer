@@ -201,6 +201,11 @@ let weather = null; // created once loadTerrain() gives us the real bbox to size
 // Attribution lives behind a toggle (index.html explains why that's compatible
 // with CC BY / ODbL). The panel is built the same way either way - collapsing
 // is purely presentational, so nothing here depends on it being open.
+// The version the user sees. __APP_VERSION__ is replaced at build time from package.json
+// (vite.config.js), so there is exactly one place to change it and no way for the HUD to
+// disagree with the CHANGELOG. In `vite dev` the define applies too, so this is never blank.
+document.getElementById('app-version').textContent = `v${__APP_VERSION__}`;
+
 const creditsToggle = document.getElementById('credits-toggle');
 const creditsPanel = document.getElementById('credits');
 function setCreditsOpen(open) {

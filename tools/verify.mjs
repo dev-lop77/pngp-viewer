@@ -19,6 +19,7 @@
 //
 // Usage: node tools/verify.mjs [url]  (default http://localhost:5173)
 
+import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const url = process.argv[2] ?? 'http://localhost:5173';
@@ -57,6 +58,16 @@ const glInfo = await page.evaluate(() => {
   if (!gl) return { error: 'no webgl context' };
   return { contextType: canvas.getContext('webgl2') ? 'webgl2' : 'webgl', isContextLost: gl.isContextLost() };
 });
+
+// THE VERSION IN THE HUD MUST BE THE VERSION IN package.json. The build injects it, so they
+// can only diverge if a stale bundle is being served - which is exactly the case that is hard
+// to see by looking, and which cost a wrong diagnosis on 2026-08-21 when a CDN served the
+// previous build and its missing credit line read as a code bug.
+const expectedVersion = JSON.parse(readFileSync('package.json', 'utf8')).version;
+const shownVersion = (await page.textContent('#app-version').catch(() => null))?.replace(/^v/, '');
+if (shownVersion !== expectedVersion) {
+  problems.push(`[version] the page shows ${shownVersion ?? 'nothing'}, package.json says ${expectedVersion}`);
+}
 
 // THE CREDITS, checked because attribution is a LICENCE OBLIGATION and not a courtesy. Four
 // of this project's sources require specific wording, one of them requires a liability
@@ -115,6 +126,7 @@ await page.screenshot({ path: SCREENSHOT_FILE });
 await browser.close();
 
 console.log(`WebGL: ${JSON.stringify(glInfo)}`);
+console.log(`Version: ${shownVersion ?? 'not shown'} (package.json: ${expectedVersion})`);
 console.log(`Credits: ${credits}`);
 console.log(`Orthophoto: ${ortho}`);
 console.log(`Screenshot: ${SCREENSHOT_FILE}`);

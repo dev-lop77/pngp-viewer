@@ -2023,6 +2023,29 @@ later:
   restrictions worth reading closely before shipping publicly. Decide when
   we get to imagery draping, not blocking now.
 
+### Releases and versioning (from 1.0.0, 2026-08-21)
+
+The user's instruction on the day of the first public release: *"segniamo come prima versione
+pubblica ufficiale del progetto: 1.0.0. Da ora in poi dovrai mantenere un CHANGELOG delle
+eventuali modifiche e correzioni e manterrai aggiornata la versione di conseguenza."* So this
+is now part of finishing a change, not a separate chore:
+
+1. **`package.json`'s `version` is the only place the number lives.** `vite.config.js` reads
+   it and defines `__APP_VERSION__`; `main.js` writes that into `#app-version` above the
+   search box. Never type the number anywhere else — a version in two files is a version that
+   will disagree with itself, and the copy the user sees would be the wrong one.
+2. **`CHANGELOG.md` gets an entry in the same commit as the change**, not at release time.
+   Keep a Changelog format, newest first. Semantic versioning read for a viewer: **major** for
+   a change to what the thing is, **minor** for a new layer, control or data source, **patch**
+   for fixes and data corrections that change nothing about how it is used. A data rebuild
+   that adds coverage is minor; one that only corrects existing sheets is patch.
+3. **`tools/verify.mjs` refuses a publish where the page and `package.json` disagree.** That
+   is not ceremony: a CDN serving a stale bundle looks exactly like a code fault (§13.25), and
+   the version string is the cheapest way to tell the two apart.
+4. The changelog stays on `main` and is **not** copied to the site, which still publishes only
+   `dist/` plus `.nojekyll` and `README.md` (the 2026-08-03 decision). Publishing it would
+   mean widening `deploy.sh`'s whitelist, which is the user's call and has not been asked for.
+
 ## 10. Performance & fluidity principles
 
 **Standing principle (2026-07-28)**: smoothness and navigability of the
