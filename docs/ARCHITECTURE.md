@@ -2314,3 +2314,16 @@ pointers say where.
     read one sentence would undo the point of the layer being optional.
     `tools/verify.mjs` now asserts eight required attribution strings against the
     rendered panel, which is the only place that can catch the next one.
+25. **A failed post-deploy check may be the CDN and not the build, and the way to
+    tell is the bundle hash.** On 2026-08-21, minutes after a 62 MB push, GitHub
+    Pages answered 503 for the big assets: `heightfield.<hash>.bin` came back as a
+    **54,887-byte error page instead of 23,199,744 bytes**, the terrain never
+    loaded, and everything downstream failed - the DEM attributions vanished from
+    the credits (they arrive with that manifest), the atlas could not place itself
+    so no sheet was fetched, and the console filled with `Cannot read properties of
+    undefined`. Read as a code failure it is a catastrophe; it was throttling, and
+    it cleared on its own. What separated the two in one command was comparing the
+    **served** `assets/index-*.js` name against the one in `dist/` - identical, so
+    the deploy was right - and then re-requesting the big file until it came back
+    at full size. Hammering the site is what earns this: 832 HEAD requests over the
+    sheets plus several full verify runs in a few minutes.

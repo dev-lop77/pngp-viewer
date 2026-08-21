@@ -25,6 +25,12 @@ the site was redistributing. Fixed, and made checkable: `tools/verify.mjs` now o
 panel and asserts eight required attribution strings, so the next layer that forgets one
 fails a publish check instead of shipping. See ARCHITECTURE §13.24.
 
+Verified on the published site: **8/8 attributions, switch on, nine sheets, all 200, no page
+errors.** It took two attempts, and the first failure is worth knowing about - Pages answered
+503 for the big assets minutes after the push, the heightfield came back as a 54 kB error page
+instead of 23 MB, and the whole scene failed in a way that reads exactly like broken code.
+The served bundle hash matched `dist/` exactly, which is what said "CDN, not build". §13.25.
+
 The README was corrected against the data files rather than from memory, which is the only
 reason the scale of the drift showed. It had said 4096 x 2355 samples over 84 x 48 km (it is
 4096 x 2832 over 84 x 58), 73 trails (116), 426 places (708), 198 lakes (263), 47 glaciers
