@@ -24,7 +24,7 @@
 //   node tools/build-ortho.mjs --sheets=tools/dev/logs/ortho-sheets.json   # the whole list
 //   node tools/build-ortho.mjs --at=... --rings=1 --res=2 --quality=75
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, rmSync, statSync, copyFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, rmSync, renameSync, statSync, copyFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import proj4 from 'proj4';
@@ -40,6 +40,11 @@ const RES = Number(flags.get('res') ?? 2);
 const QUALITY = Number(flags.get('quality') ?? 75);
 const WORK = 'tools/ortho-source';
 const OUT = 'public/data/ortho';
+// "Already built" markers. They used to live in OUT, beside the sheets, which put them in
+// public/ - and everything in public/ is copied into dist/ and published, so a full run would
+// have put 129 empty build markers on the website. They are build state, so they belong with
+// the build's scratch directory, which is not shipped and not in git.
+const STAMPS = `${WORK}/.stamps`;
 
 // THE SHEETS ARE 2,040 m WIDE AND 2,000 m APART. They overlap by 20 m on every side, which
 // is ordinary in an orthophoto delivery and was not ordinary in my first assumption: taking
@@ -104,6 +109,7 @@ wanted = [...new Set(wanted)];
 console.log(`${wanted.length} sheet(s) to build at ${RES} m/px, WebP q${QUALITY}\n`);
 
 mkdirSync(WORK, { recursive: true });
+mkdirSync(STAMPS, { recursive: true });
 mkdirSync(OUT, { recursive: true });
 
 const built = [];
@@ -113,11 +119,26 @@ for (const t of wanted) {
   const tif = `${WORK}/ORTO2024_ED50_005_${t}.TIF`;
   const tfw = `${WORK}/ORTO2024_ED50_005_${t}.TFW`;
   const outTif = `${WORK}/o-${t}-${RES}m.tif`;
-  const stamp = `${OUT}/.done-${t}-${RES}`;
+  const stamp = `${STAMPS}/${t}-${RES}.json`;
+  // Move a marker left by a run from before they were relocated, rather than re-downloading
+  // 200 MB to learn something already on disk.
+  const legacy = `${OUT}/.done-${t}-${RES}`;
+  if (!existsSync(stamp) && existsSync(legacy)) renameSync(legacy, stamp);
+  // A STAMP IS ONLY GOOD IF THE FILE IT NAMES IS STILL THERE, and once it was not: the prune
+  // below deletes whatever the current manifest does not name, and a run over a SUBSET names
+  // only that subset - so a partial run silently deleted three sheets' WebPs and left their
+  // stamps behind. The next full run then reported "already built" for three files that did
+  // not exist, wrote them into the manifest, and the viewer would have got three 404s. The
+  // stamp is a claim about the output, so check the output.
   if (existsSync(stamp)) {
-    built.push(JSON.parse(readFileSync(stamp, 'utf8')));
-    console.log(`${t}: already built`);
-    continue;
+    const record = JSON.parse(readFileSync(stamp, 'utf8'));
+    if (existsSync(`${OUT}/${record.file.name}`)) {
+      built.push(record);
+      console.log(`${t}: already built`);
+      continue;
+    }
+    console.log(`${t}: stamp claims ${record.file.name}, which is gone - rebuilding`);
+    rmSync(stamp);
   }
   // Fetch, unless a previous run left the TIF behind.
   if (!existsSync(tif)) {
@@ -218,7 +239,7 @@ writeFileSync('public/data/ortho.json', `${JSON.stringify(manifest, null, 2)}\n`
   keep.add('CC_BY_Ortofoto_2024.pdf');
   let pruned = 0;
   for (const f of readdirSync(OUT)) {
-    if (f.startsWith('.done-') || keep.has(f)) continue;
+    if (keep.has(f)) continue;
     rmSync(`${OUT}/${f}`);
     pruned += 1;
   }

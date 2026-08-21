@@ -16,20 +16,76 @@ scattered through it were promoted into ARCHITECTURE §13 first, so that the one
 part of the log you needed *before* making a mistake is no longer in a file you
 open *after*.
 
-## NEXT SESSION: the orthophoto mosaic is READY TO GENERATE. One command, ~2 hours.
+## NEXT SESSION: the mosaic is BUILT and verified, and NOT YET PUBLISHED.
 
-Everything the 129-sheet run needs is decided, built and tested. The run itself was not
-started because it is two hours of somebody else's bandwidth and the user closed the day:
+`node tools/build-ortho.mjs --sheets=tools/dev/logs/ortho-sheets.json --res=2` ran on
+2026-08-21: **129 sheets, 22.16 MB shipped, 38.1 GB fetched and deleted, no sheet skipped**,
+about 1h50. Mean sheet 172 kB, so a full 3x3 block costs ~1.55 MB - downloaded only when
+someone presses O. The first load is untouched.
 
-```
-node tools/build-ortho.mjs --sheets=tools/dev/logs/ortho-sheets.json --res=2
-```
+Verified, not assumed:
+- fast suite **14/14 PASS, 704 s** (2026-08-21).
+- `tools/dev/probe-ortho-cache.mjs`: **55 distinct sheets through a cache of 16**, peak 16,
+  stepping back over two boundaries costs 0 requests, a fast crossing of 8 cells makes 18
+  requests with 0 repeats.
+- `tools/dev/probe-ortho-atlas.mjs`: 9/9 cells at the spawn, refill 16-33 ms, no seam.
+- `tools/dev/probe-ortho-ab.mjs`: the photograph changes **34.9%** of a plan-view frame,
+  mean delta 29/765. **The blue is the photograph's own** - 1.4% of pixels are blue only
+  with it on, 0.0% blue survives turning it off. Glacial lakes, not our ice. (Asked with a
+  measurement because the same question got three wrong answers by reasoning on 2026-08-20.)
 
-That list is the measured one - 129 sheets, 449.4 of the park's 710.5 km2, the 63.3% that is
-in Valle d'Aosta. It fetches, resamples and DELETES one sheet at a time (42.7 GB against 35 GB
-free, so the delete is not tidiness), prunes anything the manifest no longer names, and writes
-`public/data/ortho.json`. Expect **~1h20 of downloading at the measured 8.76 MB/s**, ~2 h in
-all, and **26 MB shipped**. Then: fast suite, look at it, publish.
+**Three defects were found and fixed on the way, all of them invisible at 9 sheets** - see
+ARCHITECTURE §13.20 and §13.21 for the full statement:
+1. the sheet cache never evicted (129 decoded sheets = 537 MB; now capped at 16 = 67 MB);
+2. `updateOrtho()` recorded its cell after the await, so flying restarted the refill once per
+   frame, and an Image cache rather than a Promise cache re-downloaded the same files;
+3. `build-ortho.mjs` trusted a "done" marker whose output the prune step had deleted - three
+   sheets were in the manifest and not on disk, which would have been three 404s on the site.
+
+**Still to do, in order:** decide what to do about the baked shadows (below), decide whether
+the 22 MB goes into git (below), then publish with `tools/dev/deploy.sh`, then
+`node tools/verify.mjs <site>`. Nothing is published yet.
+
+Both viewstate tests were put on the record on 2026-08-21: `test-viewstate` PASS 357 s (slow
+because a mosaic build was running against it; the 167 s reference still stands) and
+`test-ortho-viewstate` PASS 201 s. The standing note about a stale FAIL in `test-times.tsv`
+is retired.
+
+**THE ONE OPEN DECISION: the 22 MB is gitignored.** `.gitignore` says the clips are ignored
+because they were "a TRIAL", and that "if a clip is ever settled on and shipped, this line is
+the one to delete". It is now settled and about to ship, so the line is due either way:
+delete it and the mosaic is permanent repository weight (the .bin purge of 2026-08-17 is what
+that costs to undo), keep it and the only off-machine copy is the gh-pages branch itself,
+which after a deploy does hold all 129 files. Rebuilding from scratch is 38 GB of the
+Region's bandwidth and ~1h50.
+
+**THE FINDING THAT MATTERS MOST, and it came from the user's own remark** (2026-08-21,
+*"alcune parti blu a volte potrebbe essere il terreno roccioso in ombra, esaltato dalle
+correzioni colore"*): **the orthophoto is NOT de-shaded, and the shader feeds it into the
+albedo slot anyway.** `build-ortho.mjs` goes fetch -> resample -> WebP and never touches the
+DEM. ARCHITECTURE §5 already records what that costs, for the Sentinel basemap: "without it
+every north face would be dark twice and every sunset would have the shadows pointing
+south-east". The basemap is de-shaded; the photograph that overlays it is not, so the ground
+changes contract across the 900-1,700 m fade.
+
+Measured, not argued (`tools/dev/probe-ortho-source.mjs`, `probe-ortho-sun.mjs`):
+- **13.79%** of one block's ground is in shadow (L<64) in the source itself.
+- The blue the plan view shows is **shadow, not lakes** - shaded snow and rock, blue because
+  an alpine shadow is lit by the sky and because the aerial product's own colour balance
+  leans that way. The real lakes are the few teal specks. An earlier note in this file called
+  them lakes on the strength of a rendered frame; that was an interpretation, and the source
+  stitched straight from disk (`tools/dev/logs/ortho-source-0_0.png`) corrects it.
+- Sheet 5943's baked sun fits at **azimuth 173 deg, elevation 32 deg, r = 0.838** - and with
+  a zenith sun, meaning no directional shading at all, r collapses to **0.078**. The
+  photograph is mostly shading, not albedo. That is the whole argument in two numbers.
+- **A per-sheet fit is NOT reliable enough to de-shade with.** Across 12 sheets r runs 0.84
+  down to 0.06 and elevation 1 to 74 deg, several pinned to the edge of the azimuth
+  constraint. Sheets with strong relief and mixed cover answer confidently; snowfields,
+  forest and gentle ground do not. The spread is also partly REAL - the campaign ran 21/08 to
+  02/11/2024, whose solar noon falls from about 57 deg to 26 - so one global sun would
+  over-correct as many sheets as it fixed.
+- De-shading would NOT need the 38 GB again: it is a per-pixel colour operation and the 2 m
+  sheets are on disk. The obstacle is the sun estimate, not the pixels.
 
 **Decided, so do not reopen:** 2 m/px; brightness `ORTHO_SCALE` 1.54; **the photograph wins
 over the OSM outline** where the two disagree about where the ice ends (`ICE_PHOTO_MIX` 1, so
@@ -37,23 +93,20 @@ within 1,700 m the firn line, the live-ice grey and the moraine do not show - th
 has all three); the switch lives in the HUD, in `localStorage` AND in shared links.
 
 **Open, and worth raising before publishing:**
-
 - **No NEAR fade.** At eye height the 2 m photograph is magnified far past use and the
-  procedural ground would do better for the last few tens of metres.
+  procedural ground would do better for the last few tens of metres. The seam shot
+  (`tools/dev/logs/atlas-seam-full.png`) shows exactly this in its bottom-right corner.
 - **The far edge is capped by the atlas, not by taste.** 1,700 m is all a 3x3 block can
   promise. A 5x5 is ~100 MB of video memory; a second coarser level for the far field is the
   usual answer and is not built.
 - **A publish check no longer covers the orthophoto's switch** - `test-ortho-viewstate` is
-  207 s and had to go in the slow list. Fine while the switch is off by default; not fine once
-  it ships.
+  207 s and had to go in the slow list. That was fine while the switch was off by default and
+  unpublished; it stops being fine the moment this ships.
 - **Coverage ends in a hard line** at the regional border. The rectangle fade does not help
-  there, because that edge is inside the atlas rather than at its rim.
-
-**Do not be misled by `tools/dev/logs/test-times.tsv`**: its last `test-viewstate` row says
-FAIL. That is the run that found the two stale things; both were fixed after it and the test
-passes in full, but the two verification runs were `node tools/test-viewstate.mjs` directly and
-only the runner writes to that log. Run it through `tools/dev/run-tests.sh test-viewstate` once
-to put a PASS on the record.
+  there, because that edge is inside the atlas rather than at its rim. The mosaic is 13 rows
+  deep, the widest 19 cells (38 km) and contiguous, so the line is long.
+- **A cell crossing uploads a 3,020 px canvas** - about 36 MB of texture - and that cost is
+  paid every 2 km now that there is somewhere to walk to. Not measured in fps yet.
 
 ## The previous session's opening note, kept because its numbers are still the ones that matter
 

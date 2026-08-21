@@ -2253,4 +2253,32 @@ pointers say where.
     with `Unexpected identifier` naming a GLSL variable, which reads like a shader
     error and is not one. `terrain.js` carries the warning inline and it still cost
     a dev server serving a broken build (§13.14 for why that matters).
-
+20. **A proof at nine sheets does not prove one hundred and twenty-nine.** The
+    orthophoto atlas was built and demonstrated on a 3x3 clip, and two defects were
+    not merely unnoticed there - they were unreachable. Both need the camera to
+    leave a cell *before* that cell's sheets arrive, which cannot happen when all
+    nine are already in memory. (a) The sheet cache never evicted: a decoded sheet
+    is 1020 x 1020 x 4 = **4.2 MB** whatever the 200 kB WebP on disk suggests, so
+    nine is 37 MB and invisible while 129 is **537 MB**. (b) `updateOrtho()`
+    recorded its cell only *after* awaiting nine downloads, so the render loop saw
+    the old cell every frame in between and restarted the whole refill - once per
+    frame, for as long as the network took - and because the cache held Images
+    rather than Promises, those overlapping refills each started their own download
+    of the same file. Now capped at 16 (the 3x3 block plus the block next door, so
+    stepping back over a boundary re-fetches nothing), the cache holds promises, and
+    a refill overtaken by a newer one drops its pixels instead of drawing the atlas
+    where the camera used to be. Measured by `tools/dev/probe-ortho-cache.mjs`,
+    which counts NETWORK REQUESTS rather than believing the cache's own report:
+    55 distinct sheets through a cache of 16, peak 16, 0 repeats on a fast crossing.
+21. **A build stamp that outlives its output makes the next run lie.**
+    `tools/build-ortho.mjs` skips a sheet whose "done" marker exists, and its prune
+    step deletes whatever the current manifest does not name. Run it over a SUBSET
+    and those two rules collide: the partial run deletes the other sheets' WebPs and
+    leaves their markers, so the next full run says "already built" for files that
+    are gone, writes them into the manifest, and the site serves 404s. Three sheets
+    went through exactly that and it took a count - 129 in the manifest, 126 on disk
+    - to see it, because every log line said success. A stamp is a claim about an
+    output: check the output. Related, and found in the same look: everything under
+    `public/` is copied into `dist/` and published, so the markers themselves had no
+    business living beside the sheets - they are in `tools/ortho-source/.stamps/`
+    now, which is neither shipped nor in git.

@@ -28,8 +28,11 @@ await page.waitForFunction(() => window.__pngp?.getGroundHeight?.(), null, { tim
 await page.waitForFunction(() => (window.__pngp.terrain?.heightTier?.mix ?? 0) >= 1, null, { timeout: 300000 }).catch(() => {});
 await page.waitForTimeout(3000);
 await page.keyboard.press('o');
-await page.waitForFunction(() => /sheets/.test(document.getElementById('dev-note')?.textContent ?? ''), null, { timeout: 120000 });
-console.log(await page.evaluate(() => document.getElementById('dev-note').textContent));
+// Wait on the atlas's own state, not on a line of HUD text. This used to scrape #dev-note for
+// the word "sheets"; the moment the switch moved into the HUD proper that line stopped being
+// written and the probe hung for its full two minutes instead of saying what was wrong.
+await page.waitForFunction(() => (window.__pngp.ortho?.stats?.sheets ?? 0) > 0
+  && window.__pngp.ortho.stats.cell, null, { timeout: 120000 });
 await page.addStyleTag({ content: '#top-left,#nav-hud,#env-controls,#credits-box,#fps,#controls-hint,#dev-note,#poi-info,#look-diag,#audio-diag,#compass,#view-actions,#poi-search,.poi-label{display:none!important}' });
 
 const rect = await page.evaluate(() => {

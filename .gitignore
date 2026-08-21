@@ -50,18 +50,24 @@ public/data/*.bin
 # public endpoints that turn a coordinate into a download.
 tools/ortho-source/
 
-# The orthophoto CLIPS the viewer downloads. Derived, reproducible from the sheets and the
-# one gdal_translate line in ortho.json's generatedBy, and - this is the point - a TRIAL:
-# resolution and extent are exactly what is still being decided, so every attempt would
-# otherwise leave another few megabytes in a history that can never give them back. That
-# lesson was paid for once already, with the .bin files above.
+# The orthophoto SHEETS the viewer downloads. Derived, reproducible from the sources and the
+# one gdal_translate line in ortho.json's generatedBy. This started as a way to keep TRIALS
+# out of a history that can never give the megabytes back - resolution and extent were what
+# was being decided, and that lesson was paid for once already with the .bin files above.
 #
-# The MANIFEST stays tracked: it is 1.6 kB, it carries the licence and the attribution, and
-# it is what says which clip a build expects. If a clip is ever settled on and shipped, this
-# line is the one to delete.
+# THAT IS NO LONGER WHY IT IS HERE. The mosaic was settled on 2026-08-21 - 129 sheets at
+# 2 m/px, 22.16 MB - so this line is now a live decision rather than a holding position, and
+# docs/PROGRESS.md states it: permanent repository weight on one side, and on the other an
+# off-machine copy that exists only as the deployed gh-pages branch, with a rebuild costing
+# 38 GB of the Region's bandwidth and about two hours.
+#
+# The MANIFEST stays tracked either way: 56 kB for 129 sheets, and it carries the licence,
+# the attribution and the grid the atlas places itself from.
 # A pattern loose enough to survive a rename, which the first version was not: it read
 # `ortho.*.webp` and the levels are named `ortho-05.<hash>.webp`, so renaming them silently
 # un-ignored all three. Caught by looking, one commit before it mattered.
 public/data/ortho*.webp
 public/data/ortho/*.webp
-public/data/ortho/.done-*
+# (The build's "already done" markers used to need a line here too. They now live in
+# tools/ortho-source/.stamps/, because everything under public/ is copied into dist/ and
+# published - a full run would have put 129 build markers on the website.)

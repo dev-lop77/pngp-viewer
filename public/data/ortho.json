@@ -16,69 +16,663 @@
   },
   "sheets": [
     {
-      "tavola": "5745",
+      "tavola": "5137",
       "bboxCrsUnits": {
-        "xmin": 355980.323,
-        "ymin": 5043979.227,
-        "xmax": 358020.323,
-        "ymax": 5046019.427
+        "xmin": 349980.339,
+        "ymin": 5035979.271,
+        "xmax": 352020.339,
+        "ymax": 5038019.471
       },
       "dimensions": {
         "width": 1020,
         "height": 1020
       },
       "file": {
-        "name": "o5745-2.bd91abe0.webp",
-        "bytes": 140818,
-        "sha256Prefix": "bd91abe0"
+        "name": "o5137-2.7f2283dd.webp",
+        "bytes": 91970,
+        "sha256Prefix": "7f2283dd"
       },
       "cell": [
-        -1,
-        -1
+        -4,
+        3
       ]
     },
     {
-      "tavola": "5945",
+      "tavola": "5337",
       "bboxCrsUnits": {
-        "xmin": 357980.312,
-        "ymin": 5043979.193,
-        "xmax": 360020.312,
-        "ymax": 5046019.393
+        "xmin": 351980.334,
+        "ymin": 5035979.231,
+        "xmax": 354020.334,
+        "ymax": 5038019.431
       },
       "dimensions": {
         "width": 1020,
         "height": 1020
       },
       "file": {
-        "name": "o5945-2.a571eb8c.webp",
-        "bytes": 190602,
-        "sha256Prefix": "a571eb8c"
+        "name": "o5337-2.06d5b509.webp",
+        "bytes": 50594,
+        "sha256Prefix": "06d5b509"
+      },
+      "cell": [
+        -3,
+        3
+      ]
+    },
+    {
+      "tavola": "5537",
+      "bboxCrsUnits": {
+        "xmin": 353980.329,
+        "ymin": 5035979.192,
+        "xmax": 356020.329,
+        "ymax": 5038019.392
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5537-2.20c65284.webp",
+        "bytes": 26350,
+        "sha256Prefix": "20c65284"
+      },
+      "cell": [
+        -2,
+        3
+      ]
+    },
+    {
+      "tavola": "5937",
+      "bboxCrsUnits": {
+        "xmin": 357980.319,
+        "ymin": 5035979.113,
+        "xmax": 360020.319,
+        "ymax": 5038019.313
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5937-2.e153734e.webp",
+        "bytes": 23546,
+        "sha256Prefix": "e153734e"
       },
       "cell": [
         0,
-        -1
+        3
       ]
     },
     {
-      "tavola": "6145",
+      "tavola": "6137",
       "bboxCrsUnits": {
-        "xmin": 359980.296,
-        "ymin": 5043979.162,
-        "xmax": 362020.296,
-        "ymax": 5046019.362
+        "xmin": 359980.309,
+        "ymin": 5035979.083,
+        "xmax": 362020.309,
+        "ymax": 5038019.283
       },
       "dimensions": {
         "width": 1020,
         "height": 1020
       },
       "file": {
-        "name": "o6145-2.351c8c74.webp",
-        "bytes": 301974,
-        "sha256Prefix": "351c8c74"
+        "name": "o6137-2.753d0170.webp",
+        "bytes": 83332,
+        "sha256Prefix": "753d0170"
       },
       "cell": [
         1,
-        -1
+        3
+      ]
+    },
+    {
+      "tavola": "6337",
+      "bboxCrsUnits": {
+        "xmin": 361980.281,
+        "ymin": 5035979.082,
+        "xmax": 364020.281,
+        "ymax": 5038019.282
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6337-2.d2a7b169.webp",
+        "bytes": 15384,
+        "sha256Prefix": "d2a7b169"
+      },
+      "cell": [
+        2,
+        3
+      ]
+    },
+    {
+      "tavola": "4937",
+      "bboxCrsUnits": {
+        "xmin": 347980.302,
+        "ymin": 5035979.307,
+        "xmax": 350020.502,
+        "ymax": 5038019.507
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o4937-2.7b93d544.webp",
+        "bytes": 65766,
+        "sha256Prefix": "7b93d544"
+      },
+      "cell": [
+        -5,
+        3
+      ]
+    },
+    {
+      "tavola": "4939",
+      "bboxCrsUnits": {
+        "xmin": 347980.296,
+        "ymin": 5037979.316,
+        "xmax": 350020.496,
+        "ymax": 5040019.516
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o4939-2.cc4bb672.webp",
+        "bytes": 110558,
+        "sha256Prefix": "cc4bb672"
+      },
+      "cell": [
+        -5,
+        2
+      ]
+    },
+    {
+      "tavola": "5139",
+      "bboxCrsUnits": {
+        "xmin": 349980.338,
+        "ymin": 5037979.28,
+        "xmax": 352020.338,
+        "ymax": 5040019.48
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5139-2.b34ff943.webp",
+        "bytes": 164368,
+        "sha256Prefix": "b34ff943"
+      },
+      "cell": [
+        -4,
+        2
+      ]
+    },
+    {
+      "tavola": "5339",
+      "bboxCrsUnits": {
+        "xmin": 351980.331,
+        "ymin": 5037979.242,
+        "xmax": 354020.331,
+        "ymax": 5040019.442
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5339-2.7b10934d.webp",
+        "bytes": 78884,
+        "sha256Prefix": "7b10934d"
+      },
+      "cell": [
+        -3,
+        2
+      ]
+    },
+    {
+      "tavola": "5539",
+      "bboxCrsUnits": {
+        "xmin": 353980.325,
+        "ymin": 5037979.205,
+        "xmax": 356020.325,
+        "ymax": 5040019.405
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5539-2.e945821c.webp",
+        "bytes": 134228,
+        "sha256Prefix": "e945821c"
+      },
+      "cell": [
+        -2,
+        2
+      ]
+    },
+    {
+      "tavola": "5739",
+      "bboxCrsUnits": {
+        "xmin": 355980.319,
+        "ymin": 5037979.167,
+        "xmax": 358020.319,
+        "ymax": 5040019.367
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5739-2.6e163b96.webp",
+        "bytes": 194196,
+        "sha256Prefix": "6e163b96"
+      },
+      "cell": [
+        -1,
+        2
+      ]
+    },
+    {
+      "tavola": "5939",
+      "bboxCrsUnits": {
+        "xmin": 357980.312,
+        "ymin": 5037979.129,
+        "xmax": 360020.312,
+        "ymax": 5040019.329
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5939-2.93f031de.webp",
+        "bytes": 211500,
+        "sha256Prefix": "93f031de"
+      },
+      "cell": [
+        0,
+        2
+      ]
+    },
+    {
+      "tavola": "6139",
+      "bboxCrsUnits": {
+        "xmin": 359980.301,
+        "ymin": 5037979.099,
+        "xmax": 362020.301,
+        "ymax": 5040019.299
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6139-2.d5ddc73c.webp",
+        "bytes": 201176,
+        "sha256Prefix": "d5ddc73c"
+      },
+      "cell": [
+        1,
+        2
+      ]
+    },
+    {
+      "tavola": "6339",
+      "bboxCrsUnits": {
+        "xmin": 361980.27,
+        "ymin": 5037979.098,
+        "xmax": 364020.27,
+        "ymax": 5040019.298
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6339-2.3f0784fe.webp",
+        "bytes": 116462,
+        "sha256Prefix": "3f0784fe"
+      },
+      "cell": [
+        2,
+        2
+      ]
+    },
+    {
+      "tavola": "6539",
+      "bboxCrsUnits": {
+        "xmin": 363980.239,
+        "ymin": 5037979.097,
+        "xmax": 366020.239,
+        "ymax": 5040019.297
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6539-2.3eab8900.webp",
+        "bytes": 20618,
+        "sha256Prefix": "3eab8900"
+      },
+      "cell": [
+        3,
+        2
+      ]
+    },
+    {
+      "tavola": "5141",
+      "bboxCrsUnits": {
+        "xmin": 349980.34,
+        "ymin": 5039979.295,
+        "xmax": 352020.34,
+        "ymax": 5042019.495
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5141-2.73029bfd.webp",
+        "bytes": 154502,
+        "sha256Prefix": "73029bfd"
+      },
+      "cell": [
+        -4,
+        1
+      ]
+    },
+    {
+      "tavola": "5341",
+      "bboxCrsUnits": {
+        "xmin": 351980.333,
+        "ymin": 5039979.259,
+        "xmax": 354020.333,
+        "ymax": 5042019.459
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5341-2.3fe8c128.webp",
+        "bytes": 106256,
+        "sha256Prefix": "3fe8c128"
+      },
+      "cell": [
+        -3,
+        1
+      ]
+    },
+    {
+      "tavola": "5541",
+      "bboxCrsUnits": {
+        "xmin": 353980.326,
+        "ymin": 5039979.223,
+        "xmax": 356020.326,
+        "ymax": 5042019.423
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5541-2.085aa42a.webp",
+        "bytes": 113552,
+        "sha256Prefix": "085aa42a"
+      },
+      "cell": [
+        -2,
+        1
+      ]
+    },
+    {
+      "tavola": "5741",
+      "bboxCrsUnits": {
+        "xmin": 355980.319,
+        "ymin": 5039979.186,
+        "xmax": 358020.319,
+        "ymax": 5042019.386
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5741-2.10543b3f.webp",
+        "bytes": 221694,
+        "sha256Prefix": "10543b3f"
+      },
+      "cell": [
+        -1,
+        1
+      ]
+    },
+    {
+      "tavola": "5941",
+      "bboxCrsUnits": {
+        "xmin": 357980.312,
+        "ymin": 5039979.15,
+        "xmax": 360020.312,
+        "ymax": 5042019.35
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5941-2.c9d6dab2.webp",
+        "bytes": 257954,
+        "sha256Prefix": "c9d6dab2"
+      },
+      "cell": [
+        0,
+        1
+      ]
+    },
+    {
+      "tavola": "6141",
+      "bboxCrsUnits": {
+        "xmin": 359980.299,
+        "ymin": 5039979.12,
+        "xmax": 362020.299,
+        "ymax": 5042019.32
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6141-2.2725c867.webp",
+        "bytes": 274146,
+        "sha256Prefix": "2725c867"
+      },
+      "cell": [
+        1,
+        1
+      ]
+    },
+    {
+      "tavola": "6341",
+      "bboxCrsUnits": {
+        "xmin": 361980.266,
+        "ymin": 5039979.118,
+        "xmax": 364020.266,
+        "ymax": 5042019.318
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6341-2.2f88cf95.webp",
+        "bytes": 187242,
+        "sha256Prefix": "2f88cf95"
+      },
+      "cell": [
+        2,
+        1
+      ]
+    },
+    {
+      "tavola": "6541",
+      "bboxCrsUnits": {
+        "xmin": 363980.234,
+        "ymin": 5039979.116,
+        "xmax": 366020.234,
+        "ymax": 5042019.316
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6541-2.c0a6b302.webp",
+        "bytes": 98922,
+        "sha256Prefix": "c0a6b302"
+      },
+      "cell": [
+        3,
+        1
+      ]
+    },
+    {
+      "tavola": "6741",
+      "bboxCrsUnits": {
+        "xmin": 365980.201,
+        "ymin": 5039979.114,
+        "xmax": 368020.201,
+        "ymax": 5042019.314
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6741-2.c7c57eee.webp",
+        "bytes": 42352,
+        "sha256Prefix": "c7c57eee"
+      },
+      "cell": [
+        4,
+        1
+      ]
+    },
+    {
+      "tavola": "6941",
+      "bboxCrsUnits": {
+        "xmin": 367980.168,
+        "ymin": 5039979.113,
+        "xmax": 370020.168,
+        "ymax": 5042019.313
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6941-2.7b80cbeb.webp",
+        "bytes": 48968,
+        "sha256Prefix": "7b80cbeb"
+      },
+      "cell": [
+        5,
+        1
+      ]
+    },
+    {
+      "tavola": "7341",
+      "bboxCrsUnits": {
+        "xmin": 371980.112,
+        "ymin": 5039979.126,
+        "xmax": 374020.112,
+        "ymax": 5042019.326
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7341-2.9d0484d1.webp",
+        "bytes": 40428,
+        "sha256Prefix": "9d0484d1"
+      },
+      "cell": [
+        7,
+        1
+      ]
+    },
+    {
+      "tavola": "5143",
+      "bboxCrsUnits": {
+        "xmin": 349980.348,
+        "ymin": 5041979.312,
+        "xmax": 352020.348,
+        "ymax": 5044019.512
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5143-2.1c55a293.webp",
+        "bytes": 175054,
+        "sha256Prefix": "1c55a293"
+      },
+      "cell": [
+        -4,
+        0
+      ]
+    },
+    {
+      "tavola": "5343",
+      "bboxCrsUnits": {
+        "xmin": 351980.339,
+        "ymin": 5041979.277,
+        "xmax": 354020.339,
+        "ymax": 5044019.477
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5343-2.70852301.webp",
+        "bytes": 163176,
+        "sha256Prefix": "70852301"
+      },
+      "cell": [
+        -3,
+        0
+      ]
+    },
+    {
+      "tavola": "5543",
+      "bboxCrsUnits": {
+        "xmin": 353980.33,
+        "ymin": 5041979.242,
+        "xmax": 356020.33,
+        "ymax": 5044019.442
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5543-2.498ae62c.webp",
+        "bytes": 116366,
+        "sha256Prefix": "498ae62c"
+      },
+      "cell": [
+        -2,
+        0
       ]
     },
     {
@@ -148,69 +742,2115 @@
       ]
     },
     {
-      "tavola": "5741",
+      "tavola": "6343",
       "bboxCrsUnits": {
-        "xmin": 355980.319,
-        "ymin": 5039979.186,
-        "xmax": 358020.319,
-        "ymax": 5042019.386
+        "xmin": 361980.263,
+        "ymin": 5041979.138,
+        "xmax": 364020.263,
+        "ymax": 5044019.338
       },
       "dimensions": {
         "width": 1020,
         "height": 1020
       },
       "file": {
-        "name": "o5741-2.10543b3f.webp",
-        "bytes": 221694,
-        "sha256Prefix": "10543b3f"
+        "name": "o6343-2.7853900c.webp",
+        "bytes": 121588,
+        "sha256Prefix": "7853900c"
+      },
+      "cell": [
+        2,
+        0
+      ]
+    },
+    {
+      "tavola": "6543",
+      "bboxCrsUnits": {
+        "xmin": 363980.228,
+        "ymin": 5041979.135,
+        "xmax": 366020.228,
+        "ymax": 5044019.335
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6543-2.7e2ce10a.webp",
+        "bytes": 66420,
+        "sha256Prefix": "7e2ce10a"
+      },
+      "cell": [
+        3,
+        0
+      ]
+    },
+    {
+      "tavola": "6743",
+      "bboxCrsUnits": {
+        "xmin": 365980.194,
+        "ymin": 5041979.132,
+        "xmax": 368020.194,
+        "ymax": 5044019.332
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6743-2.70916471.webp",
+        "bytes": 96090,
+        "sha256Prefix": "70916471"
+      },
+      "cell": [
+        4,
+        0
+      ]
+    },
+    {
+      "tavola": "6943",
+      "bboxCrsUnits": {
+        "xmin": 367980.159,
+        "ymin": 5041979.13,
+        "xmax": 370020.159,
+        "ymax": 5044019.33
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6943-2.10e200c0.webp",
+        "bytes": 107646,
+        "sha256Prefix": "10e200c0"
+      },
+      "cell": [
+        5,
+        0
+      ]
+    },
+    {
+      "tavola": "7143",
+      "bboxCrsUnits": {
+        "xmin": 369980.126,
+        "ymin": 5041979.136,
+        "xmax": 372020.126,
+        "ymax": 5044019.336
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7143-2.653d2993.webp",
+        "bytes": 77462,
+        "sha256Prefix": "653d2993"
+      },
+      "cell": [
+        6,
+        0
+      ]
+    },
+    {
+      "tavola": "7343",
+      "bboxCrsUnits": {
+        "xmin": 371980.099,
+        "ymin": 5041979.142,
+        "xmax": 374020.099,
+        "ymax": 5044019.342
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7343-2.b28a6705.webp",
+        "bytes": 117796,
+        "sha256Prefix": "b28a6705"
+      },
+      "cell": [
+        7,
+        0
+      ]
+    },
+    {
+      "tavola": "7543",
+      "bboxCrsUnits": {
+        "xmin": 373980.071,
+        "ymin": 5041979.148,
+        "xmax": 376020.071,
+        "ymax": 5044019.348
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7543-2.9d532802.webp",
+        "bytes": 86646,
+        "sha256Prefix": "9d532802"
+      },
+      "cell": [
+        8,
+        0
+      ]
+    },
+    {
+      "tavola": "7743",
+      "bboxCrsUnits": {
+        "xmin": 375980.043,
+        "ymin": 5041979.154,
+        "xmax": 378020.043,
+        "ymax": 5044019.354
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7743-2.1ad22a4d.webp",
+        "bytes": 17394,
+        "sha256Prefix": "1ad22a4d"
+      },
+      "cell": [
+        9,
+        0
+      ]
+    },
+    {
+      "tavola": "5345",
+      "bboxCrsUnits": {
+        "xmin": 351980.346,
+        "ymin": 5043979.295,
+        "xmax": 354020.346,
+        "ymax": 5046019.495
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5345-2.82c8e60f.webp",
+        "bytes": 209988,
+        "sha256Prefix": "82c8e60f"
+      },
+      "cell": [
+        -3,
+        -1
+      ]
+    },
+    {
+      "tavola": "5545",
+      "bboxCrsUnits": {
+        "xmin": 353980.335,
+        "ymin": 5043979.261,
+        "xmax": 356020.335,
+        "ymax": 5046019.461
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5545-2.0b25f211.webp",
+        "bytes": 126018,
+        "sha256Prefix": "0b25f211"
+      },
+      "cell": [
+        -2,
+        -1
+      ]
+    },
+    {
+      "tavola": "5745",
+      "bboxCrsUnits": {
+        "xmin": 355980.323,
+        "ymin": 5043979.227,
+        "xmax": 358020.323,
+        "ymax": 5046019.427
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5745-2.bd91abe0.webp",
+        "bytes": 140818,
+        "sha256Prefix": "bd91abe0"
       },
       "cell": [
         -1,
-        1
+        -1
       ]
     },
     {
-      "tavola": "5941",
+      "tavola": "5945",
       "bboxCrsUnits": {
         "xmin": 357980.312,
-        "ymin": 5039979.15,
+        "ymin": 5043979.193,
         "xmax": 360020.312,
-        "ymax": 5042019.35
+        "ymax": 5046019.393
       },
       "dimensions": {
         "width": 1020,
         "height": 1020
       },
       "file": {
-        "name": "o5941-2.c9d6dab2.webp",
-        "bytes": 257954,
-        "sha256Prefix": "c9d6dab2"
+        "name": "o5945-2.a571eb8c.webp",
+        "bytes": 190602,
+        "sha256Prefix": "a571eb8c"
       },
       "cell": [
         0,
-        1
+        -1
       ]
     },
     {
-      "tavola": "6141",
+      "tavola": "6145",
       "bboxCrsUnits": {
-        "xmin": 359980.299,
-        "ymin": 5039979.12,
-        "xmax": 362020.299,
-        "ymax": 5042019.32
+        "xmin": 359980.296,
+        "ymin": 5043979.162,
+        "xmax": 362020.296,
+        "ymax": 5046019.362
       },
       "dimensions": {
         "width": 1020,
         "height": 1020
       },
       "file": {
-        "name": "o6141-2.2725c867.webp",
-        "bytes": 274146,
-        "sha256Prefix": "2725c867"
+        "name": "o6145-2.351c8c74.webp",
+        "bytes": 301974,
+        "sha256Prefix": "351c8c74"
       },
       "cell": [
         1,
-        1
+        -1
+      ]
+    },
+    {
+      "tavola": "6345",
+      "bboxCrsUnits": {
+        "xmin": 361980.26,
+        "ymin": 5043979.158,
+        "xmax": 364020.26,
+        "ymax": 5046019.358
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6345-2.9bc1310e.webp",
+        "bytes": 169290,
+        "sha256Prefix": "9bc1310e"
+      },
+      "cell": [
+        2,
+        -1
+      ]
+    },
+    {
+      "tavola": "6545",
+      "bboxCrsUnits": {
+        "xmin": 363980.223,
+        "ymin": 5043979.154,
+        "xmax": 366020.223,
+        "ymax": 5046019.354
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6545-2.15a468d0.webp",
+        "bytes": 86884,
+        "sha256Prefix": "15a468d0"
+      },
+      "cell": [
+        3,
+        -1
+      ]
+    },
+    {
+      "tavola": "6745",
+      "bboxCrsUnits": {
+        "xmin": 365980.187,
+        "ymin": 5043979.15,
+        "xmax": 368020.187,
+        "ymax": 5046019.35
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6745-2.a844dd9a.webp",
+        "bytes": 175538,
+        "sha256Prefix": "a844dd9a"
+      },
+      "cell": [
+        4,
+        -1
+      ]
+    },
+    {
+      "tavola": "6945",
+      "bboxCrsUnits": {
+        "xmin": 367980.15,
+        "ymin": 5043979.147,
+        "xmax": 370020.15,
+        "ymax": 5046019.347
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6945-2.f9800203.webp",
+        "bytes": 218160,
+        "sha256Prefix": "f9800203"
+      },
+      "cell": [
+        5,
+        -1
+      ]
+    },
+    {
+      "tavola": "7145",
+      "bboxCrsUnits": {
+        "xmin": 369980.115,
+        "ymin": 5043979.153,
+        "xmax": 372020.115,
+        "ymax": 5046019.353
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7145-2.3ebe84ce.webp",
+        "bytes": 163872,
+        "sha256Prefix": "3ebe84ce"
+      },
+      "cell": [
+        6,
+        -1
+      ]
+    },
+    {
+      "tavola": "7345",
+      "bboxCrsUnits": {
+        "xmin": 371980.085,
+        "ymin": 5043979.159,
+        "xmax": 374020.085,
+        "ymax": 5046019.359
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7345-2.fdd51361.webp",
+        "bytes": 196606,
+        "sha256Prefix": "fdd51361"
+      },
+      "cell": [
+        7,
+        -1
+      ]
+    },
+    {
+      "tavola": "7545",
+      "bboxCrsUnits": {
+        "xmin": 373980.055,
+        "ymin": 5043979.165,
+        "xmax": 376020.055,
+        "ymax": 5046019.365
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7545-2.3a868d6a.webp",
+        "bytes": 170088,
+        "sha256Prefix": "3a868d6a"
+      },
+      "cell": [
+        8,
+        -1
+      ]
+    },
+    {
+      "tavola": "7745",
+      "bboxCrsUnits": {
+        "xmin": 375980.025,
+        "ymin": 5043979.171,
+        "xmax": 378020.025,
+        "ymax": 5046019.371
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7745-2.551d07c0.webp",
+        "bytes": 124614,
+        "sha256Prefix": "551d07c0"
+      },
+      "cell": [
+        9,
+        -1
+      ]
+    },
+    {
+      "tavola": "7945",
+      "bboxCrsUnits": {
+        "xmin": 377979.995,
+        "ymin": 5043979.173,
+        "xmax": 380020.195,
+        "ymax": 5046019.373
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7945-2.64ab86d8.webp",
+        "bytes": 32548,
+        "sha256Prefix": "64ab86d8"
+      },
+      "cell": [
+        10,
+        -1
+      ]
+    },
+    {
+      "tavola": "5347",
+      "bboxCrsUnits": {
+        "xmin": 351980.352,
+        "ymin": 5045979.312,
+        "xmax": 354020.352,
+        "ymax": 5048019.512
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5347-2.9bc139e7.webp",
+        "bytes": 250128,
+        "sha256Prefix": "9bc139e7"
+      },
+      "cell": [
+        -3,
+        -2
+      ]
+    },
+    {
+      "tavola": "5547",
+      "bboxCrsUnits": {
+        "xmin": 353980.339,
+        "ymin": 5045979.28,
+        "xmax": 356020.339,
+        "ymax": 5048019.48
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5547-2.2413f60b.webp",
+        "bytes": 214902,
+        "sha256Prefix": "2413f60b"
+      },
+      "cell": [
+        -2,
+        -2
+      ]
+    },
+    {
+      "tavola": "5747",
+      "bboxCrsUnits": {
+        "xmin": 355980.326,
+        "ymin": 5045979.247,
+        "xmax": 358020.326,
+        "ymax": 5048019.447
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5747-2.a56ab899.webp",
+        "bytes": 179842,
+        "sha256Prefix": "a56ab899"
+      },
+      "cell": [
+        -1,
+        -2
+      ]
+    },
+    {
+      "tavola": "5947",
+      "bboxCrsUnits": {
+        "xmin": 357980.312,
+        "ymin": 5045979.214,
+        "xmax": 360020.312,
+        "ymax": 5048019.414
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5947-2.1ee5cc1e.webp",
+        "bytes": 213070,
+        "sha256Prefix": "1ee5cc1e"
+      },
+      "cell": [
+        0,
+        -2
+      ]
+    },
+    {
+      "tavola": "6147",
+      "bboxCrsUnits": {
+        "xmin": 359980.295,
+        "ymin": 5045979.183,
+        "xmax": 362020.295,
+        "ymax": 5048019.383
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6147-2.68c0fd46.webp",
+        "bytes": 281006,
+        "sha256Prefix": "68c0fd46"
+      },
+      "cell": [
+        1,
+        -2
+      ]
+    },
+    {
+      "tavola": "6347",
+      "bboxCrsUnits": {
+        "xmin": 361980.257,
+        "ymin": 5045979.178,
+        "xmax": 364020.257,
+        "ymax": 5048019.378
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6347-2.e182752c.webp",
+        "bytes": 161880,
+        "sha256Prefix": "e182752c"
+      },
+      "cell": [
+        2,
+        -2
+      ]
+    },
+    {
+      "tavola": "6547",
+      "bboxCrsUnits": {
+        "xmin": 363980.218,
+        "ymin": 5045979.174,
+        "xmax": 366020.218,
+        "ymax": 5048019.374
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6547-2.be758698.webp",
+        "bytes": 137926,
+        "sha256Prefix": "be758698"
+      },
+      "cell": [
+        3,
+        -2
+      ]
+    },
+    {
+      "tavola": "6747",
+      "bboxCrsUnits": {
+        "xmin": 365980.18,
+        "ymin": 5045979.169,
+        "xmax": 368020.18,
+        "ymax": 5048019.369
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6747-2.12337bbb.webp",
+        "bytes": 157046,
+        "sha256Prefix": "12337bbb"
+      },
+      "cell": [
+        4,
+        -2
+      ]
+    },
+    {
+      "tavola": "6947",
+      "bboxCrsUnits": {
+        "xmin": 367980.141,
+        "ymin": 5045979.164,
+        "xmax": 370020.141,
+        "ymax": 5048019.364
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6947-2.6ee8408a.webp",
+        "bytes": 210090,
+        "sha256Prefix": "6ee8408a"
+      },
+      "cell": [
+        5,
+        -2
+      ]
+    },
+    {
+      "tavola": "7147",
+      "bboxCrsUnits": {
+        "xmin": 369980.104,
+        "ymin": 5045979.17,
+        "xmax": 372020.104,
+        "ymax": 5048019.37
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7147-2.32da0d5a.webp",
+        "bytes": 222708,
+        "sha256Prefix": "32da0d5a"
+      },
+      "cell": [
+        6,
+        -2
+      ]
+    },
+    {
+      "tavola": "7347",
+      "bboxCrsUnits": {
+        "xmin": 371980.072,
+        "ymin": 5045979.176,
+        "xmax": 374020.072,
+        "ymax": 5048019.376
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7347-2.ad4d8d5b.webp",
+        "bytes": 197278,
+        "sha256Prefix": "ad4d8d5b"
+      },
+      "cell": [
+        7,
+        -2
+      ]
+    },
+    {
+      "tavola": "7547",
+      "bboxCrsUnits": {
+        "xmin": 373980.04,
+        "ymin": 5045979.181,
+        "xmax": 376020.04,
+        "ymax": 5048019.381
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7547-2.06f7932f.webp",
+        "bytes": 212562,
+        "sha256Prefix": "06f7932f"
+      },
+      "cell": [
+        8,
+        -2
+      ]
+    },
+    {
+      "tavola": "7747",
+      "bboxCrsUnits": {
+        "xmin": 375980.007,
+        "ymin": 5045979.187,
+        "xmax": 378020.007,
+        "ymax": 5048019.387
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7747-2.37f5d306.webp",
+        "bytes": 207122,
+        "sha256Prefix": "37f5d306"
+      },
+      "cell": [
+        9,
+        -2
+      ]
+    },
+    {
+      "tavola": "7947",
+      "bboxCrsUnits": {
+        "xmin": 377979.974,
+        "ymin": 5045979.19,
+        "xmax": 380020.174,
+        "ymax": 5048019.39
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7947-2.315b8c21.webp",
+        "bytes": 151690,
+        "sha256Prefix": "315b8c21"
+      },
+      "cell": [
+        10,
+        -2
+      ]
+    },
+    {
+      "tavola": "8147",
+      "bboxCrsUnits": {
+        "xmin": 379979.967,
+        "ymin": 5045979.182,
+        "xmax": 382020.167,
+        "ymax": 5048019.382
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o8147-2.92c58f5a.webp",
+        "bytes": 18218,
+        "sha256Prefix": "92c58f5a"
+      },
+      "cell": [
+        11,
+        -2
+      ]
+    },
+    {
+      "tavola": "5349",
+      "bboxCrsUnits": {
+        "xmin": 351980.359,
+        "ymin": 5047979.329,
+        "xmax": 354020.359,
+        "ymax": 5050019.529
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5349-2.85b81406.webp",
+        "bytes": 202618,
+        "sha256Prefix": "85b81406"
+      },
+      "cell": [
+        -3,
+        -3
+      ]
+    },
+    {
+      "tavola": "5549",
+      "bboxCrsUnits": {
+        "xmin": 353980.343,
+        "ymin": 5047979.297,
+        "xmax": 356020.343,
+        "ymax": 5050019.497
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5549-2.b8f6aacd.webp",
+        "bytes": 267690,
+        "sha256Prefix": "b8f6aacd"
+      },
+      "cell": [
+        -2,
+        -3
+      ]
+    },
+    {
+      "tavola": "5749",
+      "bboxCrsUnits": {
+        "xmin": 355980.328,
+        "ymin": 5047979.265,
+        "xmax": 358020.328,
+        "ymax": 5050019.465
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5749-2.a51687cd.webp",
+        "bytes": 200288,
+        "sha256Prefix": "a51687cd"
+      },
+      "cell": [
+        -1,
+        -3
+      ]
+    },
+    {
+      "tavola": "5949",
+      "bboxCrsUnits": {
+        "xmin": 357980.313,
+        "ymin": 5047979.234,
+        "xmax": 360020.313,
+        "ymax": 5050019.434
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5949-2.b84839dc.webp",
+        "bytes": 229470,
+        "sha256Prefix": "b84839dc"
+      },
+      "cell": [
+        0,
+        -3
+      ]
+    },
+    {
+      "tavola": "6149",
+      "bboxCrsUnits": {
+        "xmin": 359980.294,
+        "ymin": 5047979.202,
+        "xmax": 362020.294,
+        "ymax": 5050019.402
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6149-2.40ff4cdb.webp",
+        "bytes": 263072,
+        "sha256Prefix": "40ff4cdb"
+      },
+      "cell": [
+        1,
+        -3
+      ]
+    },
+    {
+      "tavola": "6349",
+      "bboxCrsUnits": {
+        "xmin": 361980.255,
+        "ymin": 5047979.196,
+        "xmax": 364020.255,
+        "ymax": 5050019.396
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6349-2.4f946890.webp",
+        "bytes": 131570,
+        "sha256Prefix": "4f946890"
+      },
+      "cell": [
+        2,
+        -3
+      ]
+    },
+    {
+      "tavola": "6549",
+      "bboxCrsUnits": {
+        "xmin": 363980.215,
+        "ymin": 5047979.19,
+        "xmax": 366020.215,
+        "ymax": 5050019.39
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6549-2.d1b807f3.webp",
+        "bytes": 144812,
+        "sha256Prefix": "d1b807f3"
+      },
+      "cell": [
+        3,
+        -3
+      ]
+    },
+    {
+      "tavola": "6749",
+      "bboxCrsUnits": {
+        "xmin": 365980.176,
+        "ymin": 5047979.184,
+        "xmax": 368020.176,
+        "ymax": 5050019.384
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6749-2.9d6c02c9.webp",
+        "bytes": 165912,
+        "sha256Prefix": "9d6c02c9"
+      },
+      "cell": [
+        4,
+        -3
+      ]
+    },
+    {
+      "tavola": "6949",
+      "bboxCrsUnits": {
+        "xmin": 367980.137,
+        "ymin": 5047979.178,
+        "xmax": 370020.137,
+        "ymax": 5050019.378
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6949-2.4b28e4bb.webp",
+        "bytes": 214746,
+        "sha256Prefix": "4b28e4bb"
+      },
+      "cell": [
+        5,
+        -3
+      ]
+    },
+    {
+      "tavola": "7149",
+      "bboxCrsUnits": {
+        "xmin": 369980.099,
+        "ymin": 5047979.183,
+        "xmax": 372020.099,
+        "ymax": 5050019.383
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7149-2.eb023619.webp",
+        "bytes": 220286,
+        "sha256Prefix": "eb023619"
+      },
+      "cell": [
+        6,
+        -3
+      ]
+    },
+    {
+      "tavola": "7349",
+      "bboxCrsUnits": {
+        "xmin": 371980.066,
+        "ymin": 5047979.187,
+        "xmax": 374020.066,
+        "ymax": 5050019.387
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7349-2.e9742e6d.webp",
+        "bytes": 184628,
+        "sha256Prefix": "e9742e6d"
+      },
+      "cell": [
+        7,
+        -3
+      ]
+    },
+    {
+      "tavola": "7549",
+      "bboxCrsUnits": {
+        "xmin": 373980.032,
+        "ymin": 5047979.192,
+        "xmax": 376020.032,
+        "ymax": 5050019.392
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7549-2.ebe3c8a6.webp",
+        "bytes": 237016,
+        "sha256Prefix": "ebe3c8a6"
+      },
+      "cell": [
+        8,
+        -3
+      ]
+    },
+    {
+      "tavola": "7749",
+      "bboxCrsUnits": {
+        "xmin": 375979.998,
+        "ymin": 5047979.197,
+        "xmax": 378019.998,
+        "ymax": 5050019.397
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7749-2.1f8000c4.webp",
+        "bytes": 221660,
+        "sha256Prefix": "1f8000c4"
+      },
+      "cell": [
+        9,
+        -3
+      ]
+    },
+    {
+      "tavola": "7949",
+      "bboxCrsUnits": {
+        "xmin": 377979.964,
+        "ymin": 5047979.199,
+        "xmax": 380020.164,
+        "ymax": 5050019.399
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7949-2.86aa4cbb.webp",
+        "bytes": 216182,
+        "sha256Prefix": "86aa4cbb"
+      },
+      "cell": [
+        10,
+        -3
+      ]
+    },
+    {
+      "tavola": "8149",
+      "bboxCrsUnits": {
+        "xmin": 379979.956,
+        "ymin": 5047979.191,
+        "xmax": 382020.156,
+        "ymax": 5050019.391
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o8149-2.60984646.webp",
+        "bytes": 170060,
+        "sha256Prefix": "60984646"
+      },
+      "cell": [
+        11,
+        -3
+      ]
+    },
+    {
+      "tavola": "8349",
+      "bboxCrsUnits": {
+        "xmin": 381979.994,
+        "ymin": 5047979.166,
+        "xmax": 384020.194,
+        "ymax": 5050019.366
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o8349-2.903ad8c1.webp",
+        "bytes": 123112,
+        "sha256Prefix": "903ad8c1"
+      },
+      "cell": [
+        12,
+        -3
+      ]
+    },
+    {
+      "tavola": "8549",
+      "bboxCrsUnits": {
+        "xmin": 383980.032,
+        "ymin": 5047979.141,
+        "xmax": 386020.232,
+        "ymax": 5050019.341
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o8549-2.70a5a6dd.webp",
+        "bytes": 158512,
+        "sha256Prefix": "70a5a6dd"
+      },
+      "cell": [
+        13,
+        -3
+      ]
+    },
+    {
+      "tavola": "8749",
+      "bboxCrsUnits": {
+        "xmin": 385980.07,
+        "ymin": 5047979.117,
+        "xmax": 388020.27,
+        "ymax": 5050019.317
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o8749-2.6eae8e7a.webp",
+        "bytes": 78502,
+        "sha256Prefix": "6eae8e7a"
+      },
+      "cell": [
+        14,
+        -3
+      ]
+    },
+    {
+      "tavola": "8949",
+      "bboxCrsUnits": {
+        "xmin": 387980.107,
+        "ymin": 5047979.092,
+        "xmax": 390020.307,
+        "ymax": 5050019.292
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o8949-2.9f12b6ca.webp",
+        "bytes": 96518,
+        "sha256Prefix": "9f12b6ca"
+      },
+      "cell": [
+        15,
+        -3
+      ]
+    },
+    {
+      "tavola": "5551",
+      "bboxCrsUnits": {
+        "xmin": 353980.348,
+        "ymin": 5049979.31,
+        "xmax": 356020.348,
+        "ymax": 5052019.51
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5551-2.a7bcee17.webp",
+        "bytes": 262730,
+        "sha256Prefix": "a7bcee17"
+      },
+      "cell": [
+        -2,
+        -4
+      ]
+    },
+    {
+      "tavola": "5751",
+      "bboxCrsUnits": {
+        "xmin": 355980.331,
+        "ymin": 5049979.279,
+        "xmax": 358020.331,
+        "ymax": 5052019.479
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5751-2.ab0ac973.webp",
+        "bytes": 167408,
+        "sha256Prefix": "ab0ac973"
+      },
+      "cell": [
+        -1,
+        -4
+      ]
+    },
+    {
+      "tavola": "5951",
+      "bboxCrsUnits": {
+        "xmin": 357980.314,
+        "ymin": 5049979.248,
+        "xmax": 360020.314,
+        "ymax": 5052019.448
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5951-2.b7a22ded.webp",
+        "bytes": 217870,
+        "sha256Prefix": "b7a22ded"
+      },
+      "cell": [
+        0,
+        -4
+      ]
+    },
+    {
+      "tavola": "6151",
+      "bboxCrsUnits": {
+        "xmin": 359980.295,
+        "ymin": 5049979.215,
+        "xmax": 362020.295,
+        "ymax": 5052019.415
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6151-2.05b56bb0.webp",
+        "bytes": 210826,
+        "sha256Prefix": "05b56bb0"
+      },
+      "cell": [
+        1,
+        -4
+      ]
+    },
+    {
+      "tavola": "6351",
+      "bboxCrsUnits": {
+        "xmin": 361980.256,
+        "ymin": 5049979.208,
+        "xmax": 364020.256,
+        "ymax": 5052019.408
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6351-2.1828dd65.webp",
+        "bytes": 123330,
+        "sha256Prefix": "1828dd65"
+      },
+      "cell": [
+        2,
+        -4
+      ]
+    },
+    {
+      "tavola": "6551",
+      "bboxCrsUnits": {
+        "xmin": 363980.217,
+        "ymin": 5049979.202,
+        "xmax": 366020.217,
+        "ymax": 5052019.402
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6551-2.6221eb1e.webp",
+        "bytes": 83806,
+        "sha256Prefix": "6221eb1e"
+      },
+      "cell": [
+        3,
+        -4
+      ]
+    },
+    {
+      "tavola": "6751",
+      "bboxCrsUnits": {
+        "xmin": 365980.178,
+        "ymin": 5049979.195,
+        "xmax": 368020.178,
+        "ymax": 5052019.395
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6751-2.f1311eea.webp",
+        "bytes": 166692,
+        "sha256Prefix": "f1311eea"
+      },
+      "cell": [
+        4,
+        -4
+      ]
+    },
+    {
+      "tavola": "6951",
+      "bboxCrsUnits": {
+        "xmin": 367980.139,
+        "ymin": 5049979.188,
+        "xmax": 370020.139,
+        "ymax": 5052019.388
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6951-2.30103e36.webp",
+        "bytes": 153654,
+        "sha256Prefix": "30103e36"
+      },
+      "cell": [
+        5,
+        -4
+      ]
+    },
+    {
+      "tavola": "7151",
+      "bboxCrsUnits": {
+        "xmin": 369980.102,
+        "ymin": 5049979.19,
+        "xmax": 372020.102,
+        "ymax": 5052019.39
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7151-2.014c52f3.webp",
+        "bytes": 243130,
+        "sha256Prefix": "014c52f3"
+      },
+      "cell": [
+        6,
+        -4
+      ]
+    },
+    {
+      "tavola": "7351",
+      "bboxCrsUnits": {
+        "xmin": 371980.071,
+        "ymin": 5049979.193,
+        "xmax": 374020.071,
+        "ymax": 5052019.393
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7351-2.3749d036.webp",
+        "bytes": 223462,
+        "sha256Prefix": "3749d036"
+      },
+      "cell": [
+        7,
+        -4
+      ]
+    },
+    {
+      "tavola": "7551",
+      "bboxCrsUnits": {
+        "xmin": 373980.04,
+        "ymin": 5049979.196,
+        "xmax": 376020.04,
+        "ymax": 5052019.396
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7551-2.8329b175.webp",
+        "bytes": 207916,
+        "sha256Prefix": "8329b175"
+      },
+      "cell": [
+        8,
+        -4
+      ]
+    },
+    {
+      "tavola": "7751",
+      "bboxCrsUnits": {
+        "xmin": 375980.003,
+        "ymin": 5049979.199,
+        "xmax": 378020.003,
+        "ymax": 5052019.399
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7751-2.2a6dddf0.webp",
+        "bytes": 142942,
+        "sha256Prefix": "2a6dddf0"
+      },
+      "cell": [
+        9,
+        -4
+      ]
+    },
+    {
+      "tavola": "7951",
+      "bboxCrsUnits": {
+        "xmin": 377979.971,
+        "ymin": 5049979.2,
+        "xmax": 380020.171,
+        "ymax": 5052019.4
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7951-2.95f70428.webp",
+        "bytes": 120592,
+        "sha256Prefix": "95f70428"
+      },
+      "cell": [
+        10,
+        -4
+      ]
+    },
+    {
+      "tavola": "8151",
+      "bboxCrsUnits": {
+        "xmin": 379979.963,
+        "ymin": 5049979.193,
+        "xmax": 382020.163,
+        "ymax": 5052019.393
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o8151-2.1c45be5b.webp",
+        "bytes": 141944,
+        "sha256Prefix": "1c45be5b"
+      },
+      "cell": [
+        11,
+        -4
+      ]
+    },
+    {
+      "tavola": "8351",
+      "bboxCrsUnits": {
+        "xmin": 381980,
+        "ymin": 5049979.168,
+        "xmax": 384020.2,
+        "ymax": 5052019.368
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o8351-2.c3e0062b.webp",
+        "bytes": 191822,
+        "sha256Prefix": "c3e0062b"
+      },
+      "cell": [
+        12,
+        -4
+      ]
+    },
+    {
+      "tavola": "5553",
+      "bboxCrsUnits": {
+        "xmin": 353980.352,
+        "ymin": 5051979.324,
+        "xmax": 356020.352,
+        "ymax": 5054019.524
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5553-2.9ea0e29a.webp",
+        "bytes": 280162,
+        "sha256Prefix": "9ea0e29a"
+      },
+      "cell": [
+        -2,
+        -5
+      ]
+    },
+    {
+      "tavola": "5753",
+      "bboxCrsUnits": {
+        "xmin": 355980.334,
+        "ymin": 5051979.293,
+        "xmax": 358020.334,
+        "ymax": 5054019.493
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5753-2.9b1f92be.webp",
+        "bytes": 180238,
+        "sha256Prefix": "9b1f92be"
+      },
+      "cell": [
+        -1,
+        -5
+      ]
+    },
+    {
+      "tavola": "5953",
+      "bboxCrsUnits": {
+        "xmin": 357980.315,
+        "ymin": 5051979.262,
+        "xmax": 360020.315,
+        "ymax": 5054019.462
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5953-2.5cd1e514.webp",
+        "bytes": 209672,
+        "sha256Prefix": "5cd1e514"
+      },
+      "cell": [
+        0,
+        -5
+      ]
+    },
+    {
+      "tavola": "6153",
+      "bboxCrsUnits": {
+        "xmin": 359980.295,
+        "ymin": 5051979.229,
+        "xmax": 362020.295,
+        "ymax": 5054019.429
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6153-2.315ff5a6.webp",
+        "bytes": 231334,
+        "sha256Prefix": "315ff5a6"
+      },
+      "cell": [
+        1,
+        -5
+      ]
+    },
+    {
+      "tavola": "6353",
+      "bboxCrsUnits": {
+        "xmin": 361980.256,
+        "ymin": 5051979.221,
+        "xmax": 364020.256,
+        "ymax": 5054019.421
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6353-2.04f648e5.webp",
+        "bytes": 167708,
+        "sha256Prefix": "04f648e5"
+      },
+      "cell": [
+        2,
+        -5
+      ]
+    },
+    {
+      "tavola": "6553",
+      "bboxCrsUnits": {
+        "xmin": 363980.218,
+        "ymin": 5051979.213,
+        "xmax": 366020.218,
+        "ymax": 5054019.413
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6553-2.e5295a61.webp",
+        "bytes": 128528,
+        "sha256Prefix": "e5295a61"
+      },
+      "cell": [
+        3,
+        -5
+      ]
+    },
+    {
+      "tavola": "6753",
+      "bboxCrsUnits": {
+        "xmin": 365980.18,
+        "ymin": 5051979.206,
+        "xmax": 368020.18,
+        "ymax": 5054019.406
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6753-2.b53b19f7.webp",
+        "bytes": 108346,
+        "sha256Prefix": "b53b19f7"
+      },
+      "cell": [
+        4,
+        -5
+      ]
+    },
+    {
+      "tavola": "6953",
+      "bboxCrsUnits": {
+        "xmin": 367980.142,
+        "ymin": 5051979.198,
+        "xmax": 370020.142,
+        "ymax": 5054019.398
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6953-2.1ec9054e.webp",
+        "bytes": 193012,
+        "sha256Prefix": "1ec9054e"
+      },
+      "cell": [
+        5,
+        -5
+      ]
+    },
+    {
+      "tavola": "7153",
+      "bboxCrsUnits": {
+        "xmin": 369980.106,
+        "ymin": 5051979.197,
+        "xmax": 372020.106,
+        "ymax": 5054019.397
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o7153-2.43312d92.webp",
+        "bytes": 237104,
+        "sha256Prefix": "43312d92"
+      },
+      "cell": [
+        6,
+        -5
+      ]
+    },
+    {
+      "tavola": "5555",
+      "bboxCrsUnits": {
+        "xmin": 353980.357,
+        "ymin": 5053979.337,
+        "xmax": 356020.357,
+        "ymax": 5056019.537
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5555-2.6c8280b4.webp",
+        "bytes": 254412,
+        "sha256Prefix": "6c8280b4"
+      },
+      "cell": [
+        -2,
+        -6
+      ]
+    },
+    {
+      "tavola": "5755",
+      "bboxCrsUnits": {
+        "xmin": 355980.336,
+        "ymin": 5053979.306,
+        "xmax": 358020.336,
+        "ymax": 5056019.506
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5755-2.ceff9bc4.webp",
+        "bytes": 226832,
+        "sha256Prefix": "ceff9bc4"
+      },
+      "cell": [
+        -1,
+        -6
+      ]
+    },
+    {
+      "tavola": "5955",
+      "bboxCrsUnits": {
+        "xmin": 357980.316,
+        "ymin": 5053979.276,
+        "xmax": 360020.316,
+        "ymax": 5056019.476
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5955-2.7b08330b.webp",
+        "bytes": 223990,
+        "sha256Prefix": "7b08330b"
+      },
+      "cell": [
+        0,
+        -6
+      ]
+    },
+    {
+      "tavola": "6155",
+      "bboxCrsUnits": {
+        "xmin": 359980.295,
+        "ymin": 5053979.242,
+        "xmax": 362020.295,
+        "ymax": 5056019.442
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6155-2.9888cc4e.webp",
+        "bytes": 265984,
+        "sha256Prefix": "9888cc4e"
+      },
+      "cell": [
+        1,
+        -6
+      ]
+    },
+    {
+      "tavola": "6355",
+      "bboxCrsUnits": {
+        "xmin": 361980.257,
+        "ymin": 5053979.234,
+        "xmax": 364020.257,
+        "ymax": 5056019.434
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6355-2.0ca9e901.webp",
+        "bytes": 254970,
+        "sha256Prefix": "0ca9e901"
+      },
+      "cell": [
+        2,
+        -6
+      ]
+    },
+    {
+      "tavola": "6555",
+      "bboxCrsUnits": {
+        "xmin": 363980.22,
+        "ymin": 5053979.225,
+        "xmax": 366020.22,
+        "ymax": 5056019.425
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6555-2.0879a3b0.webp",
+        "bytes": 253868,
+        "sha256Prefix": "0879a3b0"
+      },
+      "cell": [
+        3,
+        -6
+      ]
+    },
+    {
+      "tavola": "6755",
+      "bboxCrsUnits": {
+        "xmin": 365980.182,
+        "ymin": 5053979.216,
+        "xmax": 368020.182,
+        "ymax": 5056019.416
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6755-2.3fa6477d.webp",
+        "bytes": 239622,
+        "sha256Prefix": "3fa6477d"
+      },
+      "cell": [
+        4,
+        -6
+      ]
+    },
+    {
+      "tavola": "6955",
+      "bboxCrsUnits": {
+        "xmin": 367980.145,
+        "ymin": 5053979.208,
+        "xmax": 370020.145,
+        "ymax": 5056019.408
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6955-2.cc25e59d.webp",
+        "bytes": 253050,
+        "sha256Prefix": "cc25e59d"
+      },
+      "cell": [
+        5,
+        -6
+      ]
+    },
+    {
+      "tavola": "5757",
+      "bboxCrsUnits": {
+        "xmin": 355980.339,
+        "ymin": 5055979.32,
+        "xmax": 358020.339,
+        "ymax": 5058019.52
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5757-2.34ac33a3.webp",
+        "bytes": 285694,
+        "sha256Prefix": "34ac33a3"
+      },
+      "cell": [
+        -1,
+        -7
+      ]
+    },
+    {
+      "tavola": "5957",
+      "bboxCrsUnits": {
+        "xmin": 357980.317,
+        "ymin": 5055979.29,
+        "xmax": 360020.317,
+        "ymax": 5058019.49
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5957-2.c29a7bf1.webp",
+        "bytes": 265880,
+        "sha256Prefix": "c29a7bf1"
+      },
+      "cell": [
+        0,
+        -7
+      ]
+    },
+    {
+      "tavola": "6157",
+      "bboxCrsUnits": {
+        "xmin": 359980.294,
+        "ymin": 5055979.256,
+        "xmax": 362020.294,
+        "ymax": 5058019.456
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6157-2.05a51d06.webp",
+        "bytes": 298470,
+        "sha256Prefix": "05a51d06"
+      },
+      "cell": [
+        1,
+        -7
+      ]
+    },
+    {
+      "tavola": "6357",
+      "bboxCrsUnits": {
+        "xmin": 361980.258,
+        "ymin": 5055979.246,
+        "xmax": 364020.258,
+        "ymax": 5058019.446
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6357-2.e165c619.webp",
+        "bytes": 282216,
+        "sha256Prefix": "e165c619"
+      },
+      "cell": [
+        2,
+        -7
+      ]
+    },
+    {
+      "tavola": "6557",
+      "bboxCrsUnits": {
+        "xmin": 363980.221,
+        "ymin": 5055979.237,
+        "xmax": 366020.221,
+        "ymax": 5058019.437
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o6557-2.7eb42e28.webp",
+        "bytes": 257650,
+        "sha256Prefix": "7eb42e28"
+      },
+      "cell": [
+        3,
+        -7
+      ]
+    },
+    {
+      "tavola": "5759",
+      "bboxCrsUnits": {
+        "xmin": 355980.327,
+        "ymin": 5057979.325,
+        "xmax": 358020.327,
+        "ymax": 5060019.525
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5759-2.729fc298.webp",
+        "bytes": 264076,
+        "sha256Prefix": "729fc298"
+      },
+      "cell": [
+        -1,
+        -8
+      ]
+    },
+    {
+      "tavola": "5959",
+      "bboxCrsUnits": {
+        "xmin": 357980.306,
+        "ymin": 5057979.296,
+        "xmax": 360020.306,
+        "ymax": 5060019.496
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5959-2.cb8c47ba.webp",
+        "bytes": 290554,
+        "sha256Prefix": "cb8c47ba"
+      },
+      "cell": [
+        0,
+        -8
+      ]
+    },
+    {
+      "tavola": "5961",
+      "bboxCrsUnits": {
+        "xmin": 357980.286,
+        "ymin": 5059979.298,
+        "xmax": 360020.286,
+        "ymax": 5062019.498
+      },
+      "dimensions": {
+        "width": 1020,
+        "height": 1020
+      },
+      "file": {
+        "name": "o5961-2.589f9f90.webp",
+        "bytes": 265576,
+        "sha256Prefix": "589f9f90"
+      },
+      "cell": [
+        0,
+        -9
       ]
     }
   ],

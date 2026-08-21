@@ -156,34 +156,71 @@ export function orthoGlsl() {
 // refinement and is not done.
 const RINGS = 1; // 1 -> 3x3. The margin argument above is what makes 1 enough.
 
-const imageCache = new Map(); // file name -> HTMLImageElement
+// A DECODED SHEET IS 1020 x 1020 x 4 BYTES - 4.2 MB, whatever the 200 KB WebP on disk says.
+// At the nine sheets of the proof that was 37 MB and invisible. The park's Valle d'Aosta side
+// is 129, and nothing here evicted anything, so a walk from one end to the other ended up
+// holding 537 MB of decoded photograph. 16 is the 3x3 block the atlas is drawing plus the
+// seven cells of the block next door, so crossing a sheet boundary and stepping back does not
+// re-fetch. A Map iterates in insertion order and a hit re-inserts, so the nine sheets in the
+// atlas right now are always the nine most recent and eviction can never take one of them.
+const SHEET_CACHE_MAX = 16;
+const imageCache = new Map(); // file name -> HTMLImageElement, least recently used first
 let manifestPromise = null;
 let manifest = null;
 let origin = null; // the scene's local origin, needed to place the atlas
 let canvas = null;
 let ctx = null;
 let atlasTexture = null;
-let atlasCell = null; // [i, j] of the centre sheet currently drawn
+let atlasCell = null; // [i, j] of the centre sheet currently DRAWN
+// [i, j] a refill is currently fetching for. Separate from atlasCell because a refill
+// awaits nine downloads, and until this existed the render loop saw the OLD atlasCell on
+// every frame in between and started the whole refill again - once per frame, for as long
+// as the network took. Nine already-cached sheets resolved too fast for that to show.
+let pendingCell = null;
 let sheetPx = 0;
 let stepPx = 0;
 let byCell = null; // "i,j" -> sheet record
 
 // What the atlas last cost, so a probe can ask instead of guessing: how many sheets it holds,
-// how many of its cells are empty, and how long the last refill took.
-export const ORTHO_STATS = { sheets: 0, cells: 0, empty: 0, lastRefillMs: 0, refills: 0 };
+// how many of its cells are empty, how many decoded sheets are cached, and how long the last
+// refill took.
+// `cell` is the grid index the atlas is centred on. It is here because the one time this
+// went wrong the atlas was a whole cell east and still looked like a photograph: without
+// a number to compare against the manifest, there was nothing to notice.
+export const ORTHO_STATS = { sheets: 0, cells: 0, empty: 0, cached: 0, cell: null, lastRefillMs: 0, refills: 0 };
 
+function evictSheets() {
+  while (imageCache.size > SHEET_CACHE_MAX) imageCache.delete(imageCache.keys().next().value);
+  ORTHO_STATS.cached = imageCache.size;
+}
+
+// THE CACHE HOLDS PROMISES, NOT IMAGES, and that is the whole point of it. Nine sheets that
+// all resolve before the camera can move made an element cache look sufficient; at 129 the
+// camera crosses cells while a refill is still in the air, and an element cache is empty
+// until onload - so every caller in between started its own download of the same file.
 function loadImage(dataUrl, name) {
-  if (imageCache.has(name)) return Promise.resolve(imageCache.get(name));
-  return new Promise((resolve, reject) => {
+  const cached = imageCache.get(name);
+  if (cached) {
+    imageCache.delete(name); // re-insert, so a hit counts as recent
+    imageCache.set(name, cached);
+    return cached;
+  }
+  const p = new Promise((resolve, reject) => {
     const img = new Image();
     // The atlas is drawn into a canvas and read back as a texture, so the image has to be
     // same-origin or CORS-clean or the canvas is tainted and the upload throws. Ours is
     // same-origin; this is here so a future remote tile fails loudly instead of oddly.
     img.crossOrigin = 'anonymous';
-    img.onload = () => { imageCache.set(name, img); resolve(img); };
+    img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`orthophoto sheet failed to load: ${name}`));
     img.src = `${dataUrl}/ortho/${name}`;
   });
+  // A failure must not be remembered: a cached rejection would make one dropped connection
+  // permanent for the rest of the session.
+  p.catch(() => imageCache.delete(name));
+  imageCache.set(name, p);
+  evictSheets();
+  return p;
 }
 
 // Which sheet cell a local (x, z) falls in. The grid is declared in the manifest rather than
@@ -246,6 +283,8 @@ export async function updateOrtho(camX, camZ, dataUrl = `${import.meta.env.BASE_
   if (!manifest || !ctx) return false;
   const [ci, cj] = cellAt(camX, camZ);
   if (atlasCell && atlasCell[0] === ci && atlasCell[1] === cj) return false;
+  if (pendingCell && pendingCell[0] === ci && pendingCell[1] === cj) return false;
+  pendingCell = [ci, cj];
   const t0 = performance.now();
 
   const wanted = [];
@@ -258,6 +297,7 @@ export async function updateOrtho(camX, camZ, dataUrl = `${import.meta.env.BASE_
   // Nothing here at all - leave the atlas where it was rather than blanking the ground.
   if (!wanted.length) {
     atlasCell = [ci, cj];
+    ORTHO_STATS.cell = [ci, cj];
     ORTHO_STATS.cells = 0;
     ORTHO_STATS.empty = (2 * RINGS + 1) ** 2;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -266,6 +306,9 @@ export async function updateOrtho(camX, camZ, dataUrl = `${import.meta.env.BASE_
     return true;
   }
   const images = await Promise.all(wanted.map((w) => loadImage(dataUrl, w.sh.file.name).catch(() => null)));
+  // A newer refill overtook this one while its sheets were in the air. Drawing now would put
+  // the atlas where the camera USED to be, which is the failure that looks like a photograph.
+  if (pendingCell[0] !== ci || pendingCell[1] !== cj) return false;
 
   // Transparent first, so a cell with no sheet stays transparent and orthoSample() reads 0
   // there. clearRect, not fillRect: an opaque fill would paint grey ground.
@@ -279,6 +322,7 @@ export async function updateOrtho(camX, camZ, dataUrl = `${import.meta.env.BASE_
   atlasTexture.needsUpdate = true;
   atlasCell = [ci, cj];
   placeAtlas(ci, cj);
+  ORTHO_STATS.cell = [ci, cj];
   ORTHO_STATS.cells = drawn;
   ORTHO_STATS.empty = (2 * RINGS + 1) ** 2 - drawn;
   ORTHO_STATS.lastRefillMs = performance.now() - t0;
