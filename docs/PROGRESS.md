@@ -16,6 +16,39 @@ scattered through it were promoted into ARCHITECTURE §13 first, so that the one
 part of the log you needed *before* making a mistake is no longer in a file you
 open *after*.
 
+## EXTENDED 2026-08-21 (second run of the day): 416 sheets, the park plus a 12 km margin.
+
+The user, after the first mosaic went live: *"visto che abbiamo risparmiato tanto spazio,
+direi di estendere le ortofoto a tutta la superficie al momento gestita, anche se e' fuori dal
+parco, come l'alta val di Rhemes e la Valgrisenche."* Two things had to be measured before
+answering, and one of them changed the question:
+
+- **Alta Val di Rhemes was already covered.** Rhemes-Notre-Dame and the Rifugio Benevolo are
+  inside the original 129. Valgrisenche was not, and needed a 6 km margin for the village and
+  the Lago di Beauregard, 4 km for the Rifugio Bezzi.
+- **The whole rendered world is 4,865 km2 and the region can cover 58.6% of it** - 713 sheets,
+  223 GB to fetch, ~10.7 h, 123 MB shipped. The user chose the **12 km margin** instead: 416
+  sheets, 287 new, 111 GB, and it took about 2h20 at 14 MB/s (faster than the 8.76 measured
+  the day before).
+
+**Result: 416 sheets, 83.85 MB shipped, 1,664 km2, 19 rows, the widest 30 cells = 60 km.**
+Mean sheet 202 kB rather than the park's 172 - valley floors carry more detail and compress
+worse, which is why the estimate said 72 MB and the answer was 84. Manifest and directory
+reconcile exactly; `tools/dev/logs/valgrisenche-ortho.png` is the new ground at midday.
+
+**Verified on the bigger mosaic:** `probe-ortho-cache.mjs` over a 26-stop walk - **89 distinct
+sheets through a cache of 16**, peak 16, 9/9 cells the whole way (the coverage is contiguous),
+0 requests to step back two cells, 0 repeats on a fast crossing.
+
+**The run died once, and the fix matters more than the run.** `ECONNRESET` on sheet 9745 came
+out of `res.arrayBuffer()` AFTER the fetch had resolved 200, so it was not a request failure
+and a guard on the request would not have seen it. Node exited; the manifest was never
+written; the 277 sheets already converted survived only because the stamps are per sheet. And
+the shell reported exit 0, because the command was piped through `tee` - so a crashed six-hour
+run looked like a finished one, and what caught it was counting the manifest against the
+directory. `build-ortho.mjs` now retries both the request and the body read with backoff and
+skips a sheet that will not come. See ARCHITECTURE §13.22 and §13.23.
+
 ## PUBLISHED 2026-08-21: the 2 m orthophoto mosaic, 129 sheets over the park's VdA side.
 
 `node tools/build-ortho.mjs --sheets=tools/dev/logs/ortho-sheets.json --res=2` ran on

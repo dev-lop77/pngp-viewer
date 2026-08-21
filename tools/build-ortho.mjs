@@ -113,6 +113,34 @@ mkdirSync(STAMPS, { recursive: true });
 mkdirSync(OUT, { recursive: true });
 
 const built = [];
+// A 400 MB body over a public service will be cut off sooner or later, and on the 111 GB run
+// of 2026-08-21 it was: ECONNRESET on sheet 9745, surfacing as undici's `TypeError: terminated`
+// from res.arrayBuffer() AFTER the fetch had resolved. Node exited, the manifest was never
+// written, and only the per-sheet stamps saved the 277 sheets already converted. So both the
+// request and the BODY READ are retried - the second is where it actually failed - and a
+// sheet that will not come after several tries is skipped rather than allowed to end the run.
+const ATTEMPTS = 5;
+async function fetchZip(t) {
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(zipUrl(t));
+      if (!res.ok) return { ok: false, status: res.status };
+      return { ok: true, body: Buffer.from(await res.arrayBuffer()) };
+    } catch (e) {
+      const wait = 5000 * attempt;
+      if (attempt === ATTEMPTS) {
+        console.log(`${e.cause?.code ?? e.message} after ${ATTEMPTS} attempts - SKIPPED`);
+        skipped.push(t);
+        return null;
+      }
+      process.stdout.write(`${e.cause?.code ?? e.message}, retrying in ${wait / 1000}s... `);
+      await sleep(wait);
+    }
+  }
+  return null;
+}
+
+const skipped = [];
 let fetched = 0;
 for (const t of wanted) {
   const zip = `${WORK}/ORTO2024_ED50_005_${t}.zip`;
@@ -143,9 +171,10 @@ for (const t of wanted) {
   // Fetch, unless a previous run left the TIF behind.
   if (!existsSync(tif)) {
     process.stdout.write(`${t}: fetching... `);
-    const res = await fetch(zipUrl(t));
+    const res = await fetchZip(t);
+    if (res === null) continue;
     if (!res.ok) { console.log(`HTTP ${res.status} - skipped`); continue; }
-    writeFileSync(zip, Buffer.from(await res.arrayBuffer()));
+    writeFileSync(zip, res.body);
     fetched += statSync(zip).size;
     process.stdout.write(`${(statSync(zip).size / 1e6).toFixed(0)} MB, unzipping... `);
     execFileSync('unzip', ['-o', '-q', zip, '-d', WORK]);
@@ -244,6 +273,14 @@ writeFileSync('public/data/ortho.json', `${JSON.stringify(manifest, null, 2)}\n`
     pruned += 1;
   }
   if (pruned) console.log(`pruned ${pruned} file(s) the manifest no longer names`);
+}
+// gdal writes an .aux.xml beside every WebP it creates. Nothing read them and nothing removed
+// them either, so 416 of them had piled up in the work directory.
+for (const f of readdirSync(WORK)) if (f.endsWith('.aux.xml')) rmSync(`${WORK}/${f}`);
+
+if (skipped.length) {
+  console.log(`\n${skipped.length} sheet(s) SKIPPED after ${ATTEMPTS} failed attempts:`
+    + ` ${skipped.join(', ')} - re-run to pick them up.`);
 }
 const shipped = built.reduce((a, b) => a + b.file.bytes, 0);
 console.log(`\n${built.length} sheets, ${(shipped / 1e6).toFixed(2)} MB shipped`

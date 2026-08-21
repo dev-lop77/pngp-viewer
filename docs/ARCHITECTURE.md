@@ -2282,3 +2282,24 @@ pointers say where.
     `public/` is copied into `dist/` and published, so the markers themselves had no
     business living beside the sheets - they are in `tools/ortho-source/.stamps/`
     now, which is neither shipped nor in git.
+22. **A long download WILL be cut off, and the break is in the body read, not the
+    request.** The 111 GB extension run of 2026-08-21 died on sheet 9745 with
+    `ECONNRESET`, surfacing as undici's `TypeError: terminated` thrown by
+    `res.arrayBuffer()` **after** `fetch()` had already resolved 200 - so a
+    try/catch around the request alone would not have caught it. Node exited, the
+    manifest was never written, and the only reason 277 converted sheets survived
+    was the per-sheet stamp. Retry both halves with backoff, and skip a sheet that
+    will not come rather than letting one socket end a six-hour run. Corollary
+    worth as much: the exit code said 0, because the command was piped through
+    `tee` - so a crashed run looked like a finished one, and what actually caught
+    it was counting the manifest against the directory.
+23. **The 1:5.000 sheet code is arithmetic, not a lookup.** `tavola = (59 + 2i)`
+    then `(43 - 2j)`, two digits each, for cell (i, j) on the 2 km grid - verified
+    against all 129 sheets' own raster corners. The first survey asked the QDU WMS
+    once per cell to learn this, which is 1,080 requests to somebody's public
+    service for something a formula answers. It also indexed candidate cells on a
+    **2,040 m** grid while the sheets are **2,000 m** apart: the two drift 40 m a
+    cell, so roughly one sheet in fifty contains no cell centre and is never asked
+    about at all. Over the park's 21-cell span that is a hole or two; over the
+    42-cell world it is systematic. `tools/dev/probe-ortho-extent.mjs` uses the real
+    grid and one HEAD per candidate.
