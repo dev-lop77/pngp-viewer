@@ -224,7 +224,7 @@ window.addEventListener('keydown', (event) => {
 const creditLines = {};
 // Fixed order rather than Object.values(): the keys are filled in by whichever
 // fetch finishes first, so the overlay used to reshuffle between loads.
-const CREDIT_ORDER = ['dem', 'demLiability', 'basemap', 'trails', 'osm', 'modified'];
+const CREDIT_ORDER = ['dem', 'demLiability', 'basemap', 'ortho', 'trails', 'osm', 'modified'];
 function renderCredits() {
   document.getElementById('credits').innerHTML = CREDIT_ORDER.filter((k) => creditLines[k])
     .map((k) => creditLines[k])
@@ -239,6 +239,20 @@ function renderCredits() {
 creditLines.modified =
   'Elevation and trail data adapted from the sources above: cropped to the park area, ' +
   'resampled, and merged from multiple datasets.';
+
+// THE ORTHOPHOTO'S ATTRIBUTION IS STATIC AND ALWAYS SHOWN, and both halves of that are
+// deliberate. Always shown, because the site REDISTRIBUTES 416 derived sheets whether or not
+// a given visitor switches the layer on, and CC BY attaches to the distribution rather than
+// to the viewing. Static, because ortho.json is 181 kB fetched only on demand, and fetching
+// it up front to read one sentence would undo the whole point of the layer being optional.
+// The wording below must stay in step with that manifest's `source` block, which is the
+// record of what was actually built; the modification clause is CC BY's "indicate if changes
+// were made" and the changes here are real.
+creditLines.ortho =
+  'Orthophoto 2024 © Regione Autonoma Valle d\'Aosta '
+  + '(<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>, '
+  + '<a href="data/ortho/CC_BY_Ortofoto_2024.pdf" target="_blank" rel="noopener">licence</a>) '
+  + '- resampled from 20 cm to 2 m and re-encoded, shown only where you ask for it.';
 
 let originReady = false; // geo.js's setLocalOrigin() runs inside loadTerrain() - localToWGS84() throws before that
 let terrainUpdate = null; // quadtree LOD needs the camera every frame (src/terrain.js)

@@ -16,6 +16,26 @@ scattered through it were promoted into ARCHITECTURE §13 first, so that the one
 part of the log you needed *before* making a mistake is no longer in a file you
 open *after*.
 
+## 2026-08-21, after the extension: the orthophoto had no credit line, and now it does.
+
+The user asked whether the README and the credits were up to date. The README was stale in a
+dozen places; the credits were **missing a licence obligation**. `CREDIT_ORDER` in `main.js`
+had no `ortho` key, so the panel a visitor opens never named the source of 416 CC BY sheets
+the site was redistributing. Fixed, and made checkable: `tools/verify.mjs` now opens the
+panel and asserts eight required attribution strings, so the next layer that forgets one
+fails a publish check instead of shipping. See ARCHITECTURE §13.24.
+
+The README was corrected against the data files rather than from memory, which is the only
+reason the scale of the drift showed. It had said 4096 x 2355 samples over 84 x 48 km (it is
+4096 x 2832 over 84 x 58), 73 trails (116), 426 places (708), 198 lakes (263), 47 glaciers
+(80), and "rhododendron and juniper" ground cover that was **removed on 2026-08-13** and
+replaced by scree. It also said the elevation came from three sources "all three CC BY 4.0" -
+there are four, and Copernicus WorldDEM-30 is not CC BY. That is the exact error the credits
+panel had been fixed for on 2026-08-18, still sitting in the README three days later, and it
+is the one that mattered: **mis-stating someone's licence is worse than omitting them.** The
+tree count was dropped rather than corrected - the trees are GPU-placed from a hash grid and
+there is no number to verify, so a public document should not carry one.
+
 ## EXTENDED 2026-08-21 (second run of the day): 416 sheets, the park plus a 12 km margin.
 
 The user, after the first mosaic went live: *"visto che abbiamo risparmiato tanto spazio,

@@ -13,7 +13,9 @@
 // thing" split as those scripts.
 //
 // It also drives the ORTHOPHOTO switch, because the test that covers it is 207 s and sits in
-// the slow list, so a publish check had stopped covering it. Here it is one click.
+// the slow list, so a publish check had stopped covering it. Here it is one click. And it
+// reads the CREDITS panel, because attribution is a licence obligation and the orthophoto
+// went live without its line.
 //
 // Usage: node tools/verify.mjs [url]  (default http://localhost:5173)
 
@@ -56,6 +58,33 @@ const glInfo = await page.evaluate(() => {
   return { contextType: canvas.getContext('webgl2') ? 'webgl2' : 'webgl', isContextLost: gl.isContextLost() };
 });
 
+// THE CREDITS, checked because attribution is a LICENCE OBLIGATION and not a courtesy. Four
+// of this project's sources require specific wording, one of them requires a liability
+// disclaimer to travel with any public communication, and every one of them is used modified.
+// A layer that ships without its line is a licence breach that nothing else would notice: the
+// orthophoto shipped that way on 2026-08-21 and it took the user asking to find it.
+const REQUIRED_CREDITS = [
+  'Regione Autonoma Valle d\'Aosta',            // the DTM and the trails, wording prescribed
+  'Regione Piemonte',
+  'TINITALY',
+  'Copernicus WorldDEM-30',
+  'do not incur any liability',                 // COP-DEM licence, Article 6(c)
+  'Contains modified Copernicus Sentinel data', // prescribed verbatim by the EU legal notice
+  'Orthophoto 2024',
+  'OpenStreetMap',
+];
+let credits = 'no #credits-toggle on the page';
+if (await page.locator('#credits-toggle').count()) {
+  await page.click('#credits-toggle', { timeout: 120000 });
+  await page.waitForTimeout(500);
+  const text = (await page.textContent('#credits')) ?? '';
+  const absent = REQUIRED_CREDITS.filter((r) => !text.includes(r));
+  credits = `${REQUIRED_CREDITS.length - absent.length}/${REQUIRED_CREDITS.length} required attributions present`;
+  for (const a of absent) problems.push(`[credits] missing required attribution: "${a}"`);
+  await page.click('#credits-toggle', { timeout: 120000 }); // close it again, so the shot is the scene
+  await page.waitForTimeout(300);
+}
+
 // THE ORTHOPHOTO SWITCH, driven the way a visitor drives it. This lives here rather than in
 // the suite because the test that covers it, test-ortho-viewstate, is 207 s and had to go in
 // the slow list - which left the switch uncovered at exactly the moment that matters, the
@@ -86,6 +115,7 @@ await page.screenshot({ path: SCREENSHOT_FILE });
 await browser.close();
 
 console.log(`WebGL: ${JSON.stringify(glInfo)}`);
+console.log(`Credits: ${credits}`);
 console.log(`Orthophoto: ${ortho}`);
 console.log(`Screenshot: ${SCREENSHOT_FILE}`);
 if (problems.length) {

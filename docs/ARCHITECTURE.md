@@ -2303,3 +2303,14 @@ pointers say where.
     about at all. Over the park's 21-cell span that is a hole or two; over the
     42-cell world it is systematic. `tools/dev/probe-ortho-extent.mjs` uses the real
     grid and one HEAD per candidate.
+24. **A new data layer ships without its credit line, and nothing notices.** The
+    orthophoto went live on 2026-08-21 attributed in `ortho.json` and in the README
+    but absent from `CREDIT_ORDER`, so the panel a visitor actually opens did not
+    name it - while the site was redistributing 416 derived CC BY sheets. Nothing
+    in the suite covered it, because every existing credit line was already there
+    and no test asserts the set. **CC BY attaches to the distribution, not to the
+    viewing**, so the line is static and always shown rather than fetched with the
+    layer: `ortho.json` is 181 kB fetched on demand, and pulling it up front to
+    read one sentence would undo the point of the layer being optional.
+    `tools/verify.mjs` now asserts eight required attribution strings against the
+    rendered panel, which is the only place that can catch the next one.
