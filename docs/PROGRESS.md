@@ -38,7 +38,13 @@ reconcile exactly; `tools/dev/logs/valgrisenche-ortho.png` is the new ground at 
 
 **Verified on the bigger mosaic:** `probe-ortho-cache.mjs` over a 26-stop walk - **89 distinct
 sheets through a cache of 16**, peak 16, 9/9 cells the whole way (the coverage is contiguous),
-0 requests to step back two cells, 0 repeats on a fast crossing.
+0 requests to step back two cells, 0 repeats on a fast crossing. Fast suite 14/14, 688 s.
+
+**PUBLISHED and checked against the site, not the build:** all **416 sheets return 200** (the
+sweep retries once, because a burst of 416 requests earns a 503 from Pages that is rate
+limiting and not a missing file - that happened on the 129-sheet sweep and would read as a
+hole), the manifest is 181 kB, and `tools/verify.mjs` drives the switch on the published page:
+switch on, nine sheets fetched, none of them not-200, nothing fetched before the click.
 
 **The run died once, and the fix matters more than the run.** `ECONNRESET` on sheet 9745 came
 out of `res.arrayBuffer()` AFTER the fetch had resolved 200, so it was not a request failure
