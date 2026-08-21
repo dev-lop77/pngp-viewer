@@ -2043,8 +2043,9 @@ is now part of finishing a change, not a separate chore:
    is not ceremony: a CDN serving a stale bundle looks exactly like a code fault (§13.25), and
    the version string is the cheapest way to tell the two apart.
 4. The changelog stays on `main` and is **not** copied to the site, which still publishes only
-   `dist/` plus `.nojekyll` and `README.md` (the 2026-08-03 decision). Publishing it would
-   mean widening `deploy.sh`'s whitelist, which is the user's call and has not been asked for.
+   `dist/` plus `.nojekyll` and `README.md` (the 2026-08-03 decision). **Confirmed by the user
+   on 2026-08-21** - *"anche per il changelog non in deploy"* - so do not widen `deploy.sh`'s
+   whitelist for it.
 
 ## 10. Performance & fluidity principles
 

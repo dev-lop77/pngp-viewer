@@ -16,6 +16,25 @@ scattered through it were promoted into ARCHITECTURE §13 first, so that the one
 part of the log you needed *before* making a mistake is no longer in a file you
 open *after*.
 
+## NEXT SESSION: 1.0.0 is out and everything is green. Nothing is half-finished.
+
+The tree is clean, `main` and `v1.0.0` are pushed, the site is verified. There is no task
+waiting - open by asking the user what they want, not by picking up a thread.
+
+If they ask "what is left", these are the honest answers, in the order they would improve the
+thing most, and all three are described with their numbers further down this file:
+
+1. **De-shade the orthophoto.** The biggest single quality gap now. It does NOT need the 38 GB
+   again - the 2 m sheets are on disk and it is a per-pixel operation. What it needs is a
+   reliable per-sheet sun, and `probe-ortho-sun.mjs` shows a plain correlation fit is not it
+   (r from 0.84 down to 0.06 across twelve sheets).
+2. **A near fade for the photograph**, so the last few tens of metres go back to the
+   procedural ground instead of magnified texels. Small, self-contained, visible immediately.
+3. **The Piemonte half of the park** still has no photograph, and the only candidate source is
+   AGEA with a self-contradicting licence. That is a letter to write, not code.
+
+Whatever gets done: **a CHANGELOG entry and a version bump go in the same commit** (§9).
+
 ## RELEASED 2026-08-21: **1.0.0**, the first official public version.
 
 The user's call at the end of the day, with the orthophoto published and extended and the
